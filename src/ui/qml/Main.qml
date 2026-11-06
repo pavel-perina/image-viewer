@@ -13,6 +13,8 @@ ApplicationWindow {
     required property string initialPath
     property bool viewing: false
     readonly property ImageView activeView: viewing ? viewerPage.view : browserPage.preview
+    // Text fields do not claim keys such as Return and Up, so these shortcuts would take them.
+    readonly property bool typing: browserPage.pathBar.editing
 
     width: 1280
     height: 800
@@ -132,20 +134,24 @@ ApplicationWindow {
     Action { id: actualSizeAction; text: "1:1"; shortcut: "1"; onTriggered: window.activeView.actualSize() }
     Action { id: fullScreenAction; text: "Full Screen"; shortcut: "F11"; onTriggered: window.toggleFullScreen() }
 
-    Shortcut { sequences: ["Right", "PgDown", "Space"]; onActivated: context.next() }
-    Shortcut { sequences: ["Left", "PgUp", "Backspace"]; onActivated: context.previous() }
+    Shortcut { sequences: ["Right", "PgDown", "Space"]; enabled: !window.typing; onActivated: context.next() }
+    Shortcut { sequences: ["Left", "PgUp", "Backspace"]; enabled: !window.typing; onActivated: context.previous() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
-    Shortcut { sequence: "Up"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(-1) }
-    Shortcut { sequence: "Down"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(1) }
+    Shortcut { sequence: "Up"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(-1) }
+    Shortcut { sequence: "Down"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(1) }
     Shortcut { sequence: "Shift+Left"; enabled: !window.viewing; onActivated: context.extendSelectionTo(context.currentIndex - 1) }
     Shortcut { sequence: "Shift+Right"; enabled: !window.viewing; onActivated: context.extendSelectionTo(context.currentIndex + 1) }
     Shortcut { sequence: "Shift+Up"; enabled: !window.viewing; onActivated: browserPage.extendSelection(-1) }
     Shortcut { sequence: "Shift+Down"; enabled: !window.viewing; onActivated: browserPage.extendSelection(1) }
     Shortcut { sequence: "Ctrl+A"; enabled: !window.viewing; onActivated: context.selectAll() }
+    Action { id: backAction; text: "&Back"; shortcut: "Alt+Left"; enabled: !window.viewing && context.canGoBack; onTriggered: context.goBack() }
+    Action { id: forwardAction; text: "&Forward"; shortcut: "Alt+Right"; enabled: !window.viewing && context.canGoForward; onTriggered: context.goForward() }
+    Action { id: upAction; text: "&Up"; shortcut: "Alt+Up"; enabled: !window.viewing && context.canGoUp; onTriggered: context.goUp() }
+    Action { id: editPathAction; text: "&Edit Location"; shortcut: "Ctrl+L"; enabled: !window.viewing; onTriggered: browserPage.pathBar.edit() }
     Shortcut {
         sequences: ["Return", "Enter"]
-        enabled: !window.viewing && context.currentPath !== ""
+        enabled: !window.viewing && !window.typing && context.currentPath !== ""
         onActivated: window.viewing = true
     }
     Shortcut { sequence: "="; onActivated: window.activeView.zoomIn() }
@@ -222,6 +228,14 @@ ApplicationWindow {
             MenuItem { action: animatePanelAction }
             MenuSeparator {}
             MenuItem { action: fullScreenAction }
+        }
+        Menu {
+            title: "&Go"
+            MenuItem { action: backAction }
+            MenuItem { action: forwardAction }
+            MenuItem { action: upAction }
+            MenuSeparator {}
+            MenuItem { action: editPathAction }
         }
         Menu {
             title: "&Help"

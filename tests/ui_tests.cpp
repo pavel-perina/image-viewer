@@ -42,6 +42,7 @@
 #include "ui/histogram_handle.h"
 #include "ui/histogram_view.h"
 #include "ui/image_view.h"
+#include "ui/subfolder_list.h"
 #include "ui/thumbnail_provider.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
@@ -1886,6 +1887,185 @@ TEST(Clipboard, TwoImagesInTheSameSecondBothGetFiles) {
     EXPECT_EQ(QFileInfo(second.created[0]).fileName(), QStringLiteral("2026-12-24_125959_1.png"));
 }
 
+TEST(History, GoesBackAndForwardAndRemembersTheImage) {
+    FileOpsFixture f(3);
+    const QString first = f.dir.path();
+    const QString second = f.other.path();
+    writeJpeg(f.otherPath(QStringLiteral("x.jpg")));
+    f.context.clickFile(2, false, false);
+    EXPECT_FALSE(f.context.canGoBack());
+
+    f.context.openPath(second);
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 1; }));
+    EXPECT_TRUE(f.context.canGoBack());
+    EXPECT_FALSE(f.context.canGoForward());
+
+    f.context.goBack();
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 3 && f.context.currentIndex() == 2; }));
+    EXPECT_EQ(f.context.directory(), first);
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("c.jpg"));
+    EXPECT_FALSE(f.context.canGoBack());
+    EXPECT_TRUE(f.context.canGoForward());
+
+    f.context.goForward();
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 1; }));
+    EXPECT_EQ(f.context.directory(), second);
+    EXPECT_FALSE(f.context.canGoForward());
+}
+
+TEST(History, ANewFolderForgetsForwardAndTheSameFolderIsNotRecorded) {
+    FileOpsFixture f(2);
+    f.context.openPath(f.path(QStringLiteral("b.jpg")));
+    EXPECT_FALSE(f.context.canGoBack()) << "another image of the same folder";
+    f.context.openPath(f.other.path());
+    f.context.goBack();
+    EXPECT_TRUE(f.context.canGoForward());
+    QTemporaryDir third;
+    f.context.openPath(third.path());
+    EXPECT_FALSE(f.context.canGoForward());
+}
+
+TEST(History, PassesOverFoldersThatAreGoneAndFollowsARename) {
+    FileOpsFixture f(1);
+    const QDir base(f.other.path());
+    ASSERT_TRUE(base.mkpath(QStringLiteral("gone")));
+    ASSERT_TRUE(base.mkpath(QStringLiteral("old")));
+    f.context.openPath(base.filePath(QStringLiteral("old")));
+    f.context.openPath(base.filePath(QStringLiteral("gone")));
+    f.context.openPath(f.dir.path());
+
+    ASSERT_TRUE(QDir(base.filePath(QStringLiteral("gone"))).removeRecursively());
+    EXPECT_TRUE(f.context.rename(base.filePath(QStringLiteral("old")), QStringLiteral("new")).isEmpty());
+    f.settle([] { return true; });
+
+    f.context.goBack();
+    EXPECT_EQ(f.context.directory(), base.filePath(QStringLiteral("new")));
+}
+
+TEST(History, UpGoesToTheParentAndStopsAtTheRoot) {
+    FileOpsFixture f(1);
+    const QString parent = QFileInfo(f.dir.path()).absolutePath();
+    f.context.goUp();
+    EXPECT_EQ(f.context.directory(), parent);
+    f.context.goBack();
+    EXPECT_EQ(f.context.directory(), f.dir.path());
+    f.context.openPath(QDir::rootPath());
+    EXPECT_FALSE(f.context.canGoUp());
+    const QString root = f.context.directory();
+    f.context.goUp();
+    EXPECT_EQ(f.context.directory(), root);
+}
+
+TEST(TypedPath, UnderstandsWhatPeoplePaste) {
+    FileOpsFixture f(2);
+    const QString sub = f.path(QStringLiteral("sub dir"));
+    ASSERT_TRUE(QDir().mkpath(sub));
+    const auto opens = [&](const QString& text, const QString& directory) {
+        f.context.openPath(f.dir.path());
+        EXPECT_EQ(f.context.openTyped(text), QString()) << text.toStdString();
+        EXPECT_EQ(f.context.directory(), directory) << text.toStdString();
+    };
+    opens(sub, sub);
+    opens(sub + QLatin1Char('/'), sub);
+    opens(QStringLiteral("  ") + sub + QStringLiteral("\n"), sub);
+    opens(QLatin1Char('"') + sub + QLatin1Char('"'), sub);
+    opens(QLatin1Char('\'') + sub + QLatin1Char('\''), sub);
+    opens(QUrl::fromLocalFile(sub).toString(), sub);
+    opens(QUrl::fromLocalFile(sub).toString(QUrl::FullyEncoded), sub);
+    opens(QStringLiteral("sub dir"), sub);
+    opens(QStringLiteral("sub dir/.."), f.dir.path());
+    opens(QStringLiteral("~"), QDir::homePath());
+}
+
+TEST(TypedPath, AFileOpensItsFolderWithThatImage) {
+    FileOpsFixture f(3);
+    f.context.openPath(f.other.path());
+    EXPECT_EQ(f.context.openTyped(f.path(QStringLiteral("b.jpg"))), QString());
+    EXPECT_EQ(f.context.directory(), f.dir.path());
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("b.jpg"));
+}
+
+TEST(TypedPath, ProblemsLeaveTheFolderAlone) {
+    FileOpsFixture f(1);
+    const QString before = f.context.directory();
+    for (const QString& text : {QString(), QStringLiteral("   "), f.path(QStringLiteral("missing")), QStringLiteral("https://example.com/a"), QStringLiteral("file://host/share/a")}) {
+        EXPECT_FALSE(f.context.openTyped(text).isEmpty()) << text.toStdString();
+        EXPECT_EQ(f.context.directory(), before);
+    }
+    EXPECT_FALSE(f.context.canGoBack());
+}
+
+TEST(SubfolderList, ListsFoldersOnlyInNaturalOrderAndFollowsThePath) {
+    QTemporaryDir dir;
+    for (const char* name : {"b10", "b9", "A", ".hidden"}) {
+        ASSERT_TRUE(QDir(dir.path()).mkpath(QString::fromLatin1(name)));
+    }
+    writeJpeg(dir.filePath(QStringLiteral("file.jpg")));
+
+    iv::SubfolderList list;
+    list.setPath(dir.path());
+    EXPECT_TRUE(list.loading());
+    ASSERT_TRUE(waitUntil([&] { return !list.loading(); }));
+    EXPECT_EQ(list.folders(), (QStringList{QStringLiteral("A"), QStringLiteral("b9"), QStringLiteral("b10")}));
+
+    list.setPath(QDir(dir.path()).filePath(QStringLiteral("A")));
+    EXPECT_TRUE(list.folders().isEmpty()) << "nothing of the previous folder shows";
+    ASSERT_TRUE(waitUntil([&] { return !list.loading(); }));
+    EXPECT_TRUE(list.folders().isEmpty());
+
+    list.setPath(dir.filePath(QStringLiteral("missing")));
+    ASSERT_TRUE(waitUntil([&] { return !list.loading(); }));
+    EXPECT_TRUE(list.folders().isEmpty());
+}
+
+TEST(SubfolderList, DestroyingWhileLoadingIsSafe) {
+    QTemporaryDir dir;
+    for (int i = 0; i < 20; ++i) {
+        iv::SubfolderList list;
+        list.setPath(dir.path());
+    }
+}
+
+TEST(BrowserPage, PathBarShowsCrumbsBoldLastAndListsSubfolders) {
+    TreeFixture f;
+    auto* bar = f.view.rootObject()->findChild<QObject*>(QStringLiteral("pathBar"));
+    ASSERT_NE(bar, nullptr);
+    const QStringList names = bar->property("crumbNames").toStringList();
+    ASSERT_GE(names.size(), 2);
+    EXPECT_EQ(names.back(), QFileInfo(f.dir.path()).fileName());
+    EXPECT_EQ(bar->property("boldCrumb").toString(), names.back());
+
+    QMetaObject::invokeMethod(bar, "openSubfolders", Q_ARG(QVariant, f.dir.path()), Q_ARG(QVariant, QVariant()));
+    EXPECT_TRUE(waitUntil([&] { return bar->property("menuFolders").toStringList() == QStringList{QStringLiteral("inner")}; }));
+    const QString inner = f.path(QStringLiteral("inner"));
+    QMetaObject::invokeMethod(bar, "chooseSubfolder", Q_ARG(QVariant, QStringLiteral("inner")));
+    EXPECT_EQ(f.context.directory(), inner);
+    EXPECT_EQ(bar->property("boldCrumb").toString(), QStringLiteral("inner"));
+    EXPECT_FALSE(bar->property("menuOpen").toBool());
+}
+
+TEST(BrowserPage, PathBarEditsAndKeepsAProblemOnScreen) {
+    TreeFixture f;
+    auto* bar = f.view.rootObject()->findChild<QObject*>(QStringLiteral("pathBar"));
+    ASSERT_NE(bar, nullptr);
+    const QString start = f.context.directory();
+
+    QMetaObject::invokeMethod(bar, "edit");
+    EXPECT_TRUE(bar->property("editing").toBool());
+    EXPECT_EQ(bar->property("editText").toString(), QDir::toNativeSeparators(start));
+
+    QMetaObject::invokeMethod(bar, "submit", Q_ARG(QVariant, f.path(QStringLiteral("missing"))));
+    EXPECT_TRUE(bar->property("editing").toBool());
+    EXPECT_FALSE(bar->property("problem").toString().isEmpty());
+    EXPECT_EQ(f.context.directory(), start);
+
+    const QString inner = f.path(QStringLiteral("inner"));
+    QMetaObject::invokeMethod(bar, "submit", Q_ARG(QVariant, inner));
+    EXPECT_FALSE(bar->property("editing").toBool());
+    EXPECT_EQ(f.context.directory(), inner);
+    EXPECT_TRUE(bar->property("problem").toString().isEmpty());
+}
+
 TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
     QTemporaryDir dir;
     writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
@@ -1901,6 +2081,24 @@ TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
     ASSERT_EQ(engine.rootObjects().size(), 1);
     QCoreApplication::processEvents();
     waitUntil([] { return false; }, 200);
+}
+
+TEST(Main, EditingThePathTurnsOffShortcutsForKeysATextFieldLeaves) {
+    QTemporaryDir dir;
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
+    engine.loadFromModule("ImageViewer", "Main");
+    ASSERT_EQ(engine.rootObjects().size(), 1);
+    QObject* window = engine.rootObjects().front();
+    auto* bar = window->findChild<QObject*>(QStringLiteral("pathBar"));
+    ASSERT_NE(bar, nullptr);
+
+    EXPECT_FALSE(window->property("typing").toBool());
+    QMetaObject::invokeMethod(bar, "edit");
+    EXPECT_TRUE(window->property("typing").toBool());
+    bar->setProperty("editing", false);
+    EXPECT_FALSE(window->property("typing").toBool());
 }
 
 TEST(BrowserPage, RightClickSelectsAnUnselectedFileAndKeepsASelection) {

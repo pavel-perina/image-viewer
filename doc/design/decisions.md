@@ -164,6 +164,10 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Sorting is by name, date modified, size or type, ascending or descending, and is remembered.
   EXIF date and rating wait for metadata that can be read in the background.
 
+* The path bar lists subfolders on a worker, so a slow network folder cannot stop the window.
+  It lists them in a scrolling popup rather than a menu, which creates an item for every
+  folder. History belongs to `BrowseContext`, and returns to the image that was current.
+
 ## File operations
 * Trash uses `QFile::moveToTrash`: the Recycle Bin on Windows and the freedesktop Trash on
   Linux. The latter is a folder layout rather than a service, so it needs no particular

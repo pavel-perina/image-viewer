@@ -12,6 +12,8 @@ qt_add_library(iv_ui STATIC
     histogram_view.h
     image_view.cpp
     image_view.h
+    subfolder_list.cpp
+    subfolder_list.h
     thumbnail_provider.cpp
     thumbnail_provider.h
 )
@@ -25,6 +27,7 @@ qt_add_qml_module(iv_ui
         qml/FileActions.qml
         qml/InfoPanel.qml
         qml/Main.qml
+        qml/PathBar.qml
         qml/ResampledView.qml
         qml/ViewerPage.qml
 )

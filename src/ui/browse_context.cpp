@@ -44,6 +44,12 @@ constexpr int kRefreshDelayMs = 200;  // copying many files changes the director
 // A clipboard image is for pasting elsewhere. Past this edge a pyramid gives a reduced version.
 constexpr int kClipboardImageEdge = 16384;
 
+// A folder visited, and the image that was current in it.
+struct HistoryEntry {
+    QString directory;
+    QString currentName;
+};
+
 struct FileEntry {
     QString name;
     qint64 size = 0;
@@ -300,6 +306,8 @@ struct BrowseContext::Impl {
     int jobDone = 0;
     int jobTotal = 0;
     std::stop_source jobStop;
+    QList<HistoryEntry> backStack;
+    QList<HistoryEntry> forwardStack;
 
     std::size_t rowCount() const { return files.selected().size(); }
 
@@ -333,6 +341,47 @@ struct BrowseContext::Impl {
             base[static_cast<std::size_t>(row)] = 1;
         }
         return base;
+    }
+
+    // Shows a file or directory, without recording it in the history.
+    void open(BrowseContext* owner, const QString& path) {
+        const QFileInfo info(path);
+        const bool isDirectory = info.isDir();
+        const QString newDirectory = isDirectory ? info.absoluteFilePath() : info.absolutePath();
+
+        if (!directory.isEmpty()) {
+            watcher.removePath(directory);
+        }
+        refreshTimer.stop();
+        directory = newDirectory;
+        watcher.addPath(directory);
+        files.reset(directory, {});
+        currentIndex = -1;
+        anchor = -1;
+        // A file shows immediately; the rest of the directory arrives when the scan finishes.
+        currentName = isDirectory ? QString() : info.fileName();
+        emit owner->directoryChanged();
+        emit owner->filesChanged();
+        emit owner->currentChanged();
+        emit owner->selectionChanged();
+
+        scan(owner);
+    }
+
+    // Moves through the history: takes the nearest entry from one stack that still exists, and
+    // leaves where we are on the other.
+    void travel(BrowseContext* owner, QList<HistoryEntry>& from, QList<HistoryEntry>& to) {
+        while (!from.isEmpty()) {
+            const HistoryEntry entry = from.takeLast();
+            if (!QFileInfo(entry.directory).isDir()) {
+                continue;
+            }
+            to.append({directory, currentName});
+            const QString file = QDir(entry.directory).filePath(entry.currentName);
+            open(owner, !entry.currentName.isEmpty() && QFileInfo::exists(file) ? file : entry.directory);
+            break;
+        }
+        emit owner->historyChanged();
     }
 
     // Scans the directory. Names in toSelect, if present then, become the selection.
@@ -500,26 +549,55 @@ bool BrowseContext::hasPrevious() const { return m_impl->currentIndex > 0; }
 
 void BrowseContext::openPath(const QString& path) {
     const QFileInfo info(path);
-    const bool isDirectory = info.isDir();
-    const QString directory = isDirectory ? info.absoluteFilePath() : info.absolutePath();
-
-    if (!m_impl->directory.isEmpty()) {
-        m_impl->watcher.removePath(m_impl->directory);
+    const QString target = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    if (!m_impl->directory.isEmpty() && target != m_impl->directory) {
+        m_impl->backStack.append({m_impl->directory, m_impl->currentName});
+        m_impl->forwardStack.clear();
+        emit historyChanged();
     }
-    m_impl->refreshTimer.stop();
-    m_impl->directory = directory;
-    m_impl->watcher.addPath(directory);
-    m_impl->files.reset(directory, {});
-    m_impl->currentIndex = -1;
-    m_impl->anchor = -1;
-    // A file shows immediately; the rest of the directory arrives when the scan finishes.
-    m_impl->currentName = isDirectory ? QString() : info.fileName();
-    emit directoryChanged();
-    emit filesChanged();
-    emit currentChanged();
-    emit selectionChanged();
+    m_impl->open(this, path);
+}
 
-    m_impl->scan(this);
+bool BrowseContext::canGoBack() const { return !m_impl->backStack.isEmpty(); }
+bool BrowseContext::canGoForward() const { return !m_impl->forwardStack.isEmpty(); }
+bool BrowseContext::canGoUp() const { return !m_impl->directory.isEmpty() && !QDir(m_impl->directory).isRoot(); }
+
+void BrowseContext::goBack() { m_impl->travel(this, m_impl->backStack, m_impl->forwardStack); }
+void BrowseContext::goForward() { m_impl->travel(this, m_impl->forwardStack, m_impl->backStack); }
+
+void BrowseContext::goUp() {
+    if (canGoUp()) {
+        openPath(QFileInfo(m_impl->directory).absolutePath());
+    }
+}
+
+QString BrowseContext::openTyped(const QString& text) {
+    QString typed = text.section(QLatin1Char('\n'), 0, 0).trimmed();
+    if (typed.size() >= 2 && (typed.front() == QLatin1Char('"') || typed.front() == QLatin1Char('\'')) && typed.back() == typed.front()) {
+        typed = typed.mid(1, typed.size() - 2);
+    }
+    if (typed.isEmpty()) {
+        return tr("Enter a folder or file.");
+    }
+    if (typed.startsWith(QStringLiteral("file:"))) {
+        const QUrl url(typed);
+        if (!url.isLocalFile()) {
+            return tr("Only local folders can be opened.");
+        }
+        typed = url.toLocalFile();
+    } else if (typed.contains(QStringLiteral("://"))) {
+        return tr("Only local folders can be opened.");
+    }
+    typed = QDir::fromNativeSeparators(typed);
+    if (typed == QStringLiteral("~") || typed.startsWith(QStringLiteral("~/"))) {
+        typed = QDir::homePath() + typed.mid(1);
+    }
+    const QFileInfo info(QDir(m_impl->directory).absoluteFilePath(typed));
+    if (!info.exists()) {
+        return tr("%1 does not exist.").arg(QDir::toNativeSeparators(info.absoluteFilePath()));
+    }
+    openPath(QDir::cleanPath(info.absoluteFilePath()));
+    return {};
 }
 
 void BrowseContext::openUrl(const QUrl& url) { openPath(url.toLocalFile()); }
@@ -709,10 +787,20 @@ QString BrowseContext::rename(const QString& path, const QString& newName) {
     Impl::Done done;
     if (isFolder) {
         done = [this, oldPath, newPath](const FileJobResult& result) {
-            if (result.problems.isEmpty() && isInFolder(m_impl->directory, oldPath)) {
+            if (!result.problems.isEmpty()) {
+                return;
+            }
+            for (QList<HistoryEntry>* stack : {&m_impl->backStack, &m_impl->forwardStack}) {
+                for (HistoryEntry& entry : *stack) {
+                    if (isInFolder(entry.directory, oldPath)) {
+                        entry.directory = afterFolderRename(entry.directory, oldPath, newPath);
+                    }
+                }
+            }
+            if (isInFolder(m_impl->directory, oldPath)) {
                 const QString directory = afterFolderRename(m_impl->directory, oldPath, newPath);
                 const QString name = m_impl->currentName;
-                openPath(name.isEmpty() ? directory : QDir(directory).filePath(name));
+                m_impl->open(this, name.isEmpty() ? directory : QDir(directory).filePath(name));
             }
         };
     }
@@ -817,6 +905,10 @@ void BrowseContext::pasteImage() {
         return saveNewImage(image, folder, QDateTime::currentDateTime());
     });
 }
+
+QString BrowseContext::clipboardText() const { return QGuiApplication::clipboard()->text(); }
+
+QString BrowseContext::nativePath(const QString& path) const { return QDir::toNativeSeparators(path); }
 
 QString BrowseContext::pathFromUrl(const QUrl& url) const { return url.toLocalFile(); }
 QUrl BrowseContext::urlFromPath(const QString& path) const { return QUrl::fromLocalFile(path); }

@@ -66,6 +66,10 @@ shaders is skipped there, so run it by hand on a display:
 | Ctrl+Shift+C | Copy the full path as text |
 | Ctrl+Shift+N | New folder |
 | F5 | Scan the folder again |
+| Alt+Left, Alt+Right, mouse side buttons | Back and forward through the folders visited |
+| Alt+Up | Parent folder |
+| Click a caret in the path bar | List the subfolders of that folder |
+| Ctrl+L, click the empty end of the path bar | Edit or paste the path |
 | Mouse wheel, + and - | Zoom |
 | Drag | Pan |
 | Double-click | Toggle fit and 100% |

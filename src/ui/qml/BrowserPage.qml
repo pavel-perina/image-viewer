@@ -12,6 +12,7 @@ SplitView {
     required property BrowseContext context
     required property bool active
     readonly property alias preview: preview
+    readonly property alias pathBar: pathBar
 
     // Emitted when the user wants the current image in the large view.
     signal viewRequested()
@@ -28,6 +29,16 @@ SplitView {
     }
 
     orientation: Qt.Horizontal
+
+    // The side buttons of a mouse.
+    TapHandler {
+        acceptedButtons: Qt.BackButton
+        onTapped: page.context.goBack()
+    }
+    TapHandler {
+        acceptedButtons: Qt.ForwardButton
+        onTapped: page.context.goForward()
+    }
 
     SplitView {
         orientation: Qt.Vertical
@@ -139,31 +150,10 @@ SplitView {
     ColumnLayout {
         spacing: 0
 
-        // Breadcrumb
-        ScrollView {
+        PathBar {
+            id: pathBar
             Layout.fillWidth: true
-            Layout.preferredHeight: 36
-            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-
-            Row {
-                Repeater {
-                    model: page.context.breadcrumbs
-                    delegate: Row {
-                        id: crumb
-                        required property var modelData
-                        required property int index
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: crumb.index > 1
-                            text: "/"
-                        }
-                        ToolButton {
-                            text: crumb.modelData.name
-                            onClicked: page.context.openPath(crumb.modelData.path)
-                        }
-                    }
-                }
-            }
+            context: page.context
         }
 
         GridView {

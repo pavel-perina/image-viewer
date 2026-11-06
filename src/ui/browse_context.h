@@ -37,6 +37,9 @@ class BrowseContext : public QObject {
     Q_PROPERTY(int jobDone READ jobDone NOTIFY jobChanged)
     Q_PROPERTY(int jobTotal READ jobTotal NOTIFY jobChanged)
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
+    Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY historyChanged)
+    Q_PROPERTY(bool canGoForward READ canGoForward NOTIFY historyChanged)
+    Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY directoryChanged)
 
 public:
     enum SortKey { SortByName, SortByDate, SortBySize, SortByType };
@@ -69,6 +72,9 @@ public:
     int jobDone() const;
     int jobTotal() const;
     bool canPaste() const;
+    bool canGoBack() const;
+    bool canGoForward() const;
+    bool canGoUp() const;
 
     // Opens an image file and scans its directory, or scans a directory and opens its
     // first image. Scanning happens in the background.
@@ -85,6 +91,15 @@ public:
     Q_INVOKABLE void clearSelection();  // the current image stays current
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // Through the folders visited, returning to the image that was current in each. Folders
+    // that no longer exist are passed over.
+    Q_INVOKABLE void goBack();
+    Q_INVOKABLE void goForward();
+    Q_INVOKABLE void goUp();
+    // Opens what the user typed or pasted: a folder or file, absolute or relative to the
+    // directory, with ~, quotes and file:// URLs understood. Returns why it cannot be opened,
+    // or an empty string if it was.
+    Q_INVOKABLE QString openTyped(const QString& text);
     // Scans the directory again, keeping the current image and selection by name. If the
     // current image is gone, the one that took its place becomes current. Changes on disk also
     // do this by themselves where the file system reports them.
@@ -111,9 +126,11 @@ public:
     Q_INVOKABLE QStringList clipboardFiles() const;
     // Saves the image on the clipboard as a new file in the directory.
     Q_INVOKABLE void pasteImage();
+    Q_INVOKABLE QString clipboardText() const;
 
     Q_INVOKABLE QString pathFromUrl(const QUrl& url) const;
     Q_INVOKABLE QUrl urlFromPath(const QString& path) const;
+    Q_INVOKABLE QString nativePath(const QString& path) const;
 
 signals:
     void directoryChanged();
@@ -123,6 +140,7 @@ signals:
     void sortChanged();
     void jobChanged();
     void clipboardChanged();
+    void historyChanged();
     // The last image of the directory went away.
     void emptied();
     void operationFinished(const QStringList& problems);
