@@ -26,6 +26,9 @@ std::vector<std::uint8_t> encodeJpeg(const JpegOptions& options) {
     jpeg_set_quality(&cinfo, 95, TRUE);
     jpeg_start_compress(&cinfo, TRUE);
 
+    if (!options.exif.empty()) {
+        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, options.exif.data(), static_cast<unsigned int>(options.exif.size()));
+    }
     if (options.orientation != 0) {
         // "Exif\0\0", a little-endian TIFF header, and an IFD with one SHORT entry.
         const auto value = static_cast<JOCTET>(options.orientation);

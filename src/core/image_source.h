@@ -11,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/exif.h"
 #include "core/geometry.h"
 #include "core/image_buffer.h"
 
@@ -31,6 +32,18 @@ enum class SubimageRole {
     AnimationFrame,  // e.g. a frame of a GIF, WebP or JPEG XL
 };
 
+// How a picture is stored in its file, which is not necessarily how it is decoded.
+struct StoredFormat {
+    std::string container;          // "JPEG", "TIFF"
+    std::string compression;        // with whether it is lossy, such as "LZW, lossless"
+    std::string colorModel;         // "RGB", "Grayscale", "YCbCr", "Palette", "RGB + alpha (not shown)"
+    std::string chromaSubsampling;  // "4:2:0", empty if not applicable
+    int bitsPerSample = 8;
+    bool floatSamples = false;
+    bool signedSamples = false;
+    int storedLevels = 1;  // resolutions present in the file; scaled JPEG decoding does not count
+};
+
 // A picture inside a file. Pages and animation frames are both subimages; reduced
 // resolution copies of a picture are levels of one subimage.
 struct SubimageInfo {
@@ -40,6 +53,8 @@ struct SubimageInfo {
     std::vector<std::uint8_t> iccProfile;  // empty when the file has no embedded profile
     std::vector<LevelInfo> levels;
     std::chrono::milliseconds frameDelay{0};
+    StoredFormat stored;
+    ExifData exif;
 };
 
 struct TileCoord {

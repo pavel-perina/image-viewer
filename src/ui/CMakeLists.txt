@@ -3,6 +3,9 @@ qt_add_library(iv_ui STATIC
     browse_context.h
     directory_tree_model.cpp
     directory_tree_model.h
+    histogram_handle.h
+    histogram_view.cpp
+    histogram_view.h
     image_view.cpp
     image_view.h
     thumbnail_provider.cpp
@@ -15,6 +18,7 @@ qt_add_qml_module(iv_ui
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewer
     QML_FILES
         qml/BrowserPage.qml
+        qml/InfoPanel.qml
         qml/Main.qml
         qml/ViewerPage.qml
 )

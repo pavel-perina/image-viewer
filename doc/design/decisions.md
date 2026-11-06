@@ -43,6 +43,18 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   usually a photograph, where stretching would falsify the exposure, so it defaults to the
   full range. The choice is per image and does not carry over to the next one.
 
+## Histogram and details
+* A histogram measures the file's values, not what is on screen, with 256 or 65536 bins,
+  or 4096 for float. Gray or RGB is decided from the pixels, so a gray image stored as RGB
+  gets a gray histogram.
+* It is measured on the smallest level with at least a megapixel, staying below 16
+  megapixels if it can, so its cost does not grow with the image. Reduced levels soften
+  extremes, so clipping can look slightly lower than it is. The panel says which level.
+* `HistogramView` is a plain item with no knowledge of images, so other views can reuse it.
+* `SubimageInfo` carries how a page is stored and its EXIF, because both can differ per page.
+  `describeImage` turns them into text in core, so it needs no Qt and is easy to test.
+* EXIF comes from our own small reader for JPEG and from libtiff for TIFF.
+
 ## Rendering
 * Public Qt Quick scene graph API only (`QSGSimpleTextureNode`), so it runs on every RHI
   backend. Qt Quick already runs on Vulkan through RHI, so no direct Vulkan dependency.

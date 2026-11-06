@@ -19,6 +19,8 @@
 #include "test_tiff.h"
 #include "ui/browse_context.h"
 #include "ui/directory_tree_model.h"
+#include "ui/histogram_handle.h"
+#include "ui/histogram_view.h"
 #include "ui/image_view.h"
 #include "ui/thumbnail_provider.h"
 
@@ -484,6 +486,240 @@ TEST(BrowseContext, ListsTiffFiles) {
     BrowseContext context;
     context.openPath(dir.path());
     ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 3; }));
+}
+
+namespace {
+
+// The value of a row of ImageView::details, or empty.
+QString detail(const ImageView& view, const QString& label) {
+    for (const QVariant& row : view.details()) {
+        const QVariantMap map = row.toMap();
+        if (map.value(QStringLiteral("label")).toString() == label) {
+            return map.value(QStringLiteral("value")).toString();
+        }
+    }
+    return {};
+}
+
+std::shared_ptr<const iv::Histogram> histogramOf(const ImageView& view) {
+    return view.histogram().value<std::shared_ptr<const iv::Histogram>>();
+}
+
+}  // namespace
+
+TEST(ImageView, DetailsFollowTheFileAndPage) {
+    QTemporaryDir dir;
+    TiffImage first;
+    first.width = 100;
+    TiffImage second;
+    second.width = 50;
+    second.bits = 16;
+    const QString path = dir.filePath(QStringLiteral("two.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {first, second});
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(path));
+    EXPECT_EQ(detail(*fixture.view, QStringLiteral("Name")), QStringLiteral("two.tif"));
+    EXPECT_FALSE(detail(*fixture.view, QStringLiteral("Size")).isEmpty());
+    EXPECT_FALSE(detail(*fixture.view, QStringLiteral("Modified")).isEmpty());
+    EXPECT_EQ(detail(*fixture.view, QStringLiteral("Page")), QStringLiteral("1 of 2"));
+    EXPECT_EQ(detail(*fixture.view, QStringLiteral("Bit depth")), QStringLiteral("8-bit"));
+
+    fixture.view->setPage(1);
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->page() == 1; }));
+    EXPECT_EQ(detail(*fixture.view, QStringLiteral("Page")), QStringLiteral("2 of 2"));
+    EXPECT_EQ(detail(*fixture.view, QStringLiteral("Bit depth")), QStringLiteral("16-bit"));
+    EXPECT_EQ(detail(*fixture.view, QStringLiteral("Name")), QStringLiteral("two.tif"));  // survives a page change
+
+    fixture.view->setSource(dir.filePath(QStringLiteral("missing.tif")));
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->status() == ImageView::Status::Error; }));
+    EXPECT_TRUE(fixture.view->details().isEmpty());
+}
+
+TEST(ImageView, ComputesHistogramOnlyWhenEnabledAndFollowsThePage) {
+    QTemporaryDir dir;
+    TiffImage bright;
+    bright.pixel = [](int, int) { return Rgb{200, 200, 200}; };
+    TiffImage dark = bright;
+    dark.pixel = [](int, int) { return Rgb{20, 20, 20}; };
+    const QString path = dir.filePath(QStringLiteral("two.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {bright, dark});
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(path));
+    QCoreApplication::processEvents();
+    EXPECT_FALSE(histogramOf(*fixture.view));
+
+    fixture.view->setHistogramEnabled(true);
+    ASSERT_TRUE(waitUntil([&] { return bool(histogramOf(*fixture.view)); }));
+    EXPECT_TRUE(histogramOf(*fixture.view)->gray);
+    EXPECT_GT(histogramOf(*fixture.view)->channels[0][200], 0u);
+
+    fixture.view->setPage(1);
+    ASSERT_TRUE(waitUntil([&] {
+        const auto histogram = histogramOf(*fixture.view);
+        return histogram && histogram->channels[0][20] > 0;
+    }));
+
+    // A failed open leaves nothing behind.
+    fixture.view->setSource(dir.filePath(QStringLiteral("missing.tif")));
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->status() == ImageView::Status::Error; }));
+    EXPECT_FALSE(histogramOf(*fixture.view));
+}
+
+TEST(ImageView, ChangingContrastDoesNotLoseAPendingHistogram) {
+    QTemporaryDir dir;
+    TiffImage gray;
+    gray.bits = 16;
+    gray.samples = 1;
+    const QString path = dir.filePath(QStringLiteral("gray.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {gray});
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(path));
+    fixture.view->setHistogramEnabled(true);
+    fixture.view->setAutoContrast(false);  // cancels the work queue group
+    ASSERT_TRUE(waitUntil([&] { return bool(histogramOf(*fixture.view)); }));
+}
+
+namespace {
+
+// Puts a HistogramView in a window and returns what it draws.
+QImage drawHistogram(const std::shared_ptr<const iv::Histogram>& histogram, bool log = false, bool fit = false) {
+    QQuickWindow window;
+    window.resize(256, 100);
+    auto* view = new iv::HistogramView(window.contentItem());
+    view->setSize(QSizeF(256, 100));
+    view->setHistogram(QVariant::fromValue(histogram));
+    view->setLogScale(log);
+    view->setFitRange(fit);
+    window.show();
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 100) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        QThread::msleep(5);
+    }
+    return window.grabWindow();
+}
+
+int barHeight(const QImage& image, int x) {
+    const QRgb background = qRgb(16, 16, 16);
+    int bar = 0;
+    for (int y = image.height() - 1; y >= 0 && image.pixel(x, y) != background; --y) {
+        ++bar;
+    }
+    return bar;
+}
+
+std::shared_ptr<iv::Histogram> emptyHistogram(int bins, bool gray) {
+    auto histogram = std::make_shared<iv::Histogram>();
+    histogram->gray = gray;
+    histogram->bitsPerBin = bins == 256 ? 8 : 16;
+    histogram->high = bins - 1;
+    for (int c = 0; c < (gray ? 1 : 3); ++c) {
+        histogram->channels[static_cast<std::size_t>(c)].assign(static_cast<std::size_t>(bins), 0);
+    }
+    return histogram;
+}
+
+}  // namespace
+
+TEST(HistogramView, DrawsGrayAndRgbDifferently) {
+    auto gray = emptyHistogram(256, true);
+    gray->channels[0][100] = 50;
+    const QImage grayImage = drawHistogram(gray);
+    const QColor grayBar = grayImage.pixelColor(100, 99);
+    EXPECT_EQ(grayBar.red(), grayBar.green());
+    EXPECT_EQ(grayBar.green(), grayBar.blue());
+    EXPECT_EQ(barHeight(grayImage, 100), 100);
+    EXPECT_EQ(barHeight(grayImage, 50), 0);
+
+    auto rgb = emptyHistogram(256, false);
+    rgb->channels[0][50] = 50;
+    rgb->channels[1][100] = 50;
+    rgb->channels[2][150] = 50;
+    const QImage rgbImage = drawHistogram(rgb);
+    EXPECT_GT(rgbImage.pixelColor(50, 99).red(), rgbImage.pixelColor(50, 99).green() + 100);
+    EXPECT_GT(rgbImage.pixelColor(100, 99).green(), rgbImage.pixelColor(100, 99).red() + 100);
+    EXPECT_GT(rgbImage.pixelColor(150, 99).blue(), rgbImage.pixelColor(150, 99).red() + 100);
+}
+
+TEST(HistogramView, UsesThePaletteForChannelsAndOverlaps) {
+    const auto colorOf = [](std::initializer_list<int> channels) {
+        auto histogram = emptyHistogram(256, false);
+        for (const int c : channels) {
+            histogram->channels[static_cast<std::size_t>(c)][100] = 50;
+        }
+        return drawHistogram(histogram).pixelColor(100, 99).name();
+    };
+    EXPECT_EQ(colorOf({0}), QStringLiteral("#e22023"));
+    EXPECT_EQ(colorOf({1}), QStringLiteral("#009800"));
+    EXPECT_EQ(colorOf({2}), QStringLiteral("#6868e7"));
+    EXPECT_EQ(colorOf({0, 1}), QStringLiteral("#d3d16b"));
+    EXPECT_EQ(colorOf({1, 2}), QStringLiteral("#00e7e7"));
+    EXPECT_EQ(colorOf({0, 2}), QStringLiteral("#ffa5ef"));
+    EXPECT_EQ(colorOf({0, 1, 2}), QStringLiteral("#cccccc"));
+
+    auto gray = emptyHistogram(256, true);
+    gray->channels[0][100] = 50;
+    EXPECT_EQ(drawHistogram(gray).pixelColor(100, 99).name(), QStringLiteral("#cccccc"));
+}
+
+TEST(HistogramView, SixteenBitBinsAreCombinedIntoColumns) {
+    auto histogram = emptyHistogram(65536, true);
+    // 256 columns of 256 bins each: these all land in column 128.
+    histogram->channels[0][32768] = 10;
+    histogram->channels[0][32900] = 10;
+    histogram->channels[0][1000] = 10;  // column 3, half as tall
+    const QImage image = drawHistogram(histogram);
+    EXPECT_EQ(barHeight(image, 128), 100);
+    EXPECT_EQ(barHeight(image, 3), 50);
+}
+
+TEST(HistogramView, LogScaleLiftsSmallCounts) {
+    auto histogram = emptyHistogram(256, true);
+    histogram->channels[0][100] = 100000;
+    histogram->channels[0][150] = 100;
+    EXPECT_LT(barHeight(drawHistogram(histogram, false), 150), 3);
+    EXPECT_GT(barHeight(drawHistogram(histogram, true), 150), 30);
+}
+
+TEST(HistogramView, AClippedEndDoesNotFlattenALinearScale) {
+    auto histogram = emptyHistogram(256, true);
+    histogram->channels[0][0] = 1000000;
+    histogram->channels[0][100] = 100;
+    const QImage image = drawHistogram(histogram);
+    EXPECT_EQ(barHeight(image, 100), 100);
+    EXPECT_EQ(barHeight(image, 0), 100);  // cut off at the top
+}
+
+TEST(HistogramView, FitRangeSpreadsTheValuesInUse) {
+    auto histogram = emptyHistogram(65536, true);
+    histogram->measuredSize = {10, 10};
+    histogram->channels[0][1000] = 10;
+    histogram->channels[0][4000] = 10;  // like 12-bit data in 16-bit samples
+
+    iv::HistogramView view;
+    view.setHistogram(QVariant::fromValue(std::shared_ptr<const iv::Histogram>(histogram)));
+    EXPECT_TRUE(view.description().startsWith(QStringLiteral("0 to 65535")));
+    view.setFitRange(true);
+    EXPECT_TRUE(view.description().startsWith(QStringLiteral("1000 to 4000")));
+
+    const QImage image = drawHistogram(histogram, false, true);
+    EXPECT_GT(barHeight(image, 0), 0);
+    EXPECT_GT(barHeight(image, 255), 0);
+    EXPECT_EQ(barHeight(image, 128), 0);
+}
+
+TEST(HistogramView, EmptyIsSafe) {
+    iv::HistogramView view;
+    EXPECT_TRUE(view.description().isEmpty());
+    view.setHistogram(QVariant());
+    view.setFitRange(true);
+    EXPECT_TRUE(view.description().isEmpty());
+    const QImage image = drawHistogram(nullptr);
+    EXPECT_EQ(barHeight(image, 100), 0);
 }
 
 TEST(ImageView, ReportsErrorsAndRecovers) {

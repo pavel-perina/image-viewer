@@ -6,6 +6,9 @@ include(GoogleTest)
 # Links no Qt, so a Qt dependency creeping into core breaks this build.
 add_executable(iv_core_tests
     core_tests.cpp
+    info_tests.cpp
+    test_exif.cpp
+    test_exif.h
     test_jpeg.cpp
     test_jpeg.h
     test_tiff.cpp

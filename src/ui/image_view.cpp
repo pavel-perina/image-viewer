@@ -1,7 +1,10 @@
 #include "ui/image_view.h"
 
+#include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QLocale>
 #include <QMatrix4x4>
 #include <QMouseEvent>
 #include <QQuickWindow>
@@ -23,10 +26,13 @@
 #include <utility>
 #include <vector>
 
+#include "core/histogram.h"
+#include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
+#include "ui/histogram_handle.h"
 #include "ui/qimage_bridge.h"
 
 namespace iv {
@@ -35,6 +41,7 @@ namespace {
 
 constexpr int kOpenPriority = 1000;
 constexpr int kTilePriority = 500;
+constexpr int kHistogramPriority = 100;
 constexpr double kZoomStep = 1.25;
 // Tile textures kept on the GPU. Past this, the least recently drawn ones are dropped.
 constexpr qint64 kTextureBudgetBytes = 768ll * 1024 * 1024;
@@ -49,6 +56,20 @@ struct TileKey {
     int row = 0;
     auto operator<=>(const TileKey&) const = default;
 };
+
+QVariantMap detailRow(const QString& section, const QString& label, const QString& value) {
+    return {{QStringLiteral("section"), section}, {QStringLiteral("label"), label}, {QStringLiteral("value"), value}};
+}
+
+// Touches the file system, so it runs on the worker.
+QVariantList describeFile(const QString& path) {
+    const QFileInfo info(path);
+    const QString section = QStringLiteral("File");
+    return {detailRow(section, QStringLiteral("Name"), info.fileName()),
+            detailRow(section, QStringLiteral("Folder"), QDir::toNativeSeparators(info.absolutePath())),
+            detailRow(section, QStringLiteral("Size"), QLocale().formattedDataSize(info.size())),
+            detailRow(section, QStringLiteral("Modified"), info.lastModified().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")))};
+}
 
 struct TextureEntry {
     std::unique_ptr<QSGTexture> texture;
@@ -107,6 +128,14 @@ struct ImageView::Impl {
     Affine imageToDisplay;
     Viewport viewport;
     QPointF lastDragPosition;
+    QVariantList fileDetails;
+    QVariantList details;
+
+    bool histogramEnabled = false;
+    bool histogramValid = false;    // the histogram below belongs to the current page
+    bool histogramPending = false;  // a worker is computing it
+    std::uint64_t histogramRequest = 0;
+    std::shared_ptr<const Histogram> histogram;
 
     std::map<TileKey, WorkQueue::TaskId> inFlight;
     std::map<TileKey, QImage> pendingUpload;
@@ -226,11 +255,12 @@ struct ImageView::Impl {
         int page = 0;
         std::vector<std::pair<TileKey, ImageBuffer>> preview;
         DisplayRange autoRange;
+        QVariantList fileDetails;  // only when a file was opened, not for another page
     };
 
     static Result<Loaded> loadPreview(std::shared_ptr<ImageSource> source, int page, const std::stop_token& stop) {
         const SubimageInfo& info = source->subimages()[static_cast<std::size_t>(page)];
-        Loaded loaded{source, page, {}, {}};
+        Loaded loaded{source, page, {}, {}, {}};
         const int coarsest = static_cast<int>(info.levels.size()) - 1;
         const LevelInfo& level = info.levels.back();
         const int cols = (level.size.width + level.tileSize.width - 1) / level.tileSize.width;
@@ -262,12 +292,16 @@ struct ImageView::Impl {
         }
         setStatus(Status::Loading);
 
+        histogramPending = false;
         queue.submit(group, kOpenPriority,
-                     [this, file = QFileInfo(newPath).filesystemFilePath(), request](std::stop_token stop) {
+                     [this, newPath, file = QFileInfo(newPath).filesystemFilePath(), request](std::stop_token stop) {
             Result<Loaded> loaded = std::unexpected("cancelled");
             try {
                 auto source = openImageSource(file);
                 loaded = source ? loadPreview(*source, 0, stop) : Result<Loaded>(std::unexpected(source.error()));
+                if (loaded) {
+                    loaded->fileDetails = describeFile(newPath);
+                }
             } catch (const std::bad_alloc&) {
                 loaded = std::unexpected("not enough memory to open image");
             }
@@ -284,6 +318,7 @@ struct ImageView::Impl {
         const std::uint64_t request = ++latestRequest;
         queue.cancelGroup(group);
         inFlight.clear();
+        histogramPending = false;
         setStatus(Status::Loading);
         queue.submit(group, kOpenPriority, [this, source = source, newPage, request](std::stop_token stop) {
             Result<Loaded> loaded = std::unexpected("cancelled");
@@ -325,6 +360,66 @@ struct ImageView::Impl {
         setStatus(Status::Ready);
         emit q->pageChanged();
         viewChanged();
+
+        if (!loaded->fileDetails.isEmpty()) {
+            fileDetails = loaded->fileDetails;
+        }
+        updateDetails();
+        histogramValid = false;
+        if (histogramEnabled) {
+            requestHistogram();  // the old one stays up until this arrives, without a flicker
+        } else if (histogram) {
+            histogram.reset();
+            emit q->histogramChanged();
+        }
+    }
+
+    void updateDetails() {
+        details = fileDetails;
+        if (source) {
+            const auto pages = std::ssize(source->subimages());
+            if (pages > 1) {
+                details.append(detailRow(QStringLiteral("File"), QStringLiteral("Page"), QStringLiteral("%1 of %2").arg(page + 1).arg(pages)));
+            }
+            for (const DetailRow& row : describeImage(subimage())) {
+                details.append(detailRow(QString::fromStdString(row.section), QString::fromStdString(row.label),
+                                         QString::fromStdString(row.value)));
+            }
+        }
+        emit q->detailsChanged();
+    }
+
+    void requestHistogram() {
+        if (!histogramEnabled || !source || histogramValid || histogramPending) {
+            return;
+        }
+        histogramPending = true;
+        const std::uint64_t request = ++histogramRequest;
+        queue.submit(group, kHistogramPriority, [this, source = source, page = page, request](std::stop_token stop) {
+            Result<std::shared_ptr<const Histogram>> result = std::unexpected("cancelled");
+            try {
+                auto computed = computeHistogram(*source, page, stop);
+                if (computed) {
+                    result = std::make_shared<const Histogram>(std::move(*computed));
+                } else {
+                    result = std::unexpected(computed.error());
+                }
+            } catch (const std::bad_alloc&) {
+                result = std::unexpected("not enough memory for histogram");
+            }
+            QMetaObject::invokeMethod(q, [this, request, result = std::move(result)] {
+                if (request != histogramRequest) {
+                    return;
+                }
+                histogramPending = false;
+                if (!result && result.error() == "cancelled") {
+                    return;
+                }
+                histogramValid = true;
+                histogram = result ? *result : nullptr;
+                emit q->histogramChanged();
+            });
+        });
     }
 
     // Starts drawing the current page with the current display range, from the preview.
@@ -347,9 +442,11 @@ struct ImageView::Impl {
         }
         autoContrast = enabled;
         queue.cancelGroup(group);
+        histogramPending = false;
         startDisplaying();
         emit q->pageChanged();
         viewChanged();
+        requestHistogram();  // cancelling the group may have stopped one
     }
 
     void closeDocument() {
@@ -363,8 +460,16 @@ struct ImageView::Impl {
         failed.clear();
         pendingUpload.clear();
         viewport.setImageSize({});
+        fileDetails.clear();
+        details.clear();
+        histogramValid = false;
+        histogramPending = false;
+        ++histogramRequest;
+        histogram.reset();
         emit q->pageChanged();
         emit q->zoomChanged();
+        emit q->detailsChanged();
+        emit q->histogramChanged();
         q->update();
     }
 
@@ -508,6 +613,23 @@ bool ImageView::autoContrast() const { return m_impl->autoContrast; }
 void ImageView::setAutoContrast(bool enabled) { m_impl->setAutoContrast(enabled); }
 
 double ImageView::zoom() const { return m_impl->viewport.zoom(); }
+
+QVariantList ImageView::details() const { return m_impl->details; }
+
+bool ImageView::histogramEnabled() const { return m_impl->histogramEnabled; }
+
+void ImageView::setHistogramEnabled(bool enabled) {
+    if (enabled == m_impl->histogramEnabled) {
+        return;
+    }
+    m_impl->histogramEnabled = enabled;
+    emit histogramChanged();
+    m_impl->requestHistogram();
+}
+
+QVariant ImageView::histogram() const {
+    return m_impl->histogram ? QVariant::fromValue(m_impl->histogram) : QVariant();
+}
 
 void ImageView::zoomIn() {
     auto& vp = m_impl->viewport;

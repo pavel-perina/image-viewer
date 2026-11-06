@@ -40,5 +40,10 @@ Run:
 | F | Fit to window, enlarging small images |
 | 1 | 100% |
 | F11 | Full screen |
+| I | Show or hide the info panel, when not at full screen |
+| Mouse at the right screen edge | At full screen, show the info panel until the mouse leaves it |
+
+The info panel shows a histogram and details about the file, the image and the camera. Its
+animation can be turned off in the View menu.
 
 The toolbar has Auto Contrast for images with more than 8 bits per sample.

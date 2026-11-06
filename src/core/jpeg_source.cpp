@@ -13,6 +13,7 @@
 #include <jpeglib.h>
 
 #include "core/exif.h"
+#include "core/image_details.h"
 
 namespace iv {
 
@@ -248,11 +249,27 @@ Result<std::shared_ptr<ImageSource>> openJpegSource(std::vector<std::uint8_t> by
 
     for (jpeg_saved_marker_ptr marker = cinfo.marker_list; marker; marker = marker->next) {
         if (marker->marker == JPEG_APP0 + 1) {
-            info.orientation = parseExifOrientation({marker->data, marker->data_length});
-            if (info.orientation != Orientation::Normal) {
+            info.exif = parseExif({marker->data, marker->data_length});
+            if (info.exif.present) {  // the other APP1 block is usually XMP
+                info.orientation = info.exif.orientation;
                 break;
             }
         }
+    }
+
+    info.stored.container = "JPEG";
+    info.stored.compression = cinfo.progressive_mode ? "JPEG progressive, lossy" : "JPEG, lossy";
+    switch (cinfo.jpeg_color_space) {
+    case JCS_GRAYSCALE: info.stored.colorModel = "Grayscale"; break;
+    case JCS_YCbCr:     info.stored.colorModel = "YCbCr"; break;
+    case JCS_RGB:       info.stored.colorModel = "RGB"; break;
+    case JCS_CMYK:      info.stored.colorModel = "CMYK"; break;
+    case JCS_YCCK:      info.stored.colorModel = "YCCK"; break;
+    default:            break;
+    }
+    if ((cinfo.jpeg_color_space == JCS_YCbCr || cinfo.jpeg_color_space == JCS_YCCK) && cinfo.num_components >= 3) {
+        info.stored.chromaSubsampling = chromaSubsamplingName(cinfo.comp_info[0].h_samp_factor, cinfo.comp_info[0].v_samp_factor,
+                                                              cinfo.comp_info[1].h_samp_factor, cinfo.comp_info[1].v_samp_factor);
     }
 
     JOCTET* icc = nullptr;

@@ -7,10 +7,14 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <tiffio.h>
+
+#include "core/exif.h"
+#include "core/image_details.h"
 
 namespace iv {
 
@@ -94,10 +98,137 @@ struct Directory {
     Orientation orientation = Orientation::Normal;
     std::vector<std::uint8_t> iccProfile;
     std::vector<std::uint64_t> subIfds;
+    std::uint64_t exifOffset = 0;
+    StoredFormat stored;
+    ExifData exif;
     bool useRgbaInterface = false;
     PixelFormat format = PixelFormat::Bgrx8;
     std::string problem;  // why this directory cannot be read, if it cannot
 };
+
+std::string compressionName(std::uint16_t compression) {
+    switch (compression) {
+    case COMPRESSION_NONE:         return "None";
+    case COMPRESSION_LZW:          return "LZW, lossless";
+    case COMPRESSION_ADOBE_DEFLATE:
+    case COMPRESSION_DEFLATE:      return "Deflate, lossless";
+    case COMPRESSION_ZSTD:         return "Zstandard, lossless";
+    case COMPRESSION_LZMA:         return "LZMA, lossless";
+    case COMPRESSION_PACKBITS:     return "PackBits, lossless";
+    case COMPRESSION_CCITTRLE:
+    case COMPRESSION_CCITTRLEW:    return "CCITT RLE, lossless";
+    case COMPRESSION_CCITTFAX3:    return "CCITT Group 3, lossless";
+    case COMPRESSION_CCITTFAX4:    return "CCITT Group 4, lossless";
+    case COMPRESSION_JBIG:         return "JBIG, lossless";
+    case COMPRESSION_JPEG:
+    case COMPRESSION_OJPEG:        return "JPEG, lossy";
+    case COMPRESSION_WEBP:         return "WebP";       // can be either
+    case COMPRESSION_JXL:          return "JPEG XL";    // can be either
+    case COMPRESSION_LERC:         return "LERC";       // can be either
+    case COMPRESSION_SGILOG:
+    case COMPRESSION_SGILOG24:     return "SGI Log";
+    default:                       return "Code " + std::to_string(compression);
+    }
+}
+
+std::string colorModelName(std::uint16_t photometric) {
+    switch (photometric) {
+    case PHOTOMETRIC_MINISBLACK: return "Grayscale";
+    case PHOTOMETRIC_MINISWHITE: return "Grayscale, inverted";
+    case PHOTOMETRIC_RGB:        return "RGB";
+    case PHOTOMETRIC_PALETTE:    return "Palette";
+    case PHOTOMETRIC_SEPARATED:  return "CMYK";
+    case PHOTOMETRIC_YCBCR:      return "YCbCr";
+    case PHOTOMETRIC_CIELAB:
+    case PHOTOMETRIC_ICCLAB:
+    case PHOTOMETRIC_ITULAB:     return "Lab";
+    case PHOTOMETRIC_LOGL:       return "LogL";
+    case PHOTOMETRIC_LOGLUV:     return "LogLuv";
+    default:                     return {};
+    }
+}
+
+StoredFormat describeStored(TIFF* tiff, const Directory& d) {
+    StoredFormat stored;
+    stored.container = "TIFF";
+    stored.compression = compressionName(d.compression);
+    stored.colorModel = colorModelName(d.photometric);
+    stored.bitsPerSample = d.bits;
+    stored.floatSamples = d.sampleFormat == SAMPLEFORMAT_IEEEFP;
+    stored.signedSamples = d.sampleFormat == SAMPLEFORMAT_INT;
+
+    std::uint16_t extraCount = 0;
+    std::uint16_t* extraTypes = nullptr;
+    if (TIFFGetField(tiff, TIFFTAG_EXTRASAMPLES, &extraCount, &extraTypes) && extraCount > 0) {
+        const bool alpha = extraTypes && (extraTypes[0] == EXTRASAMPLE_ASSOCALPHA || extraTypes[0] == EXTRASAMPLE_UNASSALPHA);
+        stored.colorModel += alpha ? " + alpha (not shown)" : " + extra samples (not shown)";
+    }
+    if (d.photometric == PHOTOMETRIC_YCBCR) {
+        std::uint16_t h = 2;
+        std::uint16_t v = 2;
+        TIFFGetFieldDefaulted(tiff, TIFFTAG_YCBCRSUBSAMPLING, &h, &v);
+        stored.chromaSubsampling = chromaSubsamplingName(h, v, 1, 1);
+    }
+    return stored;
+}
+
+std::string textTag(TIFF* tiff, std::uint32_t tag) {
+    const char* value = nullptr;
+    return TIFFGetField(tiff, tag, &value) && value ? cleanExifText(value) : std::string();
+}
+
+void readBasicCameraTags(TIFF* tiff, Directory& d) {
+    d.exif.make = textTag(tiff, TIFFTAG_MAKE);
+    d.exif.model = textTag(tiff, TIFFTAG_MODEL);
+    d.exif.dateTaken = normalizeExifDate(textTag(tiff, TIFFTAG_DATETIME));
+    toff_t offset = 0;
+    if (TIFFGetField(tiff, TIFFTAG_EXIFIFD, &offset)) {
+        d.exifOffset = offset;
+    }
+}
+
+// libtiff returns rational tags as float or double depending on the tag and its version.
+std::optional<double> rationalTag(TIFF* tiff, std::uint32_t tag) {
+    const TIFFField* field = TIFFFieldWithTag(tiff, tag);
+    if (!field) {
+        return std::nullopt;
+    }
+    if (TIFFFieldSetGetSize(field) == sizeof(double)) {
+        double value = 0;
+        return TIFFGetField(tiff, tag, &value) ? std::optional<double>(value) : std::nullopt;
+    }
+    float value = 0;
+    return TIFFGetField(tiff, tag, &value) ? std::optional<double>(value) : std::nullopt;
+}
+
+// Moves libtiff away from the current directory, so it cannot be part of walking the chain.
+void readExifDirectory(TIFF* tiff, ExifData& exif, std::uint64_t offset) {
+    if (!TIFFReadEXIFDirectory(tiff, offset)) {
+        return;
+    }
+    exif.exposureSeconds = rationalTag(tiff, EXIFTAG_EXPOSURETIME);
+    exif.fNumber = rationalTag(tiff, EXIFTAG_FNUMBER);
+    exif.focalLength = rationalTag(tiff, EXIFTAG_FOCALLENGTH);
+    exif.exposureBias = rationalTag(tiff, EXIFTAG_EXPOSUREBIASVALUE);
+    std::uint16_t focal35 = 0;
+    if (TIFFGetField(tiff, EXIFTAG_FOCALLENGTHIN35MMFILM, &focal35) && focal35 > 0) {
+        exif.focalLength35mm = focal35;
+    }
+    std::uint16_t isoCount = 0;
+    std::uint16_t* iso = nullptr;
+    if (TIFFGetField(tiff, EXIFTAG_ISOSPEEDRATINGS, &isoCount, &iso) && iso && isoCount > 0 && iso[0] > 0) {
+        exif.iso = iso[0];
+    }
+    exif.lens = textTag(tiff, EXIFTAG_LENSMODEL);
+    if (exif.lens.empty()) {
+        exif.lens = textTag(tiff, EXIFTAG_LENSMAKE);
+    }
+    const std::string original = normalizeExifDate(textTag(tiff, EXIFTAG_DATETIMEORIGINAL));
+    if (!original.empty()) {
+        exif.dateTaken = original;
+    }
+    exif.present = true;
+}
 
 // Whether samples can be read directly, keeping the file's precision.
 bool canReadDirectly(const Directory& d) {
@@ -165,6 +296,9 @@ Directory readDirectory(TIFF* tiff) {
     if (TIFFGetField(tiff, TIFFTAG_SUBIFD, &subIfdCount, &subIfds) && subIfds) {
         d.subIfds.assign(subIfds, subIfds + subIfdCount);
     }
+
+    d.stored = describeStored(tiff, d);
+    readBasicCameraTags(tiff, d);
 
     d.tiled = TIFFIsTiled(tiff) != 0;
     if (d.tiled) {
@@ -566,6 +700,10 @@ void addPage(std::vector<Directory> levels, std::vector<SubimageInfo>& subimages
     info.format = main.format;
     info.orientation = main.orientation;
     info.iccProfile = main.iccProfile;
+    info.stored = main.stored;
+    info.exif = main.exif;
+    info.exif.orientation = main.orientation;
+    info.stored.storedLevels = static_cast<int>(usable.size());
     for (const Directory& level : usable) {
         info.levels.push_back({{static_cast<int>(level.width), static_cast<int>(level.height)}, tileSizeFor(level), false});
     }
@@ -616,6 +754,13 @@ Result<std::shared_ptr<ImageSource>> openTiffSource(const std::filesystem::path&
                     page.push_back(std::move(directory));
                 }
             }
+        }
+    }
+
+    for (auto& page : pages) {
+        Directory& main = page.front();
+        if (main.exifOffset != 0) {
+            readExifDirectory(tiff, main.exif, main.exifOffset);
         }
     }
 

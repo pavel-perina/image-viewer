@@ -13,6 +13,7 @@ Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
+    QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
 
     const QStringList arguments = QCoreApplication::arguments();

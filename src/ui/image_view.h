@@ -2,6 +2,7 @@
 
 #include <QQuickItem>
 #include <QString>
+#include <QVariant>
 #include <QtQml/qqmlregistration.h>
 
 #include <memory>
@@ -23,6 +24,12 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
     Q_PROPERTY(bool contrastAdjustable READ contrastAdjustable NOTIFY pageChanged)
     Q_PROPERTY(bool autoContrast READ autoContrast WRITE setAutoContrast NOTIFY pageChanged)
+    // Rows of {section, label, value} describing the file and the current page.
+    Q_PROPERTY(QVariantList details READ details NOTIFY detailsChanged)
+    // Computing it costs a read of the image, so it only happens while this is enabled.
+    Q_PROPERTY(bool histogramEnabled READ histogramEnabled WRITE setHistogramEnabled NOTIFY histogramChanged)
+    // Opaque; meant for HistogramView.histogram. Empty until computed.
+    Q_PROPERTY(QVariant histogram READ histogram NOTIFY histogramChanged)
 
 public:
     enum class Status { Null, Loading, Ready, Error };
@@ -44,6 +51,10 @@ public:
     bool contrastAdjustable() const;  // whether the image has more than 8 bits to map
     bool autoContrast() const;
     void setAutoContrast(bool enabled);
+    QVariantList details() const;
+    bool histogramEnabled() const;
+    void setHistogramEnabled(bool enabled);
+    QVariant histogram() const;
 
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
@@ -55,6 +66,8 @@ signals:
     void statusChanged();
     void zoomChanged();
     void pageChanged();
+    void detailsChanged();
+    void histogramChanged();
 
 protected:
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* data) override;

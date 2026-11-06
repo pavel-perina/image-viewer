@@ -95,27 +95,27 @@ INSTANTIATE_TEST_SUITE_P(AllEight, OrientationCorners, testing::Values(
 
 TEST(Exif, RejectsMalformedData) {
     const std::vector<std::uint8_t> notExif{'J', 'F', 'I', 'F', 0, 0, 1, 2, 3, 4, 5, 6, 7, 8};
-    EXPECT_EQ(parseExifOrientation(notExif), Orientation::Normal);
-    EXPECT_EQ(parseExifOrientation({}), Orientation::Normal);
+    EXPECT_EQ(parseExif(notExif).orientation, Orientation::Normal);
+    EXPECT_EQ(parseExif({}).orientation, Orientation::Normal);
 
     // IFD offset beyond the end of the data.
     const std::vector<std::uint8_t> badOffset{'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 0xFF, 0xFF, 0xFF, 0xFF};
-    EXPECT_EQ(parseExifOrientation(badOffset), Orientation::Normal);
+    EXPECT_EQ(parseExif(badOffset).orientation, Orientation::Normal);
 
     // Claims many entries but ends immediately.
     const std::vector<std::uint8_t> truncated{'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0, 0xFF, 0xFF};
-    EXPECT_EQ(parseExifOrientation(truncated), Orientation::Normal);
+    EXPECT_EQ(parseExif(truncated).orientation, Orientation::Normal);
 
     // Orientation value outside 1..8.
     const std::vector<std::uint8_t> badValue{'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0,
                                              1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, 9, 0, 0, 0};
-    EXPECT_EQ(parseExifOrientation(badValue), Orientation::Normal);
+    EXPECT_EQ(parseExif(badValue).orientation, Orientation::Normal);
 }
 
 TEST(Exif, ReadsBigEndian) {
     const std::vector<std::uint8_t> data{'E', 'x', 'i', 'f', 0, 0, 'M', 'M', 0, 42, 0, 0, 0, 8,
                                          0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0};
-    EXPECT_EQ(parseExifOrientation(data), Orientation::Rotate90CW);
+    EXPECT_EQ(parseExif(data).orientation, Orientation::Rotate90CW);
 }
 
 TEST(Viewport, ShrinkToFitDoesNotEnlarge) {

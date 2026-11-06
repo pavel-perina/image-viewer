@@ -70,6 +70,22 @@ ApplicationWindow {
         checked: window.activeView.autoContrast
         onTriggered: window.activeView.autoContrast = checked
     }
+    Action {
+        id: infoAction
+        text: "Info"
+        shortcut: "I"
+        checkable: true
+        enabled: window.viewing && window.visibility !== Window.FullScreen
+        checked: viewerPage.panelPinned
+        onTriggered: viewerPage.panelPinned = checked
+    }
+    Action {
+        id: animatePanelAction
+        text: "Animate Info Panel"
+        checkable: true
+        checked: viewerPage.panelAnimated
+        onTriggered: viewerPage.panelAnimated = checked
+    }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
     Action { id: fitAction; text: "Fit"; shortcut: "F"; onTriggered: window.activeView.fitToView() }
@@ -119,6 +135,9 @@ ApplicationWindow {
             MenuItem { action: actualSizeAction }
             MenuItem { action: autoContrastAction }
             MenuSeparator {}
+            MenuItem { action: infoAction }
+            MenuItem { action: animatePanelAction }
+            MenuSeparator {}
             MenuItem { action: fullScreenAction }
         }
         Menu {
@@ -145,6 +164,7 @@ ApplicationWindow {
             ToolButton { action: fitAction }
             ToolButton { action: actualSizeAction }
             ToolButton { action: autoContrastAction; visible: window.activeView.contrastAdjustable }
+            ToolButton { action: infoAction; visible: window.viewing }
             Item { Layout.fillWidth: true }
         }
     }
@@ -195,6 +215,7 @@ ApplicationWindow {
             id: viewerPage
             context: context
             active: window.viewing
+            fullScreen: window.visibility === Window.FullScreen
         }
     }
 

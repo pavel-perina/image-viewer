@@ -7,8 +7,12 @@ add_library(iv_core STATIC
     exif.h
     geometry.cpp
     geometry.h
+    histogram.cpp
+    histogram.h
     image_buffer.cpp
     image_buffer.h
+    image_details.cpp
+    image_details.h
     image_ops.cpp
     image_ops.h
     image_source.cpp

@@ -1,3 +1,4 @@
+import QtCore
 import QtQuick
 import QtQuick.Controls
 import ImageViewer
@@ -8,7 +9,14 @@ Rectangle {
 
     required property BrowseContext context
     required property bool active
+    // At full screen the panel follows the mouse at the right edge of the screen. Otherwise
+    // it is toggled, and panelPinned holds that choice.
+    required property bool fullScreen
     readonly property alias view: view
+    property alias panelPinned: settings.panelPinned
+    property alias panelAnimated: settings.panelAnimated
+    property bool panelRevealed: false
+    readonly property bool panelShown: fullScreen ? panelRevealed : panelPinned
 
     color: "#202020"
 
@@ -17,6 +25,45 @@ Rectangle {
         anchors.fill: parent
         clip: true
         source: page.active ? page.context.currentPath : ""
+        histogramEnabled: page.panelShown
+    }
+
+    Settings {
+        id: settings
+        category: "InfoPanel"
+        property bool panelPinned: false
+        property bool panelAnimated: true
+        property alias logScale: panel.logScale
+        property alias fitRange: panel.fitRange
+    }
+
+    readonly property int edgeMargin: 12
+
+    // Passive, so it does not take the mouse away from panning and zooming in the view.
+    HoverHandler {
+        onPointChanged: {
+            const x = point.position.x
+            if (x >= page.width - page.edgeMargin)
+                page.panelRevealed = true
+            else if (x < page.width - panel.width - page.edgeMargin)
+                page.panelRevealed = false
+        }
+    }
+
+    onFullScreenChanged: panelRevealed = false
+
+    InfoPanel {
+        id: panel
+        view: view
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        x: page.panelShown ? page.width - width : page.width
+        visible: x < page.width
+
+        Behavior on x {
+            enabled: page.panelAnimated
+            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+        }
     }
 
     // Large images without reduced versions take a moment. Quick switches between ordinary
