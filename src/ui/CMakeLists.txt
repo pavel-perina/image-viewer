@@ -29,6 +29,7 @@ qt_add_qml_module(iv_ui
         qml/BrowserPage.qml
         qml/FileActions.qml
         qml/ImageScrollBars.qml
+        qml/ImageSurface.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/PathBar.qml

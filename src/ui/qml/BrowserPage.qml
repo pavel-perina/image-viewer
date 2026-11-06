@@ -11,7 +11,8 @@ SplitView {
 
     required property BrowseContext context
     required property bool active
-    readonly property alias preview: preview
+    readonly property alias preview: previewSurface.view
+    property bool sharpResampling: false
     readonly property alias pathBar: pathBar
 
     // Emitted when the user wants the current image in the large view.
@@ -128,16 +129,11 @@ SplitView {
             SplitView.minimumHeight: 80
             color: "#202020"
 
-            ImageView {
-                id: preview
+            ImageSurface {
+                id: previewSurface
                 anchors.fill: parent
-                clip: true
                 source: page.active ? page.context.currentPath : ""
-            }
-
-            ImageScrollBars {
-                anchors.fill: preview
-                view: preview
+                sharp: page.sharpResampling
             }
 
             Label {
@@ -146,8 +142,8 @@ SplitView {
                 verticalAlignment: Text.AlignVCenter
                 wrapMode: Text.Wrap
                 color: "#e0e0e0"
-                visible: preview.status === ImageView.Error
-                text: preview.errorString
+                visible: previewSurface.view.status === ImageView.Error
+                text: previewSurface.view.errorString
             }
         }
     }

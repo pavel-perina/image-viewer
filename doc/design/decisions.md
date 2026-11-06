@@ -95,6 +95,10 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * It is built from `ShaderEffect` and layers, public API only. Tiles cannot be filtered one by
   one, as the kernel reaches past their edges, so the view draws them into a texture at the
   level's own resolution, aligned to its pixels, and the kernel reads from that.
+* `ImageSurface` holds the view, its handles and the filter, so that the large view, the preview
+  and a future before and after view stay the same.
+* The kernel stays on while the image moves. Switching to bilinear for movement and back when it
+  stopped was tried, and showed as heavy flicker.
 * It stays out at exactly a level's scale, where the kernel would sharpen pixels shown as they
   are; from 200%, where pixels are meant to be seen; and on the software renderer. Tiles
   outside the view are read for the kernel's margin, so it costs slightly more decoding.
@@ -103,7 +107,7 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   worst case just above 50% zoom, frames take 17-18 ms with the table and 18-19 ms with `pow`,
   against 12-13 ms with no conversion at all, so the rest of the cost is in reading the texels.
 * The passes assume the sRGB curve, so with another display profile linear light is
-  approximate. The filter applies to the large view, not to the browser's preview.
+  approximate.
 
 ## Colour
 * LittleCMS (MIT) converts on the CPU in `toDisplay`, on the workers, so it is part of making

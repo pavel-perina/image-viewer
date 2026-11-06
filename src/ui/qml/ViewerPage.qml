@@ -12,7 +12,7 @@ Rectangle {
     // At full screen the panel follows the mouse at the right edge of the screen. Otherwise
     // it is toggled, and panelPinned holds that choice.
     required property bool fullScreen
-    readonly property alias view: view
+    readonly property alias view: surface.view
     property alias panelPinned: settings.panelPinned
     property alias panelAnimated: settings.panelAnimated
     property alias sharpResampling: settings.sharpResampling
@@ -28,30 +28,17 @@ Rectangle {
         onTapped: page.fileMenuRequested()
     }
 
-    ImageView {
-        id: view
+    ImageSurface {
+        id: surface
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         // The panel takes room from the image, except at full screen where it comes and goes
         // with the mouse, and refitting the image each time would be restless.
         anchors.right: page.fullScreen ? parent.right : panel.left
-        clip: true
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: page.panelShown
-        resampling: settings.sharpResampling
-    }
-
-    Loader {
-        anchors.fill: view
-        active: view.resampleActive
-        sourceComponent: ResampledView { view: page.view }
-    }
-
-    ImageScrollBars {
-        objectName: "imageScrollBars"
-        anchors.fill: view
-        view: page.view
+        sharp: settings.sharpResampling
     }
 
     Settings {
@@ -81,7 +68,7 @@ Rectangle {
 
     InfoPanel {
         id: panel
-        view: view
+        view: surface.view
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         x: page.panelShown ? page.width - width : page.width
@@ -99,20 +86,20 @@ Rectangle {
 
     Timer {
         interval: 300
-        running: view.status === ImageView.Loading
+        running: surface.view.status === ImageView.Loading
         onRunningChanged: if (running) page.loadingIsSlow = false
         onTriggered: page.loadingIsSlow = true
     }
 
     BusyIndicator {
-        anchors.centerIn: view
-        running: page.loadingIsSlow && view.status === ImageView.Loading
+        anchors.centerIn: surface
+        running: page.loadingIsSlow && surface.view.status === ImageView.Loading
     }
 
     Label {
-        anchors.centerIn: view
+        anchors.centerIn: surface
         color: "#e0e0e0"
-        visible: view.status === ImageView.Error
-        text: "Cannot open " + page.context.currentName + ": " + view.errorString
+        visible: surface.view.status === ImageView.Error
+        text: "Cannot open " + page.context.currentName + ": " + surface.view.errorString
     }
 }

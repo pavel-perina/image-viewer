@@ -23,6 +23,7 @@
 #include <QSGRendererInterface>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTest>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QUrl>
@@ -1451,6 +1452,29 @@ TEST(ResampledView, MatchesTheKernelComputedOnTheCpu) {
     ASSERT_TRUE(view->resampleActive());
     settle();
     compareAll(2);  // stretched less or not at all, panned to wherever the zoom left it
+
+    // Panning, even onto tiles that are not there yet, must not take the kernel away, as dropping
+    // to another filter and back shows as flicker.
+    ASSERT_TRUE(view->resampleActive());
+    int dropped = 0;
+    const QMetaObject::Connection watching = QObject::connect(view, &ImageView::resampleChanged, view, [&] {
+        dropped += view->resampleActive() ? 0 : 1;
+    });
+    const auto sendMouse = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, at, window.mapToGlobal(at), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(&window, &event);
+        QCoreApplication::processEvents();
+    };
+    const QPointF start(window.width() / 2.0, window.height() / 2.0);
+    sendMouse(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+    for (int step = 1; step <= 40; ++step) {
+        sendMouse(QEvent::MouseMove, start + QPointF(step * 2 % 60, step % 30), Qt::NoButton, Qt::LeftButton);
+        QTest::qWait(10);
+    }
+    sendMouse(QEvent::MouseButtonRelease, start, Qt::LeftButton, Qt::NoButton);
+    QTest::qWait(600);
+    QObject::disconnect(watching);
+    EXPECT_EQ(dropped, 0);
     window.rootObject()->setProperty("sharpResampling", false);
 }
 
@@ -2185,6 +2209,15 @@ TEST(BrowserPage, PreviewShowsHandlesOnlyWhenZoomedIntoPartOfTheImage) {
 
     preview->fitToView();
     EXPECT_FALSE(horizontal->isVisible()) << "fitted again";
+}
+
+TEST(BrowserPage, PreviewUsesTheSharpSetting) {
+    BrowserPageFixture f;
+    auto* preview = f.view.rootObject()->property("preview").value<ImageView*>();
+    ASSERT_NE(preview, nullptr);
+    EXPECT_FALSE(preview->resampling());
+    f.view.rootObject()->setProperty("sharpResampling", true);
+    EXPECT_TRUE(preview->resampling());
 }
 
 TEST(BrowserPage, ScrollbarAppearsOverItsListInTheAccentColourAndFades) {

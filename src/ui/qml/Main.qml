@@ -332,6 +332,7 @@ ApplicationWindow {
             id: browserPage
             context: context
             active: !window.viewing
+            sharpResampling: viewerPage.sharpResampling
             onViewRequested: window.viewing = true
             onFileMenuRequested: fileActions.fileMenu.popup()
             onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)
