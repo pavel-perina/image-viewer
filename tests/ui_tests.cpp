@@ -7,15 +7,19 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QQuickTextureFactory>
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QThread>
 
 #include <functional>
+#include <memory>
 
 #include "test_jpeg.h"
 #include "ui/browse_context.h"
+#include "ui/directory_tree_model.h"
 #include "ui/image_view.h"
+#include "ui/thumbnail_provider.h"
 
 using iv::BrowseContext;
 using iv::ImageView;
@@ -132,6 +136,156 @@ TEST(BrowseContext, TwoContextsAreIndependent) {
     ASSERT_TRUE(waitUntil([&] { return a.fileCount() == 1 && b.fileCount() == 1; }));
     EXPECT_EQ(a.currentName(), QStringLiteral("one.jpg"));
     EXPECT_EQ(b.currentName(), QStringLiteral("two.jpg"));
+}
+
+TEST(BrowseContext, ExposesFilesAsAModel) {
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    writeJpeg(dir.filePath(QStringLiteral("b.jpg")));
+
+    BrowseContext context;
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 2; }));
+
+    QAbstractItemModel* model = context.files();
+    ASSERT_EQ(model->rowCount(), 2);
+    const QHash<int, QByteArray> roles = model->roleNames();
+    const auto value = [&](int row, const QByteArray& role) {
+        return model->data(model->index(row, 0), roles.key(role)).toString();
+    };
+    EXPECT_EQ(value(1, "name"), QStringLiteral("b.jpg"));
+    EXPECT_EQ(value(1, "path"), dir.filePath(QStringLiteral("b.jpg")));
+    EXPECT_TRUE(value(1, "thumbnail").startsWith(QStringLiteral("image://thumbnails/")));
+
+    context.setCurrentIndex(1);
+    EXPECT_EQ(context.currentName(), QStringLiteral("b.jpg"));
+    context.setCurrentIndex(99);
+    EXPECT_EQ(context.currentIndex(), 1);
+    context.setCurrentIndex(-1);
+    EXPECT_EQ(context.currentIndex(), 1);
+}
+
+TEST(BrowseContext, EmptyDirectoryHasNoCurrentImage) {
+    QTemporaryDir dir;
+    BrowseContext context;
+    context.openPath(dir.path());
+    QCoreApplication::processEvents();
+    QThread::msleep(50);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(context.fileCount(), 0);
+    EXPECT_TRUE(context.currentPath().isEmpty());
+    EXPECT_FALSE(context.hasNext());
+}
+
+TEST(BrowseContext, BreadcrumbsWalkFromTheRoot) {
+    QTemporaryDir dir;
+    const QString nested = dir.filePath(QStringLiteral("a b/c"));
+    ASSERT_TRUE(QDir().mkpath(nested));
+
+    BrowseContext context;
+    context.openPath(nested);
+    const QVariantList crumbs = context.breadcrumbs();
+    ASSERT_GE(crumbs.size(), 3);
+    EXPECT_EQ(crumbs.first().toMap().value("path").toString(), QDir::rootPath());
+    EXPECT_EQ(crumbs.last().toMap().value("name").toString(), QStringLiteral("c"));
+    EXPECT_EQ(crumbs.last().toMap().value("path").toString(), nested);
+    EXPECT_EQ(crumbs.at(crumbs.size() - 2).toMap().value("name").toString(), QStringLiteral("a b"));
+
+    context.openPath(QDir::rootPath());
+    ASSERT_EQ(context.breadcrumbs().size(), 1);
+    EXPECT_EQ(context.breadcrumbs().first().toMap().value("path").toString(), QDir::rootPath());
+}
+
+TEST(DirectoryTreeModel, ShowsOneColumnAndMapsPaths) {
+    QTemporaryDir dir;
+    iv::DirectoryTreeModel model;
+    EXPECT_EQ(model.columnCount(), 1);
+    const QModelIndex index = model.indexForPath(dir.path());
+    ASSERT_TRUE(index.isValid());
+    EXPECT_EQ(model.pathForIndex(index), dir.path());
+}
+
+TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("100% #1 ?é.jpg"));
+    JpegOptions options;
+    options.width = 1000;
+    options.height = 500;
+    writeJpeg(path, options);
+
+    const QString url = iv::ThumbnailProvider::urlForPath(path);
+    const QString id = url.mid(url.lastIndexOf(QLatin1Char('/')) + 1);
+
+    iv::ThumbnailProvider provider;
+    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(id, {}));
+    bool finished = false;
+    QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(),
+                     [&] { finished = true; });
+    ASSERT_TRUE(waitUntil([&] { return finished; }));
+    EXPECT_TRUE(response->errorString().isEmpty()) << response->errorString().toStdString();
+
+    std::unique_ptr<QQuickTextureFactory> factory(response->textureFactory());
+    ASSERT_TRUE(factory);
+    EXPECT_EQ(factory->textureSize(), QSize(256, 128));
+}
+
+TEST(ThumbnailProvider, ReportsUnreadableFiles) {
+    iv::ThumbnailProvider provider;
+    const QString url = iv::ThumbnailProvider::urlForPath(QStringLiteral("/does/not/exist.jpg"));
+    std::unique_ptr<QQuickImageResponse> response(
+        provider.requestImageResponse(url.mid(url.lastIndexOf(QLatin1Char('/')) + 1), {}));
+    bool finished = false;
+    QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(),
+                     [&] { finished = true; });
+    ASSERT_TRUE(waitUntil([&] { return finished; }));
+    EXPECT_FALSE(response->errorString().isEmpty());
+}
+
+// Qt deletes a response only after finished(), so a cancelled one must still emit it.
+TEST(ThumbnailProvider, CancelledResponsesFinishExactlyOnce) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("large.jpg"));
+    JpegOptions options;
+    options.width = 2000;
+    options.height = 2000;
+    writeJpeg(path, options);
+
+    const QString url = iv::ThumbnailProvider::urlForPath(path);
+    iv::ThumbnailProvider provider;
+    std::unique_ptr<QQuickImageResponse> response(
+        provider.requestImageResponse(url.mid(url.lastIndexOf(QLatin1Char('/')) + 1), {}));
+    int finishedCount = 0;
+    QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(),
+                     [&] { ++finishedCount; });
+    response->cancel();
+    ASSERT_TRUE(waitUntil([&] { return finishedCount > 0; }));
+
+    // Give a task that was already running the time to try finishing a second time.
+    QThread::msleep(300);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(finishedCount, 1);
+    EXPECT_FALSE(response->errorString().isEmpty());
+}
+
+TEST(ThumbnailProvider, DestroyingPendingResponsesIsSafe) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("large.jpg"));
+    JpegOptions options;
+    options.width = 3000;
+    options.height = 3000;
+    writeJpeg(path, options);
+
+    const QString url = iv::ThumbnailProvider::urlForPath(path);
+    const QString id = url.mid(url.lastIndexOf(QLatin1Char('/')) + 1);
+    iv::ThumbnailProvider provider;
+    for (int i = 0; i < 50; ++i) {
+        std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(id, {}));
+        if (i % 2 == 0) {
+            response->cancel();
+        }
+    }
+    QThread::msleep(100);
+    SUCCEED();
 }
 
 TEST(ImageView, RendersTheImageFittedAndCentred) {

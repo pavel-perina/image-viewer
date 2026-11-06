@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <future>
 #include <mutex>
@@ -15,6 +14,7 @@
 #include "core/image_buffer.h"
 #include "core/image_source.h"
 #include "core/jpeg_source.h"
+#include "core/thumbnail.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
 #include "test_jpeg.h"
@@ -254,7 +254,13 @@ TEST(WorkQueue, RunsHighestPriorityFirstAndEqualPrioritiesInOrder) {
 
     std::promise<void> release;
     auto released = release.get_future().share();
-    queue.submit(group, 0, [released](std::stop_token) { released.wait(); });
+    std::promise<void> started;
+    queue.submit(group, 0, [&, released](std::stop_token) {
+        started.set_value();
+        released.wait();
+    });
+    // Until the only worker is busy it could pick up the tasks below as they arrive.
+    started.get_future().wait();
 
     std::mutex mutex;
     std::vector<int> order;
@@ -501,6 +507,97 @@ TEST(Jpeg, ToleratesTruncatedImageData) {
     const auto source = openBytes(std::move(bytes));
     ASSERT_TRUE(source);
     EXPECT_TRUE(source->readTile({0, 0, 0, 0}, {}).has_value());
+}
+
+namespace {
+
+// Writes a JPEG to a temporary file for as long as the object lives.
+class TempJpeg {
+public:
+    explicit TempJpeg(const JpegOptions& options)
+        : m_path(std::filesystem::temp_directory_path() /
+                 ("iv_thumb_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)) + ".jpg")) {
+        test::writeFile(m_path, encodeJpeg(options));
+    }
+    ~TempJpeg() { std::filesystem::remove(m_path); }
+    const std::filesystem::path& path() const { return m_path; }
+
+private:
+    std::filesystem::path m_path;
+};
+
+}  // namespace
+
+TEST(Thumbnail, FitsTheLongerEdgeAndKeepsAspectRatio) {
+    JpegOptions options;
+    options.width = 2000;
+    options.height = 1000;
+    const TempJpeg file(options);
+    const auto thumbnail = makeThumbnail(file.path(), 256, {});
+    ASSERT_TRUE(thumbnail.has_value()) << thumbnail.error();
+    EXPECT_EQ(thumbnail->size(), (Size{256, 128}));
+}
+
+TEST(Thumbnail, NeverEnlarges) {
+    JpegOptions options;
+    options.width = 40;
+    options.height = 20;
+    const TempJpeg file(options);
+    const auto thumbnail = makeThumbnail(file.path(), 256, {});
+    ASSERT_TRUE(thumbnail.has_value()) << thumbnail.error();
+    EXPECT_EQ(thumbnail->size(), (Size{40, 20}));
+}
+
+TEST(Thumbnail, KeepsAVisibleDimensionForExtremeAspectRatios) {
+    JpegOptions options;
+    options.width = 4000;
+    options.height = 8;
+    const TempJpeg file(options);
+    const auto thumbnail = makeThumbnail(file.path(), 256, {});
+    ASSERT_TRUE(thumbnail.has_value()) << thumbnail.error();
+    EXPECT_EQ(thumbnail->width(), 256);
+    EXPECT_GE(thumbnail->height(), 1);
+}
+
+TEST(Thumbnail, AppliesOrientationToThePixels) {
+    JpegOptions options;
+    options.width = 800;
+    options.height = 400;
+    options.orientation = 6;  // rotate 90 degrees clockwise to display
+    options.pixel = [](int x, int) { return x < 400 ? Rgb{220, 30, 30} : Rgb{30, 30, 220}; };
+    const TempJpeg file(options);
+
+    const auto thumbnail = makeThumbnail(file.path(), 200, {});
+    ASSERT_TRUE(thumbnail.has_value()) << thumbnail.error();
+    EXPECT_EQ(thumbnail->size(), (Size{100, 200}));
+    expectPixel(*thumbnail, 50, 20, {220, 30, 30});   // stored left half is now on top
+    expectPixel(*thumbnail, 50, 180, {30, 30, 220});
+}
+
+TEST(Thumbnail, AssemblesLevelsThatSpanSeveralTiles) {
+    JpegOptions options;
+    options.width = 5000;
+    options.height = 100;
+    options.pixel = [](int x, int) { return x < 2500 ? Rgb{220, 30, 30} : Rgb{30, 30, 220}; };
+    const TempJpeg file(options);
+
+    // Needs full resolution, which is wider than one tile.
+    const auto thumbnail = makeThumbnail(file.path(), 4000, {});
+    ASSERT_TRUE(thumbnail.has_value()) << thumbnail.error();
+    EXPECT_EQ(thumbnail->width(), 4000);
+    expectPixel(*thumbnail, 500, 40, {220, 30, 30});
+    expectPixel(*thumbnail, 3500, 40, {30, 30, 220});
+}
+
+TEST(Thumbnail, ReportsErrorsAndCancellation) {
+    EXPECT_FALSE(makeThumbnail("/does/not/exist.jpg", 256, {}).has_value());
+
+    const TempJpeg file(JpegOptions{});
+    std::stop_source stop;
+    stop.request_stop();
+    const auto cancelled = makeThumbnail(file.path(), 256, stop.get_token());
+    ASSERT_FALSE(cancelled.has_value());
+    EXPECT_EQ(cancelled.error(), "cancelled");
 }
 
 TEST(ImageSource, DetectsFormatFromContentsNotExtension) {

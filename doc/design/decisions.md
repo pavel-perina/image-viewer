@@ -58,7 +58,18 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Possibly a dual-panel file manager. File icons are OS dependent, so they belong in the
   optional system integration layer, along with KDE or Windows places.
 
+## Browser
+* The browser and large view are two pages sharing one `BrowseContext`, each with its own
+  `ImageView`. A page's view loads only while the page is active.
+* Thumbnails go through an async QML image provider on the shared work queue, below all
+  other work. The newest request runs first, and Qt cancels requests when their delegate
+  goes away. Qt deletes a response only after `finished()`, so `cancel()` must emit it.
+
 ## Known limitations
+* Thumbnails are cached only in memory, by Qt's pixmap cache. The SQLite cache is still to
+  do, and a changed file keeps its old thumbnail until the application restarts.
+* Directories are not watched, so new or removed files appear only after reopening. The
+  grid lists images only, not subdirectories.
 * Colour management is missing, so wide-gamut JPEGs look slightly off. CMYK JPEGs use a
   rough conversion.
 * Tiles do not overlap, so a faint seam is possible at tile edges between 100% and 200%

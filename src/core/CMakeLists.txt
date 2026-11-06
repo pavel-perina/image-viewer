@@ -12,6 +12,8 @@ add_library(iv_core STATIC
     image_source.h
     jpeg_source.cpp
     jpeg_source.h
+    thumbnail.cpp
+    thumbnail.h
     viewport.cpp
     viewport.h
     work_queue.cpp

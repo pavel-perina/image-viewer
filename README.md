@@ -26,8 +26,12 @@ Run:
 
 | Input | Action |
 | --- | --- |
+| Click a thumbnail | Select it and show it in the preview |
+| Double-click a thumbnail, Enter | Open the large view |
+| Esc | Back to the browser, or leave full screen |
 | Right, PgDown, Space | Next image |
 | Left, PgUp, Backspace | Previous image |
+| Up, Down | Move one row in the browser |
 | Mouse wheel, + and - | Zoom |
 | Drag | Pan |
 | Double-click | Toggle fit and 100% |

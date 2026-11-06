@@ -10,43 +10,66 @@ ApplicationWindow {
     id: window
 
     required property string initialPath
+    property bool viewing: false
+    readonly property ImageView activeView: viewing ? viewerPage.view : browserPage.preview
 
     width: 1280
     height: 800
     visible: true
     title: context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer"
 
-    // Created here rather than in C++, so a tab can later own one context and one view.
+    // Created here rather than in C++, so a tab can later own one context and its pages.
     BrowseContext {
         id: context
     }
 
+    // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
-        if (initialPath)
-            context.openPath(initialPath)
+        context.openPath(initialPath)
+        window.viewing = context.currentPath !== ""
     }
 
     function toggleFullScreen() {
         window.visibility = window.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
     }
 
+    function leaveCurrentMode() {
+        if (window.visibility === Window.FullScreen)
+            window.visibility = Window.Windowed
+        else
+            window.viewing = false
+    }
+
     Action { id: openAction; text: "&Open..."; shortcut: StandardKey.Open; onTriggered: openDialog.open() }
     Action { id: quitAction; text: "&Quit"; shortcut: StandardKey.Quit; onTriggered: Qt.quit() }
+    Action {
+        id: modeAction
+        text: window.viewing ? "Browser" : "View"
+        enabled: window.viewing || context.currentPath !== ""
+        onTriggered: window.viewing = !window.viewing
+    }
     Action { id: previousAction; text: "Previous"; enabled: context.hasPrevious; onTriggered: context.previous() }
     Action { id: nextAction; text: "Next"; enabled: context.hasNext; onTriggered: context.next() }
-    Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: view.zoomIn() }
-    Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: view.zoomOut() }
-    Action { id: fitAction; text: "Fit"; shortcut: "F"; onTriggered: view.fitToView() }
-    Action { id: actualSizeAction; text: "1:1"; shortcut: "1"; onTriggered: view.actualSize() }
+    Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
+    Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
+    Action { id: fitAction; text: "Fit"; shortcut: "F"; onTriggered: window.activeView.fitToView() }
+    Action { id: actualSizeAction; text: "1:1"; shortcut: "1"; onTriggered: window.activeView.actualSize() }
     Action { id: fullScreenAction; text: "Full Screen"; shortcut: "F11"; onTriggered: window.toggleFullScreen() }
 
     Shortcut { sequences: ["Right", "PgDown", "Space"]; onActivated: context.next() }
     Shortcut { sequences: ["Left", "PgUp", "Backspace"]; onActivated: context.previous() }
-    Shortcut { sequence: "="; onActivated: view.zoomIn() }
+    Shortcut { sequence: "Up"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(-1) }
+    Shortcut { sequence: "Down"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(1) }
+    Shortcut {
+        sequences: ["Return", "Enter"]
+        enabled: !window.viewing && context.currentPath !== ""
+        onActivated: window.viewing = true
+    }
+    Shortcut { sequence: "="; onActivated: window.activeView.zoomIn() }
     Shortcut {
         sequence: "Esc"
-        enabled: window.visibility === Window.FullScreen
-        onActivated: window.visibility = Window.Windowed
+        enabled: window.viewing || window.visibility === Window.FullScreen
+        onActivated: window.leaveCurrentMode()
     }
 
     menuBar: MenuBar {
@@ -60,6 +83,8 @@ ApplicationWindow {
         }
         Menu {
             title: "&View"
+            MenuItem { action: modeAction }
+            MenuSeparator {}
             MenuItem { action: previousAction }
             MenuItem { action: nextAction }
             MenuSeparator {}
@@ -81,6 +106,8 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
+            ToolButton { action: modeAction }
+            ToolSeparator {}
             ToolButton { action: previousAction }
             ToolButton { action: nextAction }
             ToolSeparator {}
@@ -105,12 +132,12 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
             Label {
-                visible: view.imageWidth > 0
-                text: view.imageWidth + " x " + view.imageHeight
+                visible: window.activeView.imageWidth > 0
+                text: window.activeView.imageWidth + " x " + window.activeView.imageHeight
             }
             Label {
-                visible: view.imageWidth > 0
-                text: Math.round(view.zoom * 100) + "%"
+                visible: window.activeView.imageWidth > 0
+                text: Math.round(window.activeView.zoom * 100) + "%"
             }
             Label {
                 visible: context.fileCount > 0
@@ -119,24 +146,21 @@ ApplicationWindow {
         }
     }
 
-    Rectangle {
+    StackLayout {
         anchors.fill: parent
-        color: "#202020"
+        currentIndex: window.viewing ? 1 : 0
 
-        ImageView {
-            id: view
-            anchors.fill: parent
-            clip: true
-            source: context.currentPath
+        BrowserPage {
+            id: browserPage
+            context: context
+            active: !window.viewing
+            onViewRequested: window.viewing = true
         }
 
-        Label {
-            anchors.centerIn: parent
-            color: "#e0e0e0"
-            visible: view.status === ImageView.Error || !context.currentPath
-            text: view.status === ImageView.Error
-                  ? "Cannot open " + context.currentName + ": " + view.errorString
-                  : "Open an image with File > Open"
+        ViewerPage {
+            id: viewerPage
+            context: context
+            active: window.viewing
         }
     }
 
