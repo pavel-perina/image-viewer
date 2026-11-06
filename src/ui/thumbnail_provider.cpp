@@ -98,10 +98,10 @@ private:
 
 }  // namespace
 
-QString ThumbnailProvider::urlForPath(const QString& path) {
+QString ThumbnailProvider::urlForPath(const QString& path, qint64 modified) {
     // Hex keeps any file name intact on its way through the URL handling.
     return QStringLiteral("image://") + QLatin1StringView(kProviderId) + QLatin1Char('/') +
-           QString::fromLatin1(path.toUtf8().toHex()) + QLatin1Char('/') + QString::number(ColorSettings::generation());
+           QString::fromLatin1(path.toUtf8().toHex()) + QLatin1Char('/') + QString::number(ColorSettings::generation()) + QLatin1Char('/') + QString::number(modified);
 }
 
 QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, const QSize&) {

@@ -15,6 +15,9 @@ SplitView {
 
     // Emitted when the user wants the current image in the large view.
     signal viewRequested()
+    // A right click on the files, or on a folder of the tree.
+    signal fileMenuRequested()
+    signal folderMenuRequested(string path)
 
     function moveCurrent(rows) {
         page.context.setCurrentIndex(page.context.currentIndex + rows * grid.columns)
@@ -59,7 +62,21 @@ SplitView {
             delegate: TreeViewDelegate {
                 id: treeRow
                 implicitWidth: tree.width
-                highlighted: treeModel.pathForIndex(tree.index(row, 0)) === page.context.directory
+                // Rows inserted above can leave this row showing what it held before, reading
+                // "c" while it opens "b", so both of these read the model again when they appear.
+                highlighted: {
+                    tree.rows
+                    return treeModel.pathForIndex(tree.index(row, 0)) === page.context.directory
+                }
+                contentItem: Label {
+                    text: {
+                        tree.rows
+                        treeRow.model.display  // for a rename, which keeps the number of rows
+                        return treeModel.data(tree.index(treeRow.row, 0)) ?? ""
+                    }
+                    elide: Text.ElideRight
+                    visible: !treeRow.editing
+                }
                 TapHandler {
                     // The arrow belongs to expanding and collapsing, not to opening.
                     function onArrow(point) {
@@ -78,6 +95,10 @@ SplitView {
                         if (!onArrow(point))
                             Qt.callLater(tree.expand, treeRow.row)
                     }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: page.folderMenuRequested(treeModel.pathForIndex(tree.index(treeRow.row, 0)))
                 }
             }
 
@@ -173,6 +194,14 @@ SplitView {
                 }
             }
 
+            TapHandler {
+                acceptedButtons: Qt.RightButton
+                onTapped: (point) => {
+                    if (grid.indexAt(point.position.x + grid.contentX, point.position.y + grid.contentY) < 0)
+                        page.fileMenuRequested()
+                }
+            }
+
             delegate: Item {
                 id: cell
 
@@ -231,6 +260,16 @@ SplitView {
                         }
                     }
                     onDoubleTapped: page.viewRequested()
+                }
+
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: {
+                        // On a selected file the menu is for the whole selection.
+                        if (!cell.selected)
+                            page.context.clickFile(cell.index, false, false)
+                        page.fileMenuRequested()
+                    }
                 }
             }
         }

@@ -19,7 +19,14 @@ Rectangle {
     property bool panelRevealed: false
     readonly property bool panelShown: fullScreen ? panelRevealed : panelPinned
 
+    signal fileMenuRequested()
+
     color: "#202020"
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: page.fileMenuRequested()
+    }
 
     ImageView {
         id: view

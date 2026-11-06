@@ -57,6 +57,15 @@ shaders is skipped there, so run it by hand on a display:
 | Shift+click, Shift+arrows | Select a range; with Ctrl+click, add a range |
 | Ctrl+A | Select all images in the folder |
 | Click between thumbnails | Clear the selection |
+| Right-click | Menu of file operations; on a folder in the tree, of folder operations |
+| Del | Move the selected files to the trash, or the shown image in the large view |
+| Shift+Del | Delete the same files permanently, after asking |
+| F2 | Rename |
+| Ctrl+C | Copy files to the clipboard, a single file also as an image |
+| Ctrl+V | Paste files, or save a clipboard image as a new PNG named after the time |
+| Ctrl+Shift+C | Copy the full path as text |
+| Ctrl+Shift+N | New folder |
+| F5 | Scan the folder again |
 | Mouse wheel, + and - | Zoom |
 | Drag | Pan |
 | Double-click | Toggle fit and 100% |

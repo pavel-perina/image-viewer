@@ -157,6 +157,44 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Thumbnails go through an async QML image provider on the shared work queue, below all
   other work. The newest request runs first, and Qt cancels requests when their delegate
   goes away. Qt deletes a response only after `finished()`, so `cancel()` must emit it.
+* A new scan changes only the rows that differ, so the grid keeps its scroll position when a
+  file is deleted. A changed order, such as a new sort key, resets the model. The current image
+  and the selection are kept by name. If the current image is gone, the one that took its place
+  becomes current.
+* Sorting is by name, date modified, size or type, ascending or descending, and is remembered.
+  EXIF date and rating wait for metadata that can be read in the background.
+
+## File operations
+* Trash uses `QFile::moveToTrash`: the Recycle Bin on Windows and the freedesktop Trash on
+  Linux. The latter is a folder layout rather than a service, so it needs no particular
+  desktop and works on Hyprland and Sway as on KDE and GNOME. File managers see those files
+  in their trash.
+* If a file cannot go to the trash, the error says so and the file stays. Shift+Del deletes
+  files permanently for such cases. It always asks, naming the files, with No focused, and the
+  answer applies to the files named even if the selection changes. Folders can only be trashed.
+* The trash takes no confirmation, because it can be undone there. A folder does ask, as it
+  can hold far more than the user sees. Home, its parents and drive roots are refused.
+* One job runs at a time per `BrowseContext`, in the background and cancellable between files.
+  Failures are collected per file and the rest continues. Afterwards the folder is scanned
+  and new files in it become the selection.
+* Existing files are never overwritten in place. On a conflict the user chooses skip, replace
+  or keep both, and replace sends the old file to the trash first. A file copied onto itself
+  gets a free name, and one moved onto itself stays.
+* Copies keep the modification time, so they still sort by when they were taken.
+* Folders can be created, renamed and trashed from the tree, but not yet copied or moved.
+* The folder is watched and scanned again 200 ms after changes stop coming in. F5 does it
+  by hand, for network folders that do not report changes.
+
+## Clipboard
+* Copy puts files on the clipboard as URLs, also in the format file managers on GNOME look for.
+  A single file is also added as an image, in sRGB and at most 16384 pixels along its longer
+  edge. It is decoded on a worker and added a moment later, because clipboard managers ask for
+  the data at once, and decoding then would stop the main thread.
+* Paste with files copies them into the current folder. Otherwise it saves the image as a new
+  file named after the time, such as `2026-12-24_125959.png`, adding `_1` if taken. PNG is fixed
+  until the configuration dialog exists.
+* Cut is not implemented. Files cut in another application are copied on paste, leaving the
+  originals in place.
 
 ## Editing (planned, not built)
 * A document is a base image, an edit list, an optional file path and an unsaved flag.
@@ -190,8 +228,8 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   added, other tabs can be used freely, since each keeps its own unsaved document.
 
 ### Images without a file
-* Clipboard pastes, and later screenshots and scans, are documents with an in-memory base
-  and no path. Clipboard paste comes with the first editing work.
+* Screenshots and scans will be documents with an in-memory base and no path. Clipboard paste
+  is not one of them: it writes a file straight away, see Clipboard.
 * "Unmodified" is the image as it arrived. The first save asks for a name and format.
 * They count as unsaved even with no edits, because they exist nowhere else.
 * The base is written to the cache folder on arrival and removed after saving or
@@ -247,10 +285,16 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * XML in XMP and OME-TIFF can use pugixml (MIT), which needs no Qt.
 
 ## Known limitations
-* Thumbnails are cached only in memory, by Qt's pixmap cache. The SQLite cache is still to
-  do, and a changed file keeps its old thumbnail until the application restarts.
-* Directories are not watched, so new or removed files appear only after reopening. The
-  grid lists images only, not subdirectories.
+* Thumbnails are cached only in memory, by Qt's pixmap cache. The SQLite cache is still to do.
+* An image that changes on disk while shown is not reloaded, including one replaced by a copy.
+  Its thumbnail does update.
+* The grid lists images only, not subdirectories. A file renamed to an unsupported extension
+  leaves the grid, though it is still on disk.
+* File operations have only been run on Linux. On Windows a file that is open cannot be renamed
+  or trashed, and the view can hold the current image open, for instance a TIFF. Expect an error
+  message there rather than the operation working, until this has been tested.
+* Replace sends the old file to the trash before copying. If the copy then fails, the old file
+  is in the trash and the error names the file.
 * CMYK JPEGs use a rough conversion, and their CMYK profile is not applied.
 * HDR images (PQ and HLG curves) are not tone mapped. In AVIF and PNG they are shown as sRGB,
   so they look flat. A JPEG XL or a file with such an ICC profile goes through that profile

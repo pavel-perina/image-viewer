@@ -12,9 +12,10 @@ class ThumbnailProvider : public QQuickAsyncImageProvider {
 public:
     static constexpr const char* kProviderId = "thumbnails";
 
-    // The URL to give an Image item for this file. It holds the colour settings' generation,
-    // so that a change of those loads thumbnails anew instead of finding them in Qt's cache.
-    static QString urlForPath(const QString& path);
+    // The URL to give an Image item for this file. It holds the colour settings' generation and
+    // the file's modification time, so that a change of either loads the thumbnail anew instead
+    // of finding it in Qt's cache.
+    static QString urlForPath(const QString& path, qint64 modified = 0);
 
     QQuickImageResponse* requestImageResponse(const QString& id, const QSize& requestedSize) override;
 };

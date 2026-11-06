@@ -37,6 +37,7 @@ if(JXL_FOUND)
 endif()
 gtest_discover_tests(iv_core_tests)
 
+find_package(Qt6 REQUIRED COMPONENTS Test)
 add_executable(iv_ui_tests
     test_jpeg.cpp
     test_jpeg.h
@@ -44,7 +45,7 @@ add_executable(iv_ui_tests
     test_tiff.h
     ui_tests.cpp
 )
-target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick)
+target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick Qt6::Test)
 gtest_discover_tests(iv_ui_tests
     PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Fusion"
     DISCOVERY_MODE PRE_TEST

@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 
+import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -21,16 +22,39 @@ ApplicationWindow {
     // Created here rather than in C++, so a tab can later own one context and its pages.
     BrowseContext {
         id: context
+        onEmptied: window.viewing = false
     }
+
+    FileActions {
+        id: fileActions
+        context: context
+        viewing: window.viewing
+    }
+
+    Settings {
+        id: browserSettings
+        category: "Browser"
+        property int sortKey: BrowseContext.SortByName
+        property bool sortDescending: false
+    }
+
+    ActionGroup { id: sortGroup }
 
     // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
+        context.sortKey = browserSettings.sortKey
+        context.sortDescending = browserSettings.sortDescending
         context.openPath(initialPath)
         window.viewing = context.currentPath !== ""
     }
 
     function toggleFullScreen() {
         window.visibility = window.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
+    }
+
+    function sortBy(key) {
+        browserSettings.sortKey = key
+        context.sortKey = key
     }
 
     function leaveCurrentMode() {
@@ -138,11 +162,44 @@ ApplicationWindow {
             title: "&File"
             MenuItem { action: openAction }
             MenuSeparator {}
+            MenuItem { action: fileActions.renameAction }
+            MenuItem { action: fileActions.trashAction }
+            MenuItem { action: fileActions.deleteAction }
+            MenuItem { action: fileActions.copyToAction }
+            MenuItem { action: fileActions.moveToAction }
+            MenuSeparator {}
+            MenuItem { action: fileActions.newFolderAction }
+            MenuItem { action: fileActions.openFolderAction }
+            MenuSeparator {}
             MenuItem { action: quitAction }
+        }
+        Menu {
+            title: "&Edit"
+            MenuItem { action: fileActions.copyAction }
+            MenuItem { action: fileActions.pasteAction }
+            MenuItem { action: fileActions.copyPathAction }
         }
         Menu {
             title: "&View"
             MenuItem { action: modeAction }
+            MenuItem { action: fileActions.refreshAction }
+            Menu {
+                title: "&Sort By"
+                Action { text: "&Name"; checkable: true; ActionGroup.group: sortGroup; checked: context.sortKey === BrowseContext.SortByName; onTriggered: window.sortBy(BrowseContext.SortByName) }
+                Action { text: "&Date Modified"; checkable: true; ActionGroup.group: sortGroup; checked: context.sortKey === BrowseContext.SortByDate; onTriggered: window.sortBy(BrowseContext.SortByDate) }
+                Action { text: "&Size"; checkable: true; ActionGroup.group: sortGroup; checked: context.sortKey === BrowseContext.SortBySize; onTriggered: window.sortBy(BrowseContext.SortBySize) }
+                Action { text: "&Type"; checkable: true; ActionGroup.group: sortGroup; checked: context.sortKey === BrowseContext.SortByType; onTriggered: window.sortBy(BrowseContext.SortByType) }
+                MenuSeparator {}
+                Action {
+                    text: "D&escending"
+                    checkable: true
+                    checked: context.sortDescending
+                    onTriggered: {
+                        browserSettings.sortDescending = checked
+                        context.sortDescending = checked
+                    }
+                }
+            }
             MenuSeparator {}
             MenuItem { action: previousAction }
             MenuItem { action: nextAction }
@@ -202,6 +259,29 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.leftMargin: 8
             anchors.rightMargin: 8
+            // Only for jobs long enough to notice, so a quick delete does not flicker.
+            Timer {
+                id: jobDelay
+                interval: 300
+                running: context.busy
+                onRunningChanged: if (running) fileActions.showProgress = false
+                onTriggered: fileActions.showProgress = true
+            }
+            Label {
+                visible: context.busy && fileActions.showProgress
+                text: context.jobName + " " + context.jobDone + " / " + context.jobTotal
+            }
+            ProgressBar {
+                visible: context.busy && fileActions.showProgress
+                from: 0
+                to: Math.max(1, context.jobTotal)
+                value: context.jobDone
+            }
+            ToolButton {
+                visible: context.busy && fileActions.showProgress
+                text: "Cancel"
+                onClicked: context.cancelJob()
+            }
             Label {
                 text: context.currentName
                 elide: Text.ElideMiddle
@@ -239,6 +319,8 @@ ApplicationWindow {
             context: context
             active: !window.viewing
             onViewRequested: window.viewing = true
+            onFileMenuRequested: fileActions.fileMenu.popup()
+            onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)
         }
 
         ViewerPage {
@@ -246,6 +328,7 @@ ApplicationWindow {
             context: context
             active: window.viewing
             fullScreen: window.visibility === Window.FullScreen
+            onFileMenuRequested: fileActions.fileMenu.popup()
         }
     }
 

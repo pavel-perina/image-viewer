@@ -1,21 +1,37 @@
 #include "ui/browse_context.h"
 
 #include <QAbstractListModel>
+#include <QClipboard>
 #include <QCollator>
+#include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QGuiApplication>
 #include <QHash>
+#include <QImage>
+#include <QList>
+#include <QMimeData>
+#include <QSet>
 #include <QStringList>
+#include <QTimeZone>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <limits>
+#include <stop_token>
 #include <string_view>
 #include <vector>
 
 #include "core/image_source.h"
+#include "core/thumbnail.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
+#include "ui/file_operations.h"
+#include "ui/qimage_bridge.h"
 #include "ui/thumbnail_provider.h"
 
 namespace iv {
@@ -23,6 +39,16 @@ namespace iv {
 namespace {
 
 constexpr int kScanPriority = 100;
+constexpr int kJobPriority = 100;
+constexpr int kRefreshDelayMs = 200;  // copying many files changes the directory many times
+// A clipboard image is for pasting elsewhere. Past this edge a pyramid gives a reduced version.
+constexpr int kClipboardImageEdge = 16384;
+
+struct FileEntry {
+    QString name;
+    qint64 size = 0;
+    qint64 modified = 0;
+};
 
 QStringList imageNameFilters() {
     QStringList filters;
@@ -32,13 +58,47 @@ QStringList imageNameFilters() {
     return filters;
 }
 
-QStringList scanDirectory(const QString& directory) {
-    QStringList names = QDir(directory).entryList(imageNameFilters(), QDir::Files | QDir::NoDotAndDotDot);
+QList<FileEntry> scanDirectory(const QString& directory, BrowseContext::SortKey key, bool descending) {
+    QList<FileEntry> entries;
+    const QFileInfoList infos = QDir(directory).entryInfoList(imageNameFilters(), QDir::Files | QDir::NoDotAndDotDot);
+    entries.reserve(infos.size());
+    for (const QFileInfo& info : infos) {
+        entries.append({info.fileName(), info.size(), info.lastModified(QTimeZone::UTC).toMSecsSinceEpoch()});
+    }
+
     QCollator collator;
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::ranges::sort(names, collator);
-    return names;
+    const auto byName = [&](const FileEntry& a, const FileEntry& b) { return collator.compare(a.name, b.name) < 0; };
+    const auto suffix = [](const FileEntry& entry) { return entry.name.mid(entry.name.lastIndexOf(QLatin1Char('.')) + 1).toLower(); };
+    std::ranges::sort(entries, [&](const FileEntry& a, const FileEntry& b) {
+        switch (key) {
+        case BrowseContext::SortByDate:
+            if (a.modified != b.modified) {
+                return a.modified < b.modified;
+            }
+            break;
+        case BrowseContext::SortBySize:
+            if (a.size != b.size) {
+                return a.size < b.size;
+            }
+            break;
+        case BrowseContext::SortByType: {
+            const int order = suffix(a).compare(suffix(b));
+            if (order != 0) {
+                return order < 0;
+            }
+            break;
+        }
+        case BrowseContext::SortByName:
+            break;
+        }
+        return byName(a, b);
+    });
+    if (descending) {
+        std::ranges::reverse(entries);
+    }
+    return entries;
 }
 
 class FileListModel final : public QAbstractListModel {
@@ -47,14 +107,82 @@ public:
 
     using QAbstractListModel::QAbstractListModel;
 
-    const QStringList& names() const { return m_names; }
+    const QString& name(int row) const { return m_entries.at(row).name; }
 
-    void reset(const QString& directory, const QStringList& names) {
+    int find(const QString& name) const {
+        for (int row = 0; row < rowCount(); ++row) {
+            if (m_entries.at(row).name == name) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    void reset(const QString& directory, const QList<FileEntry>& entries) {
         beginResetModel();
         m_directory = QDir(directory);
-        m_names = names;
-        m_selected.assign(static_cast<std::size_t>(names.size()), 0);
+        m_entries = entries;
+        m_selected.assign(static_cast<std::size_t>(entries.size()), 0);
         endResetModel();
+    }
+
+    // Takes a new scan of the same directory, keeping the selection by name. Only the rows
+    // that differ change, so that a view stays where it was scrolled to. Returns whether any did.
+    bool update(const QList<FileEntry>& entries) {
+        if (m_entries.isEmpty()) {
+            if (entries.isEmpty()) {
+                return false;
+            }
+            reset(m_directory.path(), entries);
+            return true;
+        }
+        QSet<QString> incoming;
+        for (const FileEntry& entry : entries) {
+            incoming.insert(entry.name);
+        }
+        bool changed = false;
+        for (int row = rowCount() - 1; row >= 0; --row) {
+            if (!incoming.contains(m_entries.at(row).name)) {
+                beginRemoveRows({}, row, row);
+                m_entries.removeAt(row);
+                m_selected.erase(m_selected.begin() + row);
+                endRemoveRows();
+                changed = true;
+            }
+        }
+
+        QSet<QString> present;
+        for (const FileEntry& entry : std::as_const(m_entries)) {
+            present.insert(entry.name);
+        }
+        int kept = 0;
+        bool sameOrder = true;
+        for (const FileEntry& entry : entries) {
+            if (present.contains(entry.name) && m_entries.at(kept++).name != entry.name) {
+                sameOrder = false;
+                break;
+            }
+        }
+        if (!sameOrder) {
+            replaceReordered(entries);
+            return true;
+        }
+
+        for (int row = 0; row < entries.size(); ++row) {
+            const FileEntry& entry = entries.at(row);
+            if (row >= rowCount() || m_entries.at(row).name != entry.name) {
+                beginInsertRows({}, row, row);
+                m_entries.insert(row, entry);
+                m_selected.insert(m_selected.begin() + row, 0);
+                endInsertRows();
+                changed = true;
+            } else if (m_entries.at(row).modified != entry.modified || m_entries.at(row).size != entry.size) {
+                m_entries[row] = entry;
+                emit dataChanged(index(row), index(row), {ThumbnailRole});
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     const std::vector<char>& selected() const { return m_selected; }
@@ -85,22 +213,22 @@ public:
     }
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override {
-        return parent.isValid() ? 0 : static_cast<int>(m_names.size());
+        return parent.isValid() ? 0 : static_cast<int>(m_entries.size());
     }
 
     QVariant data(const QModelIndex& index, int role) const override {
         if (!checkIndex(index, CheckIndexOption::IndexIsValid)) {
             return {};
         }
-        const QString& name = m_names.at(index.row());
+        const FileEntry& entry = m_entries.at(index.row());
         switch (role) {
         case Qt::DisplayRole:
         case NameRole:
-            return name;
+            return entry.name;
         case PathRole:
-            return m_directory.filePath(name);
+            return m_directory.filePath(entry.name);
         case ThumbnailRole:
-            return ThumbnailProvider::urlForPath(m_directory.filePath(name));
+            return ThumbnailProvider::urlForPath(m_directory.filePath(entry.name), entry.modified);
         case SelectedRole:
             return m_selected[static_cast<std::size_t>(index.row())] != 0;
         default:
@@ -113,24 +241,65 @@ public:
     }
 
 private:
+    void replaceReordered(const QList<FileEntry>& entries) {
+        QSet<QString> selectedNames;
+        for (int row = 0; row < rowCount(); ++row) {
+            if (m_selected[static_cast<std::size_t>(row)] != 0) {
+                selectedNames.insert(m_entries.at(row).name);
+            }
+        }
+        reset(m_directory.path(), entries);
+        for (int row = 0; row < rowCount(); ++row) {
+            m_selected[static_cast<std::size_t>(row)] = selectedNames.contains(m_entries.at(row).name) ? 1 : 0;
+        }
+    }
+
     QDir m_directory;
-    QStringList m_names;
+    QList<FileEntry> m_entries;
     std::vector<char> m_selected;
 };
+
+// Files for other applications. File managers on GNOME look for the second format.
+QMimeData* filesMimeData(const QStringList& paths) {
+    auto* mime = new QMimeData;
+    QList<QUrl> urls;
+    QByteArray gnomeFiles = "copy";
+    for (const QString& path : paths) {
+        const QUrl url = QUrl::fromLocalFile(path);
+        urls << url;
+        gnomeFiles += '\n' + url.toEncoded();
+    }
+    mime->setUrls(urls);
+    mime->setData(QStringLiteral("x-special/gnome-copied-files"), gnomeFiles);
+    return mime;
+}
 
 }  // namespace
 
 struct BrowseContext::Impl {
-    explicit Impl(BrowseContext* owner) : files(owner) {}
+    explicit Impl(BrowseContext* owner) : files(owner), watcher(owner), refreshTimer(owner) {}
+
+    using Work = std::function<FileJobResult(std::stop_token, const JobProgress&)>;
+    using Done = std::function<void(const FileJobResult&)>;
 
     WorkQueue& queue = WorkQueue::global();
     WorkQueue::GroupId group = queue.createGroup();
+    WorkQueue::GroupId jobGroup = queue.createGroup();  // survives moving to another directory
     std::uint64_t scanGeneration = 0;
     QString directory;
     QString currentName;
     FileListModel files;
+    QFileSystemWatcher watcher;
+    QTimer refreshTimer;
+    SortKey sortKey = SortByName;
+    bool sortDescending = false;
     int currentIndex = -1;
     int anchor = -1;  // where a range selection starts
+    bool busy = false;
+    QString jobName;
+    int jobDone = 0;
+    int jobTotal = 0;
+    std::stop_source jobStop;
 
     std::size_t rowCount() const { return files.selected().size(); }
 
@@ -152,7 +321,7 @@ struct BrowseContext::Impl {
     void moveCurrent(BrowseContext* owner, int index) {
         if (index != currentIndex) {
             currentIndex = index;
-            currentName = files.names().at(index);
+            currentName = files.name(index);
             emit owner->currentChanged();
         }
     }
@@ -165,16 +334,135 @@ struct BrowseContext::Impl {
         }
         return base;
     }
+
+    // Scans the directory. Names in toSelect, if present then, become the selection.
+    void scan(BrowseContext* owner, const QStringList& toSelect = {}) {
+        queue.cancelGroup(group);
+        const std::uint64_t generation = ++scanGeneration;
+        queue.submit(group, kScanPriority, [owner, this, generation, toSelect, dir = directory, key = sortKey, down = sortDescending](std::stop_token) {
+            QList<FileEntry> entries = scanDirectory(dir, key, down);
+            QMetaObject::invokeMethod(owner, [owner, this, generation, toSelect, entries = std::move(entries)] {
+                if (generation == scanGeneration) {
+                    applyScan(owner, entries, toSelect);
+                }
+            });
+        });
+    }
+
+    void applyScan(BrowseContext* owner, const QList<FileEntry>& entries, const QStringList& toSelect) {
+        const int previousIndex = currentIndex;
+        const QString previousName = currentName;
+        const bool hadFiles = rowCount() > 0;
+        const bool hadSelection = owner->selectedCount() > 0;
+        const QString anchorName = anchor >= 0 ? files.name(anchor) : QString();
+
+        const bool changed = files.update(entries);
+
+        const int rows = static_cast<int>(rowCount());
+        const auto selectable = [&] {
+            QStringList present;
+            for (const QString& name : toSelect) {
+                if (files.find(name) >= 0) {
+                    present << name;
+                }
+            }
+            return present;
+        }();
+
+        if (!selectable.isEmpty()) {
+            currentName = selectable.front();
+        } else if (currentName.isEmpty()) {
+            currentName = rows > 0 ? files.name(0) : QString();
+        } else if (previousIndex >= 0 && files.find(currentName) < 0) {
+            // It is gone, so the next one has moved into its place.
+            currentName = rows > 0 ? files.name(std::min(previousIndex, rows - 1)) : QString();
+        }
+        currentIndex = files.find(currentName);
+        anchor = anchorName.isEmpty() ? -1 : files.find(anchorName);
+
+        if (changed || !hadFiles) {
+            emit owner->filesChanged();
+        }
+        if (currentIndex != previousIndex || currentName != previousName || !hadFiles) {
+            emit owner->currentChanged();
+        }
+
+        if (!selectable.isEmpty()) {
+            std::vector<char> selected(rowCount(), 0);
+            for (const QString& name : selectable) {
+                selected[static_cast<std::size_t>(files.find(name))] = 1;
+            }
+            anchor = currentIndex;
+            apply(owner, selected);
+        } else if (!hadFiles || (hadSelection && owner->selectedCount() == 0)) {
+            selectOnly(owner, currentIndex);
+        }
+        if (changed) {
+            emit owner->selectionChanged();  // the rows may have moved under it
+        }
+
+        if (hadFiles && rows == 0) {
+            emit owner->emptied();
+        }
+    }
+
+    // Starts a job unless one is running. done runs on the main thread when it ends, and by
+    // default the directory is scanned and files new in it are selected.
+    void startJob(BrowseContext* owner, const QString& name, int total, Work work, Done done = {}) {
+        if (busy) {
+            return;
+        }
+        busy = true;
+        jobName = name;
+        jobDone = 0;
+        jobTotal = total;
+        jobStop = std::stop_source();
+        emit owner->jobChanged();
+        queue.submit(jobGroup, kJobPriority, [owner, this, work = std::move(work), done = std::move(done), stop = jobStop.get_token()](std::stop_token) {
+            const JobProgress progress = [owner, this](int count) {
+                QMetaObject::invokeMethod(owner, [owner, this, count] {
+                    jobDone = count;
+                    emit owner->jobChanged();
+                });
+            };
+            FileJobResult result = work(stop, progress);
+            QMetaObject::invokeMethod(owner, [owner, this, done, result = std::move(result)] {
+                busy = false;
+                emit owner->jobChanged();
+                if (done) {
+                    done(result);
+                } else {
+                    QStringList toSelect;
+                    for (const QString& path : result.created) {
+                        const QFileInfo info(path);
+                        if (info.dir() == QDir(directory)) {
+                            toSelect << info.fileName();
+                        }
+                    }
+                    scan(owner, toSelect);
+                }
+                emit owner->operationFinished(result.problems);
+            });
+        });
+    }
 };
 
 BrowseContext::BrowseContext(QObject* parent) : QObject(parent), m_impl(std::make_unique<Impl>(this)) {
     connect(ColorSettings::instance(), &ColorSettings::changed, this, [this] { m_impl->files.thumbnailsChanged(); });
+    m_impl->refreshTimer.setSingleShot(true);
+    m_impl->refreshTimer.setInterval(kRefreshDelayMs);
+    connect(&m_impl->refreshTimer, &QTimer::timeout, this, [this] { refresh(); });
+    connect(&m_impl->watcher, &QFileSystemWatcher::directoryChanged, &m_impl->refreshTimer, qOverload<>(&QTimer::start));
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &BrowseContext::clipboardChanged);
 }
 
 BrowseContext::~BrowseContext() {
-    // A running scan posts its result to this object, so it must finish first.
-    m_impl->queue.cancelGroup(m_impl->group);
-    m_impl->queue.waitGroup(m_impl->group);
+    // Running work posts its result to this object, so it must finish first.
+    m_impl->jobStop.request_stop();
+    for (const WorkQueue::GroupId group : {m_impl->group, m_impl->jobGroup}) {
+        m_impl->queue.cancelGroup(group);
+        m_impl->queue.waitGroup(group);
+    }
 }
 
 QString BrowseContext::directory() const { return m_impl->directory; }
@@ -215,9 +503,12 @@ void BrowseContext::openPath(const QString& path) {
     const bool isDirectory = info.isDir();
     const QString directory = isDirectory ? info.absoluteFilePath() : info.absolutePath();
 
-    m_impl->queue.cancelGroup(m_impl->group);
-    const std::uint64_t generation = ++m_impl->scanGeneration;
+    if (!m_impl->directory.isEmpty()) {
+        m_impl->watcher.removePath(m_impl->directory);
+    }
+    m_impl->refreshTimer.stop();
     m_impl->directory = directory;
+    m_impl->watcher.addPath(directory);
     m_impl->files.reset(directory, {});
     m_impl->currentIndex = -1;
     m_impl->anchor = -1;
@@ -228,22 +519,7 @@ void BrowseContext::openPath(const QString& path) {
     emit currentChanged();
     emit selectionChanged();
 
-    m_impl->queue.submit(m_impl->group, kScanPriority, [this, directory, generation](std::stop_token) {
-        QStringList files = scanDirectory(directory);
-        QMetaObject::invokeMethod(this, [this, generation, files = std::move(files)] {
-            if (generation != m_impl->scanGeneration) {
-                return;
-            }
-            m_impl->files.reset(m_impl->directory, files);
-            if (m_impl->currentName.isEmpty() && !files.isEmpty()) {
-                m_impl->currentName = files.front();
-            }
-            m_impl->currentIndex = static_cast<int>(files.indexOf(m_impl->currentName));
-            emit filesChanged();
-            emit currentChanged();
-            m_impl->selectOnly(this, m_impl->currentIndex);
-        });
-    });
+    m_impl->scan(this);
 }
 
 void BrowseContext::openUrl(const QUrl& url) { openPath(url.toLocalFile()); }
@@ -300,7 +576,7 @@ QStringList BrowseContext::selectedPaths() const {
     const QDir directory(m_impl->directory);
     for (std::size_t row = 0; row < selected.size(); ++row) {
         if (selected[row] != 0) {
-            paths << directory.filePath(m_impl->files.names().at(static_cast<qsizetype>(row)));
+            paths << directory.filePath(m_impl->files.name(static_cast<int>(row)));
         }
     }
     return paths;
@@ -317,5 +593,232 @@ void BrowseContext::previous() {
         setCurrentIndex(m_impl->currentIndex - 1);
     }
 }
+
+void BrowseContext::refresh() {
+    if (!m_impl->directory.isEmpty()) {
+        m_impl->scan(this);
+    }
+}
+
+BrowseContext::SortKey BrowseContext::sortKey() const { return m_impl->sortKey; }
+
+void BrowseContext::setSortKey(SortKey key) {
+    if (key != m_impl->sortKey) {
+        m_impl->sortKey = key;
+        emit sortChanged();
+        refresh();
+    }
+}
+
+bool BrowseContext::sortDescending() const { return m_impl->sortDescending; }
+
+void BrowseContext::setSortDescending(bool descending) {
+    if (descending != m_impl->sortDescending) {
+        m_impl->sortDescending = descending;
+        emit sortChanged();
+        refresh();
+    }
+}
+
+bool BrowseContext::busy() const { return m_impl->busy; }
+QString BrowseContext::jobName() const { return m_impl->jobName; }
+int BrowseContext::jobDone() const { return m_impl->jobDone; }
+int BrowseContext::jobTotal() const { return m_impl->jobTotal; }
+
+namespace {
+
+ConflictPolicy toPolicy(BrowseContext::Conflict conflict) {
+    switch (conflict) {
+    case BrowseContext::ReplaceExisting:
+        return ConflictPolicy::Replace;
+    case BrowseContext::KeepBoth:
+        return ConflictPolicy::KeepBoth;
+    case BrowseContext::SkipExisting:
+        break;
+    }
+    return ConflictPolicy::Skip;
+}
+
+// The path after a folder is renamed, for a path in or below that folder.
+QString afterFolderRename(const QString& path, const QString& oldFolder, const QString& newFolder) {
+    return path == oldFolder ? newFolder : newFolder + path.mid(oldFolder.size());
+}
+
+bool isInFolder(const QString& path, const QString& folder) {
+    return path == folder || path.startsWith(folder + QLatin1Char('/'));
+}
+
+}  // namespace
+
+void BrowseContext::trash(const QStringList& paths) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    m_impl->startJob(this, tr("Moving to trash"), static_cast<int>(paths.size()), [paths](std::stop_token stop, const JobProgress& progress) {
+        return trashFiles(paths, stop, progress);
+    });
+}
+
+void BrowseContext::deletePermanently(const QStringList& paths) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    m_impl->startJob(this, tr("Deleting"), static_cast<int>(paths.size()), [paths](std::stop_token stop, const JobProgress& progress) {
+        return deleteFiles(paths, stop, progress);
+    });
+}
+
+void BrowseContext::copyTo(const QStringList& paths, const QString& folder, Conflict conflict) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    m_impl->startJob(this, tr("Copying"), static_cast<int>(paths.size()),
+                     [paths, folder, policy = toPolicy(conflict)](std::stop_token stop, const JobProgress& progress) {
+                         return copyFiles(paths, folder, policy, stop, progress);
+                     });
+}
+
+void BrowseContext::moveTo(const QStringList& paths, const QString& folder, Conflict conflict) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    m_impl->startJob(this, tr("Moving"), static_cast<int>(paths.size()),
+                     [paths, folder, policy = toPolicy(conflict)](std::stop_token stop, const JobProgress& progress) {
+                         return moveFiles(paths, folder, policy, stop, progress);
+                     });
+}
+
+int BrowseContext::conflictCount(const QStringList& paths, const QString& folder) const { return countConflicts(paths, folder); }
+
+QString BrowseContext::rename(const QString& path, const QString& newName) {
+    const QFileInfo info(path);
+    if (newName == info.fileName()) {
+        return {};
+    }
+    if (QString problem = fileNameProblem(newName); !problem.isEmpty()) {
+        return problem;
+    }
+    // Only the case differs: on some file systems that is the same name, and still a rename.
+    const bool caseOnly = newName.compare(info.fileName(), Qt::CaseInsensitive) == 0;
+    if (!caseOnly && QFileInfo::exists(info.dir().filePath(newName))) {
+        return tr("%1 already exists.").arg(newName);
+    }
+    const bool isFolder = info.isDir();
+    const QString oldPath = info.absoluteFilePath();
+    const QString newPath = info.dir().filePath(newName);
+    Impl::Done done;
+    if (isFolder) {
+        done = [this, oldPath, newPath](const FileJobResult& result) {
+            if (result.problems.isEmpty() && isInFolder(m_impl->directory, oldPath)) {
+                const QString directory = afterFolderRename(m_impl->directory, oldPath, newPath);
+                const QString name = m_impl->currentName;
+                openPath(name.isEmpty() ? directory : QDir(directory).filePath(name));
+            }
+        };
+    }
+    m_impl->startJob(this, tr("Renaming"), 1, [path, newName](std::stop_token, const JobProgress&) { return renamePath(path, newName); },
+                     std::move(done));
+    return {};
+}
+
+QString BrowseContext::createFolder(const QString& parent, const QString& name) {
+    if (QString problem = fileNameProblem(name); !problem.isEmpty()) {
+        return problem;
+    }
+    if (QFileInfo::exists(QDir(parent).filePath(name))) {
+        return tr("%1 already exists.").arg(name);
+    }
+    m_impl->startJob(this, tr("Creating folder"), 1, [parent, name](std::stop_token, const JobProgress&) { return iv::createFolder(parent, name); },
+                     [](const FileJobResult&) {});
+    return {};
+}
+
+void BrowseContext::trashFolder(const QString& path) {
+    const QString folder = QFileInfo(path).absoluteFilePath();
+    const QDir directory(folder);
+    if (directory.isRoot() || isInFolder(QDir::homePath(), folder)) {
+        emit operationFinished({folder + tr(": this folder cannot be moved to the trash")});
+        return;
+    }
+    if (isInFolder(m_impl->directory, folder)) {
+        // Leave it first, as nothing should be reading from it any more.
+        openPath(QFileInfo(folder).absolutePath());
+    }
+    m_impl->startJob(this, tr("Moving to trash"), 1, [folder](std::stop_token stop, const JobProgress& progress) {
+        return trashFiles({folder}, stop, progress);
+    }, [](const FileJobResult&) {});
+}
+
+void BrowseContext::cancelJob() { m_impl->jobStop.request_stop(); }
+
+void BrowseContext::copyFilesToClipboard(const QStringList& paths) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    QMimeData* mime = filesMimeData(paths);
+    clipboard->setMimeData(mime);
+    if (paths.size() != 1) {
+        return;
+    }
+    // Decoded here rather than when asked for, as a clipboard manager asks at once, and that
+    // would stop the main thread. Colours are converted to sRGB, which is what others assume.
+    m_impl->queue.submit(m_impl->jobGroup, kJobPriority, [this, mime, path = paths.front()](std::stop_token stop) {
+        const auto image = makeThumbnail(QFileInfo(path).filesystemFilePath(), kClipboardImageEdge, stop);
+        if (!image) {
+            return;  // it still is on the clipboard as a file
+        }
+        QImage pixels = toQImage(*image);
+        QMetaObject::invokeMethod(this, [mime, path, pixels = std::move(pixels)] {
+            QClipboard* board = QGuiApplication::clipboard();
+            // The pointer is only compared: if anything else was copied since, it is gone.
+            if (board->mimeData() == mime) {
+                QMimeData* withImage = filesMimeData({path});
+                withImage->setImageData(pixels);
+                board->setMimeData(withImage);
+            }
+        });
+    });
+}
+
+void BrowseContext::copyPathsToClipboard(const QStringList& paths) {
+    QStringList native;
+    for (const QString& path : paths) {
+        native << QDir::toNativeSeparators(path);
+    }
+    QGuiApplication::clipboard()->setText(native.join(QLatin1Char('\n')));
+}
+
+QStringList BrowseContext::clipboardFiles() const {
+    QStringList paths;
+    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    if (mime && mime->hasUrls()) {
+        for (const QUrl& url : mime->urls()) {
+            if (url.isLocalFile()) {
+                paths << url.toLocalFile();
+            }
+        }
+    }
+    return paths;
+}
+
+bool BrowseContext::canPaste() const {
+    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    return mime && (mime->hasImage() || !clipboardFiles().isEmpty());
+}
+
+void BrowseContext::pasteImage() {
+    const QImage image = QGuiApplication::clipboard()->image();
+    if (image.isNull()) {
+        emit operationFinished({tr("The clipboard holds no image.")});
+        return;
+    }
+    m_impl->startJob(this, tr("Pasting"), 1, [image, folder = m_impl->directory](std::stop_token, const JobProgress&) {
+        return saveNewImage(image, folder, QDateTime::currentDateTime());
+    });
+}
+
+QString BrowseContext::pathFromUrl(const QUrl& url) const { return url.toLocalFile(); }
+QUrl BrowseContext::urlFromPath(const QString& path) const { return QUrl::fromLocalFile(path); }
 
 }  // namespace iv

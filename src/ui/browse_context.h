@@ -30,8 +30,20 @@ class BrowseContext : public QObject {
     Q_PROPERTY(bool hasPrevious READ hasPrevious NOTIFY currentChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     Q_PROPERTY(QStringList selectedPaths READ selectedPaths NOTIFY selectionChanged)
+    Q_PROPERTY(SortKey sortKey READ sortKey WRITE setSortKey NOTIFY sortChanged)
+    Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending NOTIFY sortChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY jobChanged)
+    Q_PROPERTY(QString jobName READ jobName NOTIFY jobChanged)
+    Q_PROPERTY(int jobDone READ jobDone NOTIFY jobChanged)
+    Q_PROPERTY(int jobTotal READ jobTotal NOTIFY jobChanged)
+    Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
 
 public:
+    enum SortKey { SortByName, SortByDate, SortBySize, SortByType };
+    Q_ENUM(SortKey)
+    enum Conflict { SkipExisting, ReplaceExisting, KeepBoth };
+    Q_ENUM(Conflict)
+
     explicit BrowseContext(QObject* parent = nullptr);
     ~BrowseContext() override;
 
@@ -48,6 +60,15 @@ public:
     bool hasPrevious() const;
     int selectedCount() const;
     QStringList selectedPaths() const;  // in the order of the file list
+    SortKey sortKey() const;
+    void setSortKey(SortKey key);
+    bool sortDescending() const;
+    void setSortDescending(bool descending);
+    bool busy() const;  // while a file job runs; another cannot start until it ends
+    QString jobName() const;
+    int jobDone() const;
+    int jobTotal() const;
+    bool canPaste() const;
 
     // Opens an image file and scans its directory, or scans a directory and opens its
     // first image. Scanning happens in the background.
@@ -64,12 +85,47 @@ public:
     Q_INVOKABLE void clearSelection();  // the current image stays current
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // Scans the directory again, keeping the current image and selection by name. If the
+    // current image is gone, the one that took its place becomes current. Changes on disk also
+    // do this by themselves where the file system reports them.
+    Q_INVOKABLE void refresh();
+
+    // File jobs run in the background and end with operationFinished. The folder is scanned
+    // afterwards, and new files in it become the selection.
+    Q_INVOKABLE void trash(const QStringList& paths);
+    Q_INVOKABLE void deletePermanently(const QStringList& paths);  // the caller confirms first
+    Q_INVOKABLE void copyTo(const QStringList& paths, const QString& folder, Conflict conflict);
+    Q_INVOKABLE void moveTo(const QStringList& paths, const QString& folder, Conflict conflict);
+    Q_INVOKABLE int conflictCount(const QStringList& paths, const QString& folder) const;
+    // These return why the name cannot be used, or an empty string if the job has started.
+    Q_INVOKABLE QString rename(const QString& path, const QString& newName);
+    Q_INVOKABLE QString createFolder(const QString& parent, const QString& name);
+    Q_INVOKABLE void trashFolder(const QString& path);
+    Q_INVOKABLE void cancelJob();  // stops before the next file
+
+    // Puts the files on the clipboard for other applications, and a single file also as an
+    // image, which arrives there a moment later as it has to be decoded.
+    Q_INVOKABLE void copyFilesToClipboard(const QStringList& paths);
+    Q_INVOKABLE void copyPathsToClipboard(const QStringList& paths);
+    // Local files on the clipboard, which take precedence over an image there.
+    Q_INVOKABLE QStringList clipboardFiles() const;
+    // Saves the image on the clipboard as a new file in the directory.
+    Q_INVOKABLE void pasteImage();
+
+    Q_INVOKABLE QString pathFromUrl(const QUrl& url) const;
+    Q_INVOKABLE QUrl urlFromPath(const QString& path) const;
 
 signals:
     void directoryChanged();
     void currentChanged();
     void filesChanged();
     void selectionChanged();
+    void sortChanged();
+    void jobChanged();
+    void clipboardChanged();
+    // The last image of the directory went away.
+    void emptied();
+    void operationFinished(const QStringList& problems);
 
 private:
     struct Impl;

@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <QColor>
+#include <QClipboard>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -9,13 +11,17 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QMouseEvent>
+#include <QMimeData>
+#include <QQmlApplicationEngine>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickTextureFactory>
 #include <QQuickView>
 #include <QQuickWindow>
+#include <QRegularExpression>
 #include <QSGRendererInterface>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QUrl>
@@ -32,6 +38,7 @@
 #include "ui/browse_context.h"
 #include "ui/color_settings.h"
 #include "ui/directory_tree_model.h"
+#include "ui/file_operations.h"
 #include "ui/histogram_handle.h"
 #include "ui/histogram_view.h"
 #include "ui/image_view.h"
@@ -505,7 +512,7 @@ struct SelectionFixture {
             writeJpeg(dir.filePath(QString(QChar(u'a' + i)) + QStringLiteral(".jpg")));
         }
         context.openPath(dir.path());
-        EXPECT_TRUE(waitUntil([&] { return context.fileCount() == count && context.selectedCount() == 1; }));
+        EXPECT_TRUE(waitUntil([&] { return context.fileCount() == count && context.selectedCount() == std::min(count, 1); }));
     }
 
     QString names() const {
@@ -1407,6 +1414,79 @@ struct TreeFixture : BrowserPageFixture {
 
 }  // namespace
 
+// What each row of the tree below the opened folder paints, as "label=folder it opens".
+QStringList treeRows(TreeFixture& f) {
+    QStringList rows;
+    const QString base = f.context.directory() + QLatin1Char('/');
+    for (int row = 0; row < f.tree->property("rows").toInt(); ++row) {
+        QModelIndex index;
+        QMetaObject::invokeMethod(f.tree, "index", Q_RETURN_ARG(QModelIndex, index), Q_ARG(int, row), Q_ARG(int, 0));
+        const QString path = f.model->pathForIndex(index);
+        if (!path.startsWith(base)) {
+            continue;
+        }
+        QQuickItem* item = nullptr;
+        QMetaObject::invokeMethod(f.tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(QModelIndex, index));
+        const auto* label = item ? item->property("contentItem").value<QObject*>() : nullptr;
+        rows << (label ? label->property("text").toString() : QStringLiteral("?")) + QLatin1Char('=') + path.mid(base.size());
+    }
+    return rows;
+}
+
+TEST(BrowserPage, TreeLabelsStayRightWhenASubfolderAppears) {
+    TreeFixture f;
+    const QDir dir(f.context.directory());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("a")));
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("b")));
+    const QStringList flat{QStringLiteral("a=a"), QStringLiteral("b=b"), QStringLiteral("inner=inner")};
+    ASSERT_TRUE(waitUntil([&] { return treeRows(f) == flat; })) << treeRows(f).join(u' ').toStdString();
+
+    // Created before a is expanded, so expanding it finds c while the rows below move down.
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("a/c")));
+    f.settle();
+    QMetaObject::invokeMethod(f.tree, "expand", Q_ARG(int, f.rowOf(f.path(QStringLiteral("a")))));
+    const QStringList withC{QStringLiteral("a=a"), QStringLiteral("c=a/c"), QStringLiteral("b=b"), QStringLiteral("inner=inner")};
+    EXPECT_TRUE(waitUntil([&] { return treeRows(f) == withC; }, 2000)) << treeRows(f).join(u' ').toStdString();
+
+    // And created while it is expanded.
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("a/d")));
+    const QStringList withD{QStringLiteral("a=a"), QStringLiteral("c=a/c"), QStringLiteral("d=a/d"), QStringLiteral("b=b"), QStringLiteral("inner=inner")};
+    EXPECT_TRUE(waitUntil([&] { return treeRows(f) == withD; }, 2000)) << treeRows(f).join(u' ').toStdString();
+
+    // Collapsing and expanding again finds them without reading the disk.
+    const int a = f.rowOf(f.path(QStringLiteral("a")));
+    QMetaObject::invokeMethod(f.tree, "collapse", Q_ARG(int, a));
+    const QStringList collapsed{QStringLiteral("a=a"), QStringLiteral("b=b"), QStringLiteral("inner=inner")};
+    EXPECT_TRUE(waitUntil([&] { return treeRows(f) == collapsed; }, 2000)) << treeRows(f).join(u' ').toStdString();
+    QMetaObject::invokeMethod(f.tree, "expand", Q_ARG(int, a));
+    EXPECT_TRUE(waitUntil([&] { return treeRows(f) == withD; }, 2000)) << treeRows(f).join(u' ').toStdString();
+
+    // Only the row of the opened folder is highlighted.
+    const QString b = f.path(QStringLiteral("b"));
+    const QString opened = f.context.directory();
+    f.context.openPath(b);
+    f.settle();
+    QQuickItem* bRow = nullptr;
+    QMetaObject::invokeMethod(f.tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, bRow), Q_ARG(QModelIndex, f.model->indexForPath(b)));
+    ASSERT_NE(bRow, nullptr);
+    EXPECT_TRUE(bRow->property("highlighted").toBool());
+    QQuickItem* cRow = nullptr;
+    QMetaObject::invokeMethod(f.tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, cRow), Q_ARG(QModelIndex, f.model->indexForPath(QDir(opened).filePath(QStringLiteral("a/c")))));
+    ASSERT_NE(cRow, nullptr);
+    EXPECT_FALSE(cRow->property("highlighted").toBool());
+}
+
+TEST(BrowserPage, TreeLabelFollowsARenamedFolder) {
+    TreeFixture f;
+    const QDir dir(f.context.directory());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("a")));
+    const QStringList before{QStringLiteral("a=a"), QStringLiteral("inner=inner")};
+    ASSERT_TRUE(waitUntil([&] { return treeRows(f) == before; })) << treeRows(f).join(u' ').toStdString();
+    ASSERT_TRUE(f.context.rename(dir.filePath(QStringLiteral("a")), QStringLiteral("z")).isEmpty());
+    const QStringList after{QStringLiteral("inner=inner"), QStringLiteral("z=z")};
+    EXPECT_TRUE(waitUntil([&] { return treeRows(f) == after; }, 3000)) << treeRows(f).join(u' ').toStdString();
+}
+
 TEST(BrowserPage, TreeExpandsTheOpenedFolder) {
     TreeFixture f;
     const QString inner = f.path(QStringLiteral("inner"));
@@ -1436,10 +1516,429 @@ TEST(BrowserPage, DoubleClickingAFolderLeavesItExpanded) {
     EXPECT_TRUE(waitUntil([&] { return f.rowOf(deeper) > f.rowOf(inner); }));
 }
 
+namespace {
+
+// The real system trash is used, and main() has moved it into a temporary home.
+QString trashFolder() { return qEnvironmentVariable("XDG_DATA_HOME") + QStringLiteral("/Trash/files"); }
+
+bool isInTrash(const QString& name) {
+    return QDir(trashFolder()).entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).contains(name);
+}
+
+struct FileOpsFixture : SelectionFixture {
+    QTemporaryDir other;
+    QStringList problems;
+
+    explicit FileOpsFixture(int count = 6) : SelectionFixture(count) {
+        QObject::connect(&context, &BrowseContext::operationFinished, [this](const QStringList& p) { problems = p; });
+    }
+
+    // Waits for the job, and for the scan it started to arrive.
+    void settle(const std::function<bool()>& condition) {
+        EXPECT_TRUE(waitUntil([&] { return !context.busy() && condition(); }));
+    }
+
+    QString path(const QString& name) const { return dir.filePath(name); }
+    QString otherPath(const QString& name) const { return other.filePath(name); }
+
+    static qint64 size(const QString& path) { return QFileInfo(path).size(); }
+
+    void writeBytes(const QString& path, int count) const {
+        QFile file(path);
+        ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray(count, 'x'));
+    }
+};
+
+}  // namespace
+
+TEST(FileOperations, TrashKeepsTheFileRecoverableAndMovesToTheNextImage) {
+    FileOpsFixture f;
+    f.context.clickFile(2, false, false);
+    QSignalSpy resets(f.context.files(), &QAbstractItemModel::modelReset);
+
+    const QString unique = QStringLiteral("trash-%1.jpg").arg(QCoreApplication::applicationPid());
+    ASSERT_TRUE(QFile::rename(f.path(QStringLiteral("c.jpg")), f.path(unique)));
+    f.context.refresh();
+    ASSERT_TRUE(waitUntil([&] { return f.context.currentName() != QStringLiteral("c.jpg"); }));
+
+    f.context.trash({f.path(unique)});
+    f.settle([&] { return f.context.fileCount() == 5; });
+
+    EXPECT_TRUE(f.problems.isEmpty()) << f.problems.join(u'|').toStdString();
+    EXPECT_FALSE(QFileInfo::exists(f.path(unique)));
+    EXPECT_TRUE(isInTrash(unique)) << "looked in " << trashFolder().toStdString();
+    EXPECT_EQ(resets.count(), 0) << "a view would lose its scroll position";
+}
+
+TEST(FileOperations, RemovingTheCurrentImageShowsTheNextAndTheLastShowsThePrevious) {
+    FileOpsFixture f(3);
+    f.context.clickFile(1, false, false);
+    f.context.trash({f.path(QStringLiteral("b.jpg"))});
+    f.settle([&] { return f.context.fileCount() == 2; });
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("c.jpg"));
+    EXPECT_EQ(f.names(), QStringLiteral("c"));
+
+    f.context.trash({f.path(QStringLiteral("c.jpg"))});
+    f.settle([&] { return f.context.fileCount() == 1; });
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("a.jpg"));
+
+    QSignalSpy emptied(&f.context, &BrowseContext::emptied);
+    f.context.trash({f.path(QStringLiteral("a.jpg"))});
+    f.settle([&] { return f.context.fileCount() == 0; });
+    EXPECT_EQ(f.context.currentPath(), QString());
+    EXPECT_EQ(emptied.count(), 1);
+}
+
+TEST(FileOperations, PermanentDeleteBypassesTheTrash) {
+    FileOpsFixture f(3);
+    f.context.clickFile(1, false, false);
+    const int trashedBefore = static_cast<int>(QDir(trashFolder()).entryList(QDir::Files).size());
+
+    f.context.deletePermanently({f.path(QStringLiteral("b.jpg"))});
+    f.settle([&] { return f.context.fileCount() == 2; });
+    EXPECT_TRUE(f.problems.isEmpty());
+    EXPECT_FALSE(QFileInfo::exists(f.path(QStringLiteral("b.jpg"))));
+    EXPECT_EQ(QDir(trashFolder()).entryList(QDir::Files).size(), trashedBefore);
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("c.jpg"));
+}
+
+TEST(FileOperations, PermanentDeleteReportsProblemsAndLeavesFolders) {
+    FileOpsFixture f(1);
+    const QString folder = f.path(QStringLiteral("sub"));
+    ASSERT_TRUE(QDir().mkpath(folder));
+    writeJpeg(QDir(folder).filePath(QStringLiteral("inside.jpg")));
+
+    f.context.deletePermanently({folder, f.path(QStringLiteral("missing.jpg")), f.path(QStringLiteral("a.jpg"))});
+    f.settle([&] { return f.context.fileCount() == 0; });
+    EXPECT_EQ(f.problems.size(), 2) << f.problems.join(u'|').toStdString();
+    EXPECT_TRUE(QFileInfo::exists(QDir(folder).filePath(QStringLiteral("inside.jpg"))));
+}
+
+TEST(FileOperations, RefreshFindsChangesAndKeepsCurrentAndSelectionByName) {
+    FileOpsFixture f(3);
+    f.context.clickFile(1, false, false);
+    f.context.clickFile(2, true, false);
+
+    writeJpeg(f.path(QStringLiteral("0.jpg")));  // sorts first, so the rows move
+    f.context.refresh();
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 4; }));
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("c.jpg"));
+    EXPECT_EQ(f.context.currentIndex(), 3);
+    EXPECT_EQ(f.names(), QStringLiteral("bc"));
+}
+
+TEST(FileOperations, NoticesChangesInTheFolderByItself) {
+    FileOpsFixture f(2);
+    writeJpeg(f.path(QStringLiteral("z.jpg")));
+    EXPECT_TRUE(waitUntil([&] { return f.context.fileCount() == 3; }));
+}
+
+TEST(FileOperations, AChangedFileGetsANewThumbnailUrl) {
+    FileOpsFixture f(1);
+    const QModelIndex first = f.context.files()->index(0, 0);
+    const auto url = [&] { return f.context.files()->data(first, f.context.files()->roleNames().key("thumbnail")).toString(); };
+    const QString before = url();
+
+    QFile file(f.path(QStringLiteral("a.jpg")));
+    ASSERT_TRUE(file.open(QIODevice::ReadWrite));
+    ASSERT_TRUE(file.setFileTime(QDateTime::currentDateTime().addSecs(-3600), QFileDevice::FileModificationTime));
+    file.close();
+    f.context.refresh();
+    EXPECT_TRUE(waitUntil([&] { return url() != before; }));
+}
+
+TEST(FileOperations, CopiesKeepTheOriginalAndItsTime) {
+    FileOpsFixture f(2);
+    const QDateTime old = QDateTime::currentDateTime().addDays(-10);
+    {
+        QFile file(f.path(QStringLiteral("a.jpg")));
+        ASSERT_TRUE(file.open(QIODevice::ReadWrite));
+        ASSERT_TRUE(file.setFileTime(old, QFileDevice::FileModificationTime));
+    }
+    f.context.copyTo({f.path(QStringLiteral("a.jpg"))}, f.other.path(), BrowseContext::SkipExisting);
+    f.settle([&] { return QFileInfo::exists(f.otherPath(QStringLiteral("a.jpg"))); });
+    EXPECT_TRUE(QFileInfo::exists(f.path(QStringLiteral("a.jpg"))));
+    EXPECT_LT(std::abs(QFileInfo(f.otherPath(QStringLiteral("a.jpg"))).lastModified().secsTo(old)), 2);
+}
+
+TEST(FileOperations, MovesLeaveTheFolder) {
+    FileOpsFixture f(3);
+    f.context.moveTo({f.path(QStringLiteral("a.jpg")), f.path(QStringLiteral("b.jpg"))}, f.other.path(), BrowseContext::SkipExisting);
+    f.settle([&] { return f.context.fileCount() == 1; });
+    EXPECT_TRUE(QFileInfo::exists(f.otherPath(QStringLiteral("a.jpg"))));
+    EXPECT_TRUE(QFileInfo::exists(f.otherPath(QStringLiteral("b.jpg"))));
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("c.jpg"));
+}
+
+TEST(FileOperations, ConflictsFollowThePolicyAndNeverLoseAFile) {
+    FileOpsFixture f(1);
+    const QString source = f.path(QStringLiteral("a.jpg"));
+    const QString existing = f.otherPath(QStringLiteral("a.jpg"));
+    f.writeBytes(existing, 7);
+    EXPECT_EQ(f.context.conflictCount({source}, f.other.path()), 1);
+    const qint64 sourceSize = FileOpsFixture::size(source);
+
+    f.context.copyTo({source}, f.other.path(), BrowseContext::SkipExisting);
+    f.settle([&] { return true; });
+    EXPECT_EQ(FileOpsFixture::size(existing), 7) << "skip";
+
+    f.context.copyTo({source}, f.other.path(), BrowseContext::KeepBoth);
+    f.settle([&] { return QFileInfo::exists(f.otherPath(QStringLiteral("a (1).jpg"))); });
+    EXPECT_EQ(FileOpsFixture::size(existing), 7) << "keep both";
+    EXPECT_EQ(FileOpsFixture::size(f.otherPath(QStringLiteral("a (1).jpg"))), sourceSize);
+
+    const int trashedBefore = static_cast<int>(QDir(trashFolder()).entryList(QDir::Files).size());
+    f.context.copyTo({source}, f.other.path(), BrowseContext::ReplaceExisting);
+    f.settle([&] { return FileOpsFixture::size(existing) == sourceSize; });
+    EXPECT_TRUE(f.problems.isEmpty());
+    EXPECT_EQ(QDir(trashFolder()).entryList(QDir::Files).size(), trashedBefore + 1) << "the old file went to the trash";
+}
+
+TEST(FileOperations, AFileNeverReplacesItself) {
+    FileOpsFixture f(1);
+    const QString source = f.path(QStringLiteral("a.jpg"));
+    const qint64 size = FileOpsFixture::size(source);
+    EXPECT_EQ(f.context.conflictCount({source}, f.dir.path()), 0);
+
+    f.context.moveTo({source}, f.dir.path(), BrowseContext::ReplaceExisting);
+    f.settle([&] { return true; });
+    EXPECT_EQ(FileOpsFixture::size(source), size);
+    EXPECT_TRUE(f.problems.isEmpty());
+
+    f.context.copyTo({source}, f.dir.path(), BrowseContext::ReplaceExisting);
+    f.settle([&] { return f.context.fileCount() == 2; });
+    EXPECT_EQ(FileOpsFixture::size(source), size);
+    EXPECT_EQ(FileOpsFixture::size(f.path(QStringLiteral("a (1).jpg"))), size);
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("a (1).jpg")) << "the new file is selected";
+    EXPECT_EQ(f.names(), QStringLiteral("a (1)"));
+}
+
+TEST(FileOperations, FailuresAreReportedPerFileAndTheRestContinue) {
+    FileOpsFixture f(2);
+    const QStringList paths{f.path(QStringLiteral("missing.jpg")), f.path(QStringLiteral("a.jpg"))};
+    f.context.copyTo(paths, f.other.path(), BrowseContext::SkipExisting);
+    f.settle([&] { return QFileInfo::exists(f.otherPath(QStringLiteral("a.jpg"))); });
+    ASSERT_EQ(f.problems.size(), 1);
+    EXPECT_TRUE(f.problems.front().startsWith(QStringLiteral("missing.jpg: ")));
+}
+
+TEST(FileOperations, CancellingStopsBeforeTheNextFile) {
+    FileOpsFixture f(6);
+    QSignalSpy finished(&f.context, &BrowseContext::operationFinished);
+    f.context.copyTo(f.context.selectedPaths(), f.other.path(), BrowseContext::SkipExisting);
+    f.context.cancelJob();
+    f.settle([&] { return finished.count() == 1; });
+    EXPECT_FALSE(f.context.busy());
+}
+
+TEST(FileOperations, RenameChecksTheNameAndSelectsTheResult) {
+    FileOpsFixture f(3);
+    const QString a = f.path(QStringLiteral("a.jpg"));
+    EXPECT_FALSE(f.context.rename(a, QString()).isEmpty());
+    EXPECT_FALSE(f.context.rename(a, QStringLiteral("x/y.jpg")).isEmpty());
+    EXPECT_FALSE(f.context.rename(a, QStringLiteral("b.jpg")).isEmpty()) << "exists";
+    EXPECT_TRUE(QFileInfo::exists(a));
+
+    EXPECT_TRUE(f.context.rename(a, QStringLiteral("z.jpg")).isEmpty());
+    f.settle([&] { return f.context.currentName() == QStringLiteral("z.jpg"); });
+    EXPECT_FALSE(QFileInfo::exists(a));
+    EXPECT_EQ(f.context.currentIndex(), 2);
+    EXPECT_EQ(f.names(), QStringLiteral("z"));
+}
+
+TEST(FileOperations, FoldersCanBeCreatedRenamedAndTrashed) {
+    FileOpsFixture f(1);
+    EXPECT_TRUE(f.context.createFolder(f.dir.path(), QStringLiteral("sub")).isEmpty());
+    f.settle([&] { return QFileInfo(f.path(QStringLiteral("sub"))).isDir(); });
+    EXPECT_FALSE(f.context.createFolder(f.dir.path(), QStringLiteral("sub")).isEmpty());
+
+    const QString sub = f.path(QStringLiteral("sub"));
+    writeJpeg(QDir(sub).filePath(QStringLiteral("inside.jpg")));
+    f.context.openPath(sub);
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 1; }));
+
+    // Renaming the folder being shown follows it, and the image stays current.
+    EXPECT_TRUE(f.context.rename(sub, QStringLiteral("renamed")).isEmpty());
+    const QString renamed = f.path(QStringLiteral("renamed"));
+    f.settle([&] { return f.context.directory() == renamed && f.context.fileCount() == 1; });
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("inside.jpg"));
+
+    // Trashing it goes to its parent.
+    const QString unique = QStringLiteral("folder-%1").arg(QCoreApplication::applicationPid());
+    EXPECT_TRUE(f.context.rename(renamed, unique).isEmpty());
+    const QString named = f.path(unique);
+    f.settle([&] { return f.context.directory() == named && f.context.fileCount() == 1; });
+    f.context.trashFolder(named);
+    f.settle([&] { return !QFileInfo::exists(named) && f.context.directory() == f.dir.path(); });
+    EXPECT_TRUE(isInTrash(unique));
+    EXPECT_TRUE(f.problems.isEmpty());
+}
+
+TEST(FileOperations, RefusesToTrashHomeOrItsParents) {
+    FileOpsFixture f(1);
+    for (const QString& folder : {QDir::homePath(), QFileInfo(QDir::homePath()).absolutePath(), QDir::rootPath()}) {
+        f.problems.clear();
+        f.context.trashFolder(folder);
+        EXPECT_FALSE(f.problems.isEmpty()) << folder.toStdString();
+        EXPECT_TRUE(QFileInfo::exists(folder));
+    }
+}
+
+TEST(FileOperations, SortsByEachKeyAndKeepsTheCurrentImage) {
+    FileOpsFixture f(0);
+    const auto write = [&](const char* name, int bytes, int age) {
+        const QString path = f.path(QString::fromLatin1(name));
+        f.writeBytes(path, bytes);
+        QFile file(path);
+        ASSERT_TRUE(file.open(QIODevice::ReadWrite));
+        ASSERT_TRUE(file.setFileTime(QDateTime::currentDateTime().addDays(-age), QFileDevice::FileModificationTime));
+    };
+    write("a.png", 30, 1);
+    write("b.jpg", 10, 2);
+    write("c.tif", 20, 3);
+    f.context.refresh();
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 3; }));
+    f.context.clickFile(1, false, false);
+
+    const auto order = [&] {
+        QString out;
+        const auto* model = f.context.files();
+        for (int row = 0; row < model->rowCount(); ++row) {
+            out += model->data(model->index(row, 0)).toString().front();
+        }
+        return out;
+    };
+    const auto expectOrder = [&](BrowseContext::SortKey key, bool descending, const char* expected) {
+        f.context.setSortKey(key);
+        f.context.setSortDescending(descending);
+        EXPECT_TRUE(waitUntil([&] { return order() == QString::fromLatin1(expected); })) << expected << " but " << order().toStdString();
+        EXPECT_EQ(f.context.currentName(), QStringLiteral("b.jpg"));
+        EXPECT_EQ(f.context.currentIndex(), order().indexOf(QLatin1Char('b')));
+        EXPECT_EQ(f.names(), QStringLiteral("b"));
+    };
+    expectOrder(BrowseContext::SortBySize, false, "bca");
+    expectOrder(BrowseContext::SortByDate, false, "cba");
+    expectOrder(BrowseContext::SortByType, false, "bac");
+    expectOrder(BrowseContext::SortByName, true, "cba");
+    expectOrder(BrowseContext::SortByName, false, "abc");
+}
+
+TEST(Clipboard, FilesReachTheClipboardAndASingleOneAlsoAsAnImage) {
+    FileOpsFixture f(2);
+    const QStringList both{f.path(QStringLiteral("a.jpg")), f.path(QStringLiteral("b.jpg"))};
+    f.context.copyFilesToClipboard(both);
+    EXPECT_EQ(f.context.clipboardFiles(), both);
+    EXPECT_FALSE(QGuiApplication::clipboard()->mimeData()->hasImage());
+
+    f.context.copyFilesToClipboard({both[0]});
+    EXPECT_EQ(f.context.clipboardFiles(), QStringList{both[0]});
+    EXPECT_TRUE(waitUntil([] { return QGuiApplication::clipboard()->mimeData()->hasImage(); }));
+    EXPECT_EQ(f.context.clipboardFiles(), QStringList{both[0]}) << "the image adds to the files";
+    EXPECT_EQ(QGuiApplication::clipboard()->image().width(), 64);
+    EXPECT_TRUE(f.context.canPaste());
+}
+
+TEST(Clipboard, ALateImageDoesNotOverwriteANewerCopy) {
+    FileOpsFixture f(1);
+    f.context.copyFilesToClipboard({f.path(QStringLiteral("a.jpg"))});
+    QGuiApplication::clipboard()->setText(QStringLiteral("newer"));
+    waitUntil([] { return false; }, 300);
+    EXPECT_EQ(QGuiApplication::clipboard()->text(), QStringLiteral("newer"));
+    EXPECT_FALSE(f.context.canPaste());
+}
+
+TEST(Clipboard, FullPathsAreText) {
+    FileOpsFixture f(1);
+    f.context.copyPathsToClipboard({f.path(QStringLiteral("a.jpg"))});
+    EXPECT_EQ(QGuiApplication::clipboard()->text(), QDir::toNativeSeparators(f.path(QStringLiteral("a.jpg"))));
+}
+
+TEST(Clipboard, PastedImageBecomesATimeNamedPngAndIsSelected) {
+    FileOpsFixture f(1);
+    QImage image(20, 10, QImage::Format_ARGB32);
+    image.fill(qRgba(10, 200, 30, 128));
+    QGuiApplication::clipboard()->setImage(image);
+    ASSERT_TRUE(f.context.canPaste());
+    EXPECT_TRUE(f.context.clipboardFiles().isEmpty());
+
+    const QRegularExpression pattern(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}_\\d{6}\\.png$"));
+    f.context.pasteImage();
+    f.settle([&] { return f.context.fileCount() == 2; });
+    const QString name = f.context.currentName();
+    EXPECT_TRUE(pattern.match(name).hasMatch()) << name.toStdString();
+    EXPECT_EQ(f.context.selectedCount(), 1);
+    const QImage saved(f.path(name));
+    EXPECT_EQ(saved.size(), image.size());
+    EXPECT_EQ(saved.pixelColor(3, 3).alpha(), 128) << "transparency survives";
+}
+
+TEST(Clipboard, TwoImagesInTheSameSecondBothGetFiles) {
+    QTemporaryDir dir;
+    QImage image(4, 4, QImage::Format_RGB32);
+    image.fill(Qt::red);
+    const QDateTime when(QDate(2026, 12, 24), QTime(12, 59, 59));
+    const auto first = iv::saveNewImage(image, dir.path(), when);
+    const auto second = iv::saveNewImage(image, dir.path(), when);
+    ASSERT_EQ(first.created.size(), 1);
+    ASSERT_EQ(second.created.size(), 1);
+    EXPECT_EQ(QFileInfo(first.created[0]).fileName(), QStringLiteral("2026-12-24_125959.png"));
+    EXPECT_EQ(QFileInfo(second.created[0]).fileName(), QStringLiteral("2026-12-24_125959_1.png"));
+}
+
+TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+        for (const QQmlError& warning : warnings) {
+            ADD_FAILURE() << warning.toString().toStdString();
+        }
+    });
+    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
+    engine.loadFromModule("ImageViewer", "Main");
+    ASSERT_EQ(engine.rootObjects().size(), 1);
+    QCoreApplication::processEvents();
+    waitUntil([] { return false; }, 200);
+}
+
+TEST(BrowserPage, RightClickSelectsAnUnselectedFileAndKeepsASelection) {
+    BrowserPageFixture f;
+    QSignalSpy menus(f.view.rootObject(), SIGNAL(fileMenuRequested()));
+    QQuickItem* grid = f.find("QQuickGridView");
+    ASSERT_NE(grid, nullptr);
+    f.clickFile(0);
+    f.clickFile(1, Qt::ControlModifier);
+    ASSERT_EQ(f.selected(), QStringLiteral("ab"));
+
+    const auto rightClick = [&](int index) {
+        const QPointF point = grid->mapToScene(QPointF(90 + 180 * index, 100));
+        const QPointF global = f.view.mapToGlobal(point);
+        QMouseEvent press(QEvent::MouseButtonPress, point, point, global, Qt::RightButton, Qt::RightButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&f.view, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, point, point, global, Qt::RightButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&f.view, &release);
+        QCoreApplication::processEvents();
+    };
+    rightClick(1);
+    EXPECT_EQ(menus.count(), 1);
+    EXPECT_EQ(f.selected(), QStringLiteral("ab"));
+    rightClick(3);
+    EXPECT_EQ(menus.count(), 2);
+    EXPECT_EQ(f.selected(), QStringLiteral("d"));
+}
+
 int main(int argc, char** argv) {
-    QGuiApplication app(argc, argv);
     // Tests run side by side, and must neither see each other's settings nor touch the user's.
+    // The same goes for the trash: Qt uses the one in the home folder for files on the same
+    // disk as home, and test files are, as they are all in the temporary folder.
     const QTemporaryDir settingsFolder;
+    qputenv("HOME", settingsFolder.path().toLocal8Bit());
+    qputenv("XDG_DATA_HOME", (settingsFolder.path() + QStringLiteral("/share")).toLocal8Bit());
+    qputenv("XDG_CONFIG_HOME", (settingsFolder.path() + QStringLiteral("/config")).toLocal8Bit());
+    QDir().mkpath(settingsFolder.path() + QStringLiteral("/share"));  // Trash is left for Qt to make
+    QGuiApplication app(argc, argv);
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsFolder.path());
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewerTests"));

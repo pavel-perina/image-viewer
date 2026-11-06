@@ -5,6 +5,8 @@ qt_add_library(iv_ui STATIC
     color_settings.h
     directory_tree_model.cpp
     directory_tree_model.h
+    file_operations.cpp
+    file_operations.h
     histogram_handle.h
     histogram_view.cpp
     histogram_view.h
@@ -20,6 +22,7 @@ qt_add_qml_module(iv_ui
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewer
     QML_FILES
         qml/BrowserPage.qml
+        qml/FileActions.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/ResampledView.qml
