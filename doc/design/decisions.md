@@ -104,8 +104,18 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   system integration plugin. Check SANE's licence terms first.
 
 ### Plugins
+* For extensibility, and so filters and formats can be prototyped without rebuilding the
+  application.
 * Filters and image format decoders can be plugins, through a versioned C API loaded at
   run time. No C++ standard library or Qt types cross the boundary.
+* Each plugin exports one init function, which checks the API version and registers what
+  the plugin provides through a host callback. Load-time constructors are avoided.
+* Plugins load once on a worker thread at startup and stay loaded until exit, with no
+  dependency ordering between them.
+* A filter describes its parameters and the host builds the UI, so plugins need no Qt and
+  the edit list can store the values.
+* A filter can provide a cheap check of whether it applies to an image, given its format,
+  size and metadata. Filters depend on metadata, never on other plugins.
 * Built-in filters use the same API, so it stays honest and serves as public examples.
 * A filter declares its name, parameters, pixel formats and how many neighbouring pixels
   it needs, and receives input and output buffers.
@@ -117,6 +127,24 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 ### Open question
 * How to keep the original on the first overwrite. Proposed: send it to the system trash,
   and ask first where there is no trash. The alternative is a `.original` file beside it.
+
+## Metadata (planned, not built)
+* To be built with the info panel, starting with EXIF. XMP, OME-TIFF and other schemas are
+  added as blocks, so new ones need no changes elsewhere.
+* A metadata block has a schema name, its original bytes, and entries flattened for
+  display and lookup, with tree paths as keys such as `ome:Pixels/PhysicalSizeX`.
+  Subclasses can add typed accessors.
+* Saving writes the original bytes back, so metadata the application cannot interpret
+  survives. Deleting metadata removes whole blocks.
+* Blocks attach to the file and to each subimage.
+* A normalised layer answers facts that can appear in several blocks, such as rating,
+  capture time, orientation and physical pixel size, with fixed rules for which block wins.
+* Metadata can be read without decoding pixels, in the background, so folders can be sorted
+  by it. It can share a cache with thumbnails.
+* The C++ classes stay inside the application. Across the plugin API, blocks are opaque
+  handles with functions to list blocks and to read the schema, raw bytes and entries. A
+  decoder plugin hands over the same three things and the host wraps them in a generic block.
+* XML in XMP and OME-TIFF can use pugixml (MIT), which needs no Qt.
 
 ## Known limitations
 * Thumbnails are cached only in memory, by Qt's pixmap cache. The SQLite cache is still to
