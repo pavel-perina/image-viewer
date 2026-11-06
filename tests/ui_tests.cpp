@@ -2166,6 +2166,27 @@ TEST(BrowserPage, PathBarEditsAndKeepsAProblemOnScreen) {
     EXPECT_TRUE(bar->property("problem").toString().isEmpty());
 }
 
+TEST(BrowserPage, PreviewShowsHandlesOnlyWhenZoomedIntoPartOfTheImage) {
+    BrowserPageFixture f;
+    f.view.rootObject()->setProperty("active", true);
+    f.context.setCurrentIndex(0);
+    auto* preview = f.view.rootObject()->property("preview").value<ImageView*>();
+    ASSERT_NE(preview, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return preview->status() == ImageView::Status::Ready; })) << preview->source().toStdString();
+    auto* horizontal = f.view.rootObject()->findChild<QQuickItem*>(QStringLiteral("horizontalHandle"));
+    ASSERT_NE(horizontal, nullptr);
+    EXPECT_FALSE(horizontal->isVisible()) << "all of it fits";
+
+    for (int i = 0; i < 20 && preview->visibleArea().width() >= 0.5; ++i) {
+        preview->zoomIn();
+    }
+    ASSERT_LT(preview->visibleArea().width(), 0.5);
+    EXPECT_TRUE(horizontal->isVisible());
+
+    preview->fitToView();
+    EXPECT_FALSE(horizontal->isVisible()) << "fitted again";
+}
+
 TEST(BrowserPage, ScrollbarAppearsOverItsListInTheAccentColourAndFades) {
     BrowserPageFixture f;
     QQuickItem* grid = f.find("QQuickGridView");

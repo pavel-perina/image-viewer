@@ -135,6 +135,11 @@ SplitView {
                 source: page.active ? page.context.currentPath : ""
             }
 
+            ImageScrollBars {
+                anchors.fill: preview
+                view: preview
+            }
+
             Label {
                 anchors.fill: parent
                 horizontalAlignment: Text.AlignHCenter
