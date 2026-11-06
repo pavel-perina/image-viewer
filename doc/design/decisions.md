@@ -65,6 +65,48 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   other work. The newest request runs first, and Qt cancels requests when their delegate
   goes away. Qt deletes a response only after `finished()`, so `cancel()` must emit it.
 
+## Editing (planned, not built)
+* A document is a base image, an edit list, an optional file path and an unsaved flag.
+* The edit list is the first thing to build for editing, before any individual tool.
+* Edits are stored as operations with parameters, not pixel copies. Undo and redo move a
+  position in the list, and undoing replays from the nearest checkpoint.
+* Checkpoints are rendered results kept under a memory limit. Losing one only costs a replay.
+* Snapshots are named points in the list. "Unmodified" and "last saved" are two of them.
+* Some operations carry their own pixels, such as a pasted layer. These pixels count
+  towards the memory limit.
+* If the list holds only rotate, flip and crop, saving a JPEG stays lossless.
+* An edited image is an `ImageSource` wrapping the base, so views work unchanged.
+* The same edit list can drive batch tools and "repeat last edit".
+* Images must fit in memory to be edited at first. Gigapixel TIFFs stay view and export
+  until per-tile editing exists.
+* Saving writes a temporary file and renames it over the target.
+* Star and delete metadata write directly to the file without touching pixels, so they do
+  not recompress it. File operations such as rename, move and trash are outside the undo
+  stack.
+
+### Leaving an image with unsaved changes
+* It must not be possible to leave an unsaved image in the current tab without deciding:
+  moving to another image or folder asks to save or discard, or stays put. If tabs are
+  added, other tabs can be used freely, since each keeps its own unsaved document.
+
+### Images without a file
+* Clipboard pastes, and later screenshots and scans, are documents with an in-memory base
+  and no path. Clipboard paste comes with the first editing work.
+* "Unmodified" is the image as it arrived. The first save asks for a name and format.
+* They count as unsaved even with no edits, because they exist nowhere else.
+* The base is written to the cache folder on arrival and removed after saving or
+  discarding, so the next launch can offer to recover it.
+* They are outside the folder's grid and next/previous, so they suit one tab each, named
+  like "Untitled 1". Until tabs exist they open in the large view.
+* `ImageView` will need to accept a document as well as a path.
+* Without an embedded profile they are assumed to be sRGB.
+* Screenshots (XDG desktop portal, Windows API) and scanners (SANE, WIA) belong in the
+  system integration plugin. Check SANE's licence terms first.
+
+### Open question
+* How to keep the original on the first overwrite. Proposed: send it to the system trash,
+  and ask first where there is no trash. The alternative is a `.original` file beside it.
+
 ## Known limitations
 * Thumbnails are cached only in memory, by Qt's pixmap cache. The SQLite cache is still to
   do, and a changed file keeps its old thumbnail until the application restarts.
