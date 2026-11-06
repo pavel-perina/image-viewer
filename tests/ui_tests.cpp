@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "test_jpeg.h"
+#include "test_tiff.h"
 #include "ui/browse_context.h"
 #include "ui/directory_tree_model.h"
 #include "ui/image_view.h"
@@ -26,6 +27,7 @@ using iv::ImageView;
 using iv::test::encodeJpeg;
 using iv::test::JpegOptions;
 using iv::test::Rgb;
+using iv::test::TiffImage;
 
 namespace {
 
@@ -355,6 +357,133 @@ TEST(ImageView, ActualSizeDrawsTheFullResolutionLevelAcrossTiles) {
     const QImage image = fixture.grab();
     expectColor(image, 20, 200, QColor(220, 30, 30));
     expectColor(image, 100, 200, QColor(30, 30, 220));
+}
+
+TEST(ImageView, ShowsPagesAndResetsThemForTheNextImage) {
+    QTemporaryDir dir;
+    TiffImage red;
+    red.width = 200;
+    red.height = 200;
+    red.pixel = [](int, int) { return Rgb{220, 30, 30}; };
+    TiffImage blue = red;
+    blue.width = 100;
+    blue.pixel = [](int, int) { return Rgb{30, 30, 220}; };
+    const QString multi = dir.filePath(QStringLiteral("multi.tif"));
+    iv::test::writeTiff(QFileInfo(multi).filesystemFilePath(), {red, blue});
+    const QString single = dir.filePath(QStringLiteral("single.jpg"));
+    writeJpeg(single);
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(multi));
+    ASSERT_EQ(fixture.view->status(), ImageView::Status::Ready);
+    EXPECT_EQ(fixture.view->pageCount(), 2);
+    EXPECT_EQ(fixture.view->page(), 0);
+    EXPECT_EQ(fixture.view->imageWidth(), 200);
+
+    fixture.view->setPage(1);
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->page() == 1; }));
+    EXPECT_EQ(fixture.view->imageWidth(), 100);
+    expectColor(fixture.grab(), 200, 200, QColor(30, 30, 220));
+
+    // Pages that do not exist are ignored.
+    fixture.view->setPage(5);
+    fixture.view->setPage(-1);
+    EXPECT_EQ(fixture.view->page(), 1);
+
+    // Nothing about the previous file survives into the next one.
+    ASSERT_TRUE(fixture.load(single));
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->status() == ImageView::Status::Ready; }));
+    EXPECT_EQ(fixture.view->page(), 0);
+    EXPECT_EQ(fixture.view->pageCount(), 1);
+    EXPECT_EQ(fixture.view->imageWidth(), 64);
+
+    ASSERT_TRUE(fixture.load(multi));
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->status() == ImageView::Status::Ready; }));
+    EXPECT_EQ(fixture.view->page(), 0);
+    EXPECT_EQ(fixture.view->imageWidth(), 200);
+}
+
+TEST(ImageView, HighBitDepthGrayIsStretchedAndContrastResetsPerImage) {
+    QTemporaryDir dir;
+    // A narrow range of 16-bit values, which would look black without stretching.
+    TiffImage gray;
+    gray.width = 200;
+    gray.height = 200;
+    gray.bits = 16;
+    gray.samples = 1;
+    gray.pixel = [](int x, int) { return x < 100 ? Rgb{2, 2, 2} : Rgb{4, 4, 4}; };
+    const QString grayPath = dir.filePath(QStringLiteral("gray.tif"));
+    iv::test::writeTiff(QFileInfo(grayPath).filesystemFilePath(), {gray});
+
+    TiffImage photo = gray;
+    photo.samples = 3;
+    photo.pixel = [](int, int) { return Rgb{128, 128, 128}; };
+    const QString photoPath = dir.filePath(QStringLiteral("photo.tif"));
+    iv::test::writeTiff(QFileInfo(photoPath).filesystemFilePath(), {photo});
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(grayPath));
+    EXPECT_TRUE(fixture.view->contrastAdjustable());
+    EXPECT_TRUE(fixture.view->autoContrast());
+    QImage image = fixture.grab();
+    EXPECT_LT(image.pixelColor(150, 200).red(), 40);   // bottom of the stretched range
+    EXPECT_GT(image.pixelColor(250, 200).red(), 215);  // top of it
+
+    fixture.view->setAutoContrast(false);
+    EXPECT_FALSE(fixture.view->autoContrast());
+    image = fixture.grab();
+    EXPECT_LT(image.pixelColor(250, 200).red(), 20);  // the true values are almost black
+
+    // The manual choice belongs to that image and does not carry over.
+    ASSERT_TRUE(fixture.load(photoPath));
+    EXPECT_FALSE(fixture.view->autoContrast());
+    ASSERT_TRUE(fixture.load(grayPath));
+    EXPECT_TRUE(fixture.view->autoContrast());
+}
+
+TEST(ImageView, EightBitImagesHaveNoContrastToAdjust) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("plain.jpg"));
+    writeJpeg(path);
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(path));
+    EXPECT_FALSE(fixture.view->contrastAdjustable());
+}
+
+TEST(ImageView, DrawsAFlatLargeTiffThroughOverviewsAndRealTiles) {
+    QTemporaryDir dir;
+    TiffImage large;
+    large.width = 5000;
+    large.height = 5000;
+    large.tileSize = 512;
+    large.compression = 8;  // deflate
+    large.pixel = [](int x, int) { return x < 2500 ? Rgb{220, 30, 30} : Rgb{30, 30, 220}; };
+    const QString path = dir.filePath(QStringLiteral("flat.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {large});
+
+    ViewFixture fixture;
+    fixture.view->setSource(path);
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->status() != ImageView::Status::Loading; }, 20000));
+    ASSERT_EQ(fixture.view->status(), ImageView::Status::Ready);
+    QImage image = fixture.grab();
+    expectColor(image, 100, 200, QColor(220, 30, 30));
+    expectColor(image, 300, 200, QColor(30, 30, 220));
+
+    // At 100% the view is centred on the colour boundary, using real tiles.
+    fixture.view->actualSize();
+    image = fixture.grab();
+    expectColor(image, 100, 200, QColor(220, 30, 30));
+    expectColor(image, 300, 200, QColor(30, 30, 220));
+}
+
+TEST(BrowseContext, ListsTiffFiles) {
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    iv::test::writeTiff(QFileInfo(dir.filePath(QStringLiteral("b.tif"))).filesystemFilePath(), {TiffImage{}});
+    iv::test::writeTiff(QFileInfo(dir.filePath(QStringLiteral("c.TIFF"))).filesystemFilePath(), {TiffImage{}});
+    BrowseContext context;
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 3; }));
 }
 
 TEST(ImageView, ReportsErrorsAndRecovers) {

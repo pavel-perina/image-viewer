@@ -50,6 +50,26 @@ ApplicationWindow {
     }
     Action { id: previousAction; text: "Previous"; enabled: context.hasPrevious; onTriggered: context.previous() }
     Action { id: nextAction; text: "Next"; enabled: context.hasNext; onTriggered: context.next() }
+    Action {
+        id: previousPageAction
+        text: "Prev Page"
+        enabled: window.activeView.page > 0
+        onTriggered: window.activeView.page = window.activeView.page - 1
+    }
+    Action {
+        id: nextPageAction
+        text: "Next Page"
+        enabled: window.activeView.page + 1 < window.activeView.pageCount
+        onTriggered: window.activeView.page = window.activeView.page + 1
+    }
+    Action {
+        id: autoContrastAction
+        text: "Auto Contrast"
+        checkable: true
+        enabled: window.activeView.contrastAdjustable
+        checked: window.activeView.autoContrast
+        onTriggered: window.activeView.autoContrast = checked
+    }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
     Action { id: fitAction; text: "Fit"; shortcut: "F"; onTriggered: window.activeView.fitToView() }
@@ -58,6 +78,8 @@ ApplicationWindow {
 
     Shortcut { sequences: ["Right", "PgDown", "Space"]; onActivated: context.next() }
     Shortcut { sequences: ["Left", "PgUp", "Backspace"]; onActivated: context.previous() }
+    Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
+    Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Up"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(-1) }
     Shortcut { sequence: "Down"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(1) }
     Shortcut {
@@ -88,10 +110,14 @@ ApplicationWindow {
             MenuItem { action: previousAction }
             MenuItem { action: nextAction }
             MenuSeparator {}
+            MenuItem { action: previousPageAction }
+            MenuItem { action: nextPageAction }
+            MenuSeparator {}
             MenuItem { action: zoomInAction }
             MenuItem { action: zoomOutAction }
             MenuItem { action: fitAction }
             MenuItem { action: actualSizeAction }
+            MenuItem { action: autoContrastAction }
             MenuSeparator {}
             MenuItem { action: fullScreenAction }
         }
@@ -111,10 +137,14 @@ ApplicationWindow {
             ToolButton { action: previousAction }
             ToolButton { action: nextAction }
             ToolSeparator {}
+            ToolButton { action: previousPageAction; visible: window.activeView.pageCount > 1 }
+            ToolButton { action: nextPageAction; visible: window.activeView.pageCount > 1 }
+            ToolSeparator { visible: window.activeView.pageCount > 1 }
             ToolButton { action: zoomInAction }
             ToolButton { action: zoomOutAction }
             ToolButton { action: fitAction }
             ToolButton { action: actualSizeAction }
+            ToolButton { action: autoContrastAction; visible: window.activeView.contrastAdjustable }
             Item { Layout.fillWidth: true }
         }
     }
@@ -138,6 +168,10 @@ ApplicationWindow {
             Label {
                 visible: window.activeView.imageWidth > 0
                 text: Math.round(window.activeView.zoom * 100) + "%"
+            }
+            Label {
+                visible: window.activeView.pageCount > 1
+                text: "page " + (window.activeView.page + 1) + " / " + window.activeView.pageCount
             }
             Label {
                 visible: context.fileCount > 0
@@ -167,7 +201,7 @@ ApplicationWindow {
     FileDialog {
         id: openDialog
         title: "Open Image"
-        nameFilters: ["JPEG images (*.jpg *.jpeg *.jpe *.jfif)", "All files (*)"]
+        nameFilters: ["Images (*.jpg *.jpeg *.jpe *.jfif *.tif *.tiff)", "All files (*)"]
         onAccepted: context.openUrl(selectedFile)
     }
 

@@ -7,8 +7,9 @@ namespace iv {
 int bytesPerPixel(PixelFormat format) {
     switch (format) {
     case PixelFormat::Bgrx8:   return 4;
+    case PixelFormat::Gray16:  return 2;
     case PixelFormat::Rgba16:  return 8;
-    case PixelFormat::Rgba16F: return 8;
+    case PixelFormat::Gray32F: return 4;
     case PixelFormat::Rgba32F: return 16;
     }
     return 0;

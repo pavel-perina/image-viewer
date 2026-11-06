@@ -17,14 +17,17 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <new>
 #include <set>
 #include <span>
 #include <utility>
 #include <vector>
 
+#include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
+#include "ui/qimage_bridge.h"
 
 namespace iv {
 
@@ -77,15 +80,6 @@ public:
     }
 };
 
-// Wraps a tile without copying; the QImage keeps the pixels alive until it is uploaded.
-QImage toQImage(const ImageBuffer& buffer) {
-    auto* keepAlive = new ImageBuffer(buffer);
-    return QImage(
-        reinterpret_cast<const uchar*>(buffer.data()), buffer.width(), buffer.height(),
-        static_cast<qsizetype>(buffer.stride()), QImage::Format_RGB32,
-        [](void* info) { delete static_cast<ImageBuffer*>(info); }, keepAlive);
-}
-
 }  // namespace
 
 struct ImageView::Impl {
@@ -103,6 +97,12 @@ struct ImageView::Impl {
     // The displayed document. It stays until a newly requested one is ready to show.
     std::uint64_t document = 0;
     std::shared_ptr<ImageSource> source;
+    // Everything below describes the displayed document, and is set anew for each one.
+    int page = 0;
+    bool autoContrast = false;
+    DisplayRange autoDisplayRange;
+    DisplayRange displayRange;
+    std::vector<std::pair<TileKey, ImageBuffer>> preview;
     Size fullSize;
     Affine imageToDisplay;
     Viewport viewport;
@@ -117,7 +117,9 @@ struct ImageView::Impl {
         return q->window() ? q->window()->effectiveDevicePixelRatio() : 1.0;
     }
 
-    std::span<const LevelInfo> levels() const { return source->subimages()[0].levels; }
+    const SubimageInfo& subimage() const { return source->subimages()[static_cast<std::size_t>(page)]; }
+
+    std::span<const LevelInfo> levels() const { return subimage().levels; }
 
     void setStatus(Status newStatus, const QString& message = {}) {
         status = newStatus;
@@ -168,7 +170,16 @@ struct ImageView::Impl {
                 ++it;
             }
         }
-        for (const TileKey& key : wanted) {
+        // From the centre outwards, so what the user is looking at appears first.
+        const auto distance = [&](const TileKey& key) {
+            const RectD rect = tileRect(levels()[static_cast<std::size_t>(key.level)], fullSize, key.col, key.row);
+            const RectD visible = visibleStoredRect();
+            return std::abs(rect.x + rect.width / 2 - visible.x - visible.width / 2) +
+                   std::abs(rect.y + rect.height / 2 - visible.y - visible.height / 2);
+        };
+        std::vector<TileKey> ordered = wanted;
+        std::ranges::sort(ordered, {}, distance);
+        for (const TileKey& key : ordered) {
             if (!uploaded.contains(key) && !pendingUpload.contains(key) && !inFlight.contains(key) &&
                 !failed.contains(key)) {
                 requestTile(key);
@@ -179,8 +190,15 @@ struct ImageView::Impl {
     void requestTile(const TileKey& key) {
         const std::uint64_t doc = document;
         const auto id = queue.submit(group, kTilePriority,
-                                     [this, source = source, key, doc](std::stop_token stop) {
-            auto tile = source->readTile({0, key.level, key.col, key.row}, stop);
+                                     [this, source = source, key, doc, page = page, range = displayRange](std::stop_token stop) {
+            Result<ImageBuffer> tile = source->readTile({page, key.level, key.col, key.row}, stop);
+            if (tile) {
+                try {
+                    tile = toDisplay(*tile, range);
+                } catch (const std::bad_alloc&) {
+                    tile = std::unexpected("not enough memory for tile");
+                }
+            }
             QMetaObject::invokeMethod(q, [this, key, doc, tile = std::move(tile)] {
                 onTileRead(key, doc, tile);
             });
@@ -202,37 +220,34 @@ struct ImageView::Impl {
         }
     }
 
-    // What the worker hands over: an opened file, with its smallest level already decoded.
-    struct Opened {
+    // What the worker hands over: a page with its smallest level already decoded.
+    struct Loaded {
         std::shared_ptr<ImageSource> source;
+        int page = 0;
         std::vector<std::pair<TileKey, ImageBuffer>> preview;
+        DisplayRange autoRange;
     };
 
-    static Result<Opened> openWithPreview(const std::filesystem::path& file, const std::stop_token& stop) {
-        auto source = openImageSource(file);
-        if (!source) {
-            return std::unexpected(source.error());
-        }
-        const SubimageInfo& subimage = (*source)->subimages()[0];
-        if (subimage.format != PixelFormat::Bgrx8) {
-            return std::unexpected("this pixel format cannot be displayed yet");
-        }
-
-        Opened opened{*source, {}};
-        const int coarsest = static_cast<int>(subimage.levels.size()) - 1;
-        const LevelInfo& level = subimage.levels.back();
+    static Result<Loaded> loadPreview(std::shared_ptr<ImageSource> source, int page, const std::stop_token& stop) {
+        const SubimageInfo& info = source->subimages()[static_cast<std::size_t>(page)];
+        Loaded loaded{source, page, {}, {}};
+        const int coarsest = static_cast<int>(info.levels.size()) - 1;
+        const LevelInfo& level = info.levels.back();
         const int cols = (level.size.width + level.tileSize.width - 1) / level.tileSize.width;
         const int rows = (level.size.height + level.tileSize.height - 1) / level.tileSize.height;
+        std::vector<ImageBuffer> tiles;
         for (int row = 0; row < rows; ++row) {
             for (int col = 0; col < cols; ++col) {
-                auto tile = (*source)->readTile({0, coarsest, col, row}, stop);
+                auto tile = source->readTile({page, coarsest, col, row}, stop);
                 if (!tile) {
                     return std::unexpected(tile.error());
                 }
-                opened.preview.emplace_back(TileKey{coarsest, col, row}, *tile);
+                tiles.push_back(*tile);
+                loaded.preview.emplace_back(TileKey{coarsest, col, row}, *tile);
             }
         }
-        return opened;
+        loaded.autoRange = autoRange(tiles);
+        return loaded;
     }
 
     void open(const QString& newPath) {
@@ -249,53 +264,106 @@ struct ImageView::Impl {
 
         queue.submit(group, kOpenPriority,
                      [this, file = QFileInfo(newPath).filesystemFilePath(), request](std::stop_token stop) {
-            auto opened = openWithPreview(file, stop);
-            QMetaObject::invokeMethod(q, [this, request, opened = std::move(opened)] {
-                onOpened(request, opened);
+            Result<Loaded> loaded = std::unexpected("cancelled");
+            try {
+                auto source = openImageSource(file);
+                loaded = source ? loadPreview(*source, 0, stop) : Result<Loaded>(std::unexpected(source.error()));
+            } catch (const std::bad_alloc&) {
+                loaded = std::unexpected("not enough memory to open image");
+            }
+            QMetaObject::invokeMethod(q, [this, request, loaded = std::move(loaded)] {
+                onLoaded(request, loaded);
             });
         });
     }
 
-    void onOpened(std::uint64_t request, const Result<Opened>& opened) {
+    void showPage(int newPage) {
+        if (!source || newPage == page || newPage < 0 || newPage >= std::ssize(source->subimages())) {
+            return;
+        }
+        const std::uint64_t request = ++latestRequest;
+        queue.cancelGroup(group);
+        inFlight.clear();
+        setStatus(Status::Loading);
+        queue.submit(group, kOpenPriority, [this, source = source, newPage, request](std::stop_token stop) {
+            Result<Loaded> loaded = std::unexpected("cancelled");
+            try {
+                loaded = loadPreview(source, newPage, stop);
+            } catch (const std::bad_alloc&) {
+                loaded = std::unexpected("not enough memory to open page");
+            }
+            QMetaObject::invokeMethod(q, [this, request, loaded = std::move(loaded)] {
+                onLoaded(request, loaded);
+            });
+        });
+    }
+
+    void onLoaded(std::uint64_t request, const Result<Loaded>& loaded) {
         if (request != latestRequest) {
             return;
         }
-        if (!opened) {
+        if (!loaded) {
             closeDocument();
-            setStatus(Status::Error, QString::fromStdString(opened.error()));
+            setStatus(Status::Error, QString::fromStdString(loaded.error()));
             return;
         }
 
-        ++document;
-        source = opened->source;
-        const SubimageInfo& subimage = source->subimages()[0];
-        fullSize = subimage.levels.front().size;
-        imageToDisplay = displayFromStored(fullSize, subimage.orientation);
-
-        inFlight.clear();
-        uploaded.clear();
-        failed.clear();
-        pendingUpload.clear();
-        for (const auto& [key, tile] : opened->preview) {
-            pendingUpload.emplace(key, toQImage(tile));
-        }
+        source = loaded->source;
+        page = loaded->page;
+        preview = loaded->preview;
+        autoDisplayRange = loaded->autoRange;
+        const SubimageInfo& info = subimage();
+        autoContrast = usesAutoRangeByDefault(info.format);
+        fullSize = info.levels.front().size;
+        imageToDisplay = displayFromStored(fullSize, info.orientation);
 
         if (viewport.fitMode() == FitMode::Manual) {
             viewport.setFitMode(FitMode::ShrinkToFit);
         }
-        viewport.setImageSize(displaySize(fullSize, subimage.orientation));
+        viewport.setImageSize(displaySize(fullSize, info.orientation));
+        startDisplaying();
         setStatus(Status::Ready);
+        emit q->pageChanged();
+        viewChanged();
+    }
+
+    // Starts drawing the current page with the current display range, from the preview.
+    void startDisplaying() {
+        ++document;
+        const PixelFormat format = subimage().format;
+        displayRange = autoContrast ? autoDisplayRange : fullRange(format);
+        inFlight.clear();
+        uploaded.clear();
+        failed.clear();
+        pendingUpload.clear();
+        for (const auto& [key, tile] : preview) {
+            pendingUpload.emplace(key, toQImage(toDisplay(tile, displayRange)));
+        }
+    }
+
+    void setAutoContrast(bool enabled) {
+        if (!source || enabled == autoContrast) {
+            return;
+        }
+        autoContrast = enabled;
+        queue.cancelGroup(group);
+        startDisplaying();
+        emit q->pageChanged();
         viewChanged();
     }
 
     void closeDocument() {
         ++document;
         source.reset();
+        page = 0;
+        autoContrast = false;
+        preview.clear();
         inFlight.clear();
         uploaded.clear();
         failed.clear();
         pendingUpload.clear();
         viewport.setImageSize({});
+        emit q->pageChanged();
         emit q->zoomChanged();
         q->update();
     }
@@ -421,12 +489,23 @@ ImageView::Status ImageView::status() const { return m_impl->status; }
 QString ImageView::errorString() const { return m_impl->error; }
 
 int ImageView::imageWidth() const {
-    return m_impl->source ? displaySize(m_impl->fullSize, m_impl->source->subimages()[0].orientation).width : 0;
+    return m_impl->source ? displaySize(m_impl->fullSize, m_impl->subimage().orientation).width : 0;
 }
 
 int ImageView::imageHeight() const {
-    return m_impl->source ? displaySize(m_impl->fullSize, m_impl->source->subimages()[0].orientation).height : 0;
+    return m_impl->source ? displaySize(m_impl->fullSize, m_impl->subimage().orientation).height : 0;
 }
+
+int ImageView::page() const { return m_impl->page; }
+void ImageView::setPage(int page) { m_impl->showPage(page); }
+int ImageView::pageCount() const { return m_impl->source ? static_cast<int>(m_impl->source->subimages().size()) : 0; }
+
+bool ImageView::contrastAdjustable() const {
+    return m_impl->source && m_impl->subimage().format != PixelFormat::Bgrx8;
+}
+
+bool ImageView::autoContrast() const { return m_impl->autoContrast; }
+void ImageView::setAutoContrast(bool enabled) { m_impl->setAutoContrast(enabled); }
 
 double ImageView::zoom() const { return m_impl->viewport.zoom(); }
 

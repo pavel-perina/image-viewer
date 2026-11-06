@@ -8,10 +8,11 @@
 namespace iv {
 
 enum class PixelFormat {
-    Bgrx8,    // bytes B, G, R, unused; the format every 8-bit decoder produces
-    Rgba16,   // 16-bit unsigned per channel
-    Rgba16F,  // 16-bit float per channel
-    Rgba32F,  // 32-bit float per channel
+    Bgrx8,    // bytes B, G, R, unused; all 8-bit images, including grayscale
+    Gray16,   // one 16-bit unsigned channel
+    Rgba16,   // four 16-bit unsigned channels
+    Gray32F,  // one 32-bit float channel
+    Rgba32F,  // four 32-bit float channels
 };
 
 int bytesPerPixel(PixelFormat format);

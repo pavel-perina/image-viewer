@@ -16,14 +16,39 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   profile and levels. Reduced resolution copies are levels, not subimages.
 * JPEG uses libjpeg's 1/2, 1/4 and 1/8 scaled decoding as its levels. It decodes a whole
   level and serves tiles as zero-copy views, because a JPEG cannot be entered mid-stream.
-* `PixelFormat` already lists 16-bit and float formats, but only `Bgrx8` is decoded and
-  displayed so far.
+* TIFF keeps the file's precision: 8-bit becomes `Bgrx8`, higher depths become `Gray16`,
+  `Rgba16`, `Gray32F` or `Rgba32F`. Layouts it cannot read directly (palette, 1-bit, YCbCr,
+  8-bit CMYK) go through libtiff's RGBA interface as 8-bit. 16-bit CMYK is refused for now.
+* Reduced images become levels whether stored in the main chain or in SubIFDs. Levels are
+  sorted by size and any ratio between them is accepted. Reduced images that do not match
+  their page are ignored, and masks are skipped.
+* Strips are served as virtual tiles, so a file with one-row strips does not become
+  thousands of textures, and a single huge strip is cut to texture size.
+* One libtiff handle per source, guarded by a mutex. A pool of handles is only worth adding
+  if measurements on real files justify it.
+
+## Overviews
+* A flat image larger than 2048 pixels gets generated levels, down to 2048 on the long
+  edge, because fit-to-window would otherwise need every tile. They are built once, by
+  reading the whole image, and kept in memory up to 2 GiB. Damaged tiles stay black.
+* This is what a large flat file costs on first display: roughly a second per 100
+  megapixels, single-threaded, because tiles are decoded under the source's one mutex.
+  Pyramid files avoid it and open in milliseconds. Parallel decoding would speed it up, and
+  a persistent cache of overviews could avoid it for flat files too.
+
+## Display range
+* Pixels are converted to `Bgrx8` on the worker thread, with a low and high value per image.
+* Gray and float images default to auto contrast (0.1% percentiles of the coarsest level),
+  because their useful range is often a small part of the format's range. 16-bit RGB is
+  usually a photograph, where stretching would falsify the exposure, so it defaults to the
+  full range. The choice is per image and does not carry over to the next one.
 
 ## Rendering
 * Public Qt Quick scene graph API only (`QSGSimpleTextureNode`), so it runs on every RHI
   backend. Qt Quick already runs on Vulkan through RHI, so no direct Vulkan dependency.
-* 16-bit display and colour management will need a custom `QSGMaterial` with shaders,
-  which adds `qt6-shadertools`.
+* 16-bit images are converted to 8-bit on the CPU for display, so changing the display range
+  redraws through the worker. Live adjustment or colour management may later need a custom
+  `QSGMaterial` with shaders, which adds `qt6-shadertools`.
 * Orientation is applied by the scene graph transform, not by rotating pixels.
 
 ## Threads
@@ -43,6 +68,9 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   there is only one.
 
 ## Libraries
+* libtiff may pull in a different libjpeg than the application links (`libjpeg.so.8` and
+  `.62`). Their symbols are versioned, so both can load into one process, and a test decodes
+  a JPEG and a JPEG-compressed TIFF together. The linker warning about it is harmless.
 * Exiv2 is GPL and ruled out. Candidates for metadata are a permissive EXIF reader, or
   external ExifTool for full metadata.
 * Qt Charts and Qt Graphs are not available under LGPL, so the histogram is drawn by us.
@@ -50,7 +78,7 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Thumbnails will be stored as compressed blobs, so they do not need zstd.
 
 ## Planned, not built
-* Formats: TIFF (BigTIFF, tiled, pyramids, multipage, 16-bit), PNG, WebP, AVIF, JPEG XL,
+* Formats: PNG, WebP, AVIF, JPEG XL,
   and PCX, BMP, TGA, GIF. Animation in GIF, WebP and JPEG XL.
 * Colour management with LittleCMS. ICC profiles are already read and kept.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
@@ -79,6 +107,13 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * The same edit list can drive batch tools and "repeat last edit".
 * Images must fit in memory to be edited at first. Gigapixel TIFFs stay view and export
   until per-tile editing exists.
+* Each opened image says whether it can be edited, and if not, why, so the UI can disable
+  the tools and show the reason. Editing is refused for images that are too big, and for
+  images the viewer shows but does not fully keep: palette and 1-bit images, those read
+  through a conversion to 8-bit, and those with alpha or extra samples, which are dropped
+  on reading. The default is read-only, and a format is allowed once it survives saving.
+* Saving a multipage or pyramid file back must keep its other pages and levels. Until it
+  does, such files can only be saved as a new file.
 * Saving writes a temporary file and renames it over the target.
 * Star and delete metadata write directly to the file without touching pixels, so they do
   not recompress it. File operations such as rename, move and trash are outside the undo

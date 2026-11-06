@@ -23,6 +23,7 @@ using Result = std::expected<T, std::string>;
 struct LevelInfo {
     Size size;
     Size tileSize;
+    bool generated = false;  // computed from a larger level rather than stored in the file
 };
 
 enum class SubimageRole {

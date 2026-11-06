@@ -19,6 +19,10 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY statusChanged)
     Q_PROPERTY(int imageHeight READ imageHeight NOTIFY statusChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY zoomChanged)
+    Q_PROPERTY(int page READ page WRITE setPage NOTIFY pageChanged)
+    Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
+    Q_PROPERTY(bool contrastAdjustable READ contrastAdjustable NOTIFY pageChanged)
+    Q_PROPERTY(bool autoContrast READ autoContrast WRITE setAutoContrast NOTIFY pageChanged)
 
 public:
     enum class Status { Null, Loading, Ready, Error };
@@ -34,6 +38,12 @@ public:
     int imageWidth() const;
     int imageHeight() const;
     double zoom() const;  // device pixels per image pixel
+    int page() const;
+    void setPage(int page);
+    int pageCount() const;
+    bool contrastAdjustable() const;  // whether the image has more than 8 bits to map
+    bool autoContrast() const;
+    void setAutoContrast(bool enabled);
 
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
@@ -44,6 +54,7 @@ signals:
     void sourceChanged();
     void statusChanged();
     void zoomChanged();
+    void pageChanged();
 
 protected:
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* data) override;

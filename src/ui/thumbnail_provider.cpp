@@ -12,6 +12,7 @@
 #include "core/image_buffer.h"
 #include "core/thumbnail.h"
 #include "core/work_queue.h"
+#include "ui/qimage_bridge.h"
 
 namespace iv {
 
@@ -20,14 +21,6 @@ namespace {
 constexpr int kThumbnailEdge = 256;
 // Below every other kind of work, so opening an image is never held up by thumbnails.
 constexpr int kBasePriority = -1'000'000'000;
-
-QImage toQImage(const ImageBuffer& buffer) {
-    auto* keepAlive = new ImageBuffer(buffer);
-    return QImage(
-        reinterpret_cast<const uchar*>(buffer.data()), buffer.width(), buffer.height(),
-        static_cast<qsizetype>(buffer.stride()), QImage::Format_RGB32,
-        [](void* info) { delete static_cast<ImageBuffer*>(info); }, keepAlive);
-}
 
 class ThumbnailResponse final : public QQuickImageResponse {
 public:

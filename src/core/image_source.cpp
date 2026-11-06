@@ -5,6 +5,8 @@
 #include <new>
 
 #include "core/jpeg_source.h"
+#include "core/overview_source.h"
+#include "core/tiff_source.h"
 
 namespace iv {
 
@@ -35,18 +37,34 @@ Result<std::vector<std::uint8_t>> readFile(const std::filesystem::path& path) {
 }  // namespace
 
 Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path) {
-    auto bytes = readFile(path);
-    if (!bytes) {
-        return std::unexpected(bytes.error());
+    // Only the header: a TIFF can be far larger than memory.
+    std::array<std::uint8_t, 16> header{};
+    {
+        std::ifstream file(path, std::ios::binary);
+        if (!file) {
+            return std::unexpected("cannot open file");
+        }
+        file.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
     }
-    if (isJpeg(*bytes)) {
-        return openJpegSource(std::move(*bytes));
+
+    Result<std::shared_ptr<ImageSource>> source = std::unexpected("unsupported image format");
+    if (isTiff(header)) {
+        source = openTiffSource(path);
+    } else if (isJpeg(header)) {
+        auto bytes = readFile(path);
+        if (!bytes) {
+            return std::unexpected(bytes.error());
+        }
+        source = openJpegSource(std::move(*bytes));
     }
-    return std::unexpected("unsupported image format");
+    if (!source) {
+        return source;
+    }
+    return withOverviews(std::move(*source));
 }
 
 std::span<const std::string_view> supportedExtensions() {
-    static constexpr std::array<std::string_view, 4> kExtensions{"jpg", "jpeg", "jpe", "jfif"};
+    static constexpr std::array<std::string_view, 6> kExtensions{"jpg", "jpeg", "jpe", "jfif", "tif", "tiff"};
     return kExtensions;
 }
 
