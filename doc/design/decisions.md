@@ -139,6 +139,11 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
   the selection of the current panel.
+* Optimize sharp resampling: the first pass decodes sRGB with `pow` for every texel it reads,
+  up to about 10 per pixel just above 50% zoom. Its input is 8-bit, so a 256-entry lookup would
+  do. The second pass encodes with `pow` once per pixel; its input is float, so it would need
+  a finer table or an approximation. The worst case is 18-20 ms per frame at 1920x1000 on Intel
+  UHD 620, but how much of that is `pow` is not measured, so measure before and after.
 * Possibly a dual-panel file manager. File icons are OS dependent, so they belong in the
   optional system integration layer, along with KDE or Windows places.
 
