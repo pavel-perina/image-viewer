@@ -22,7 +22,15 @@ qt_add_qml_module(iv_ui
         qml/BrowserPage.qml
         qml/InfoPanel.qml
         qml/Main.qml
+        qml/ResampledView.qml
         qml/ViewerPage.qml
+)
+
+qt_add_shaders(iv_ui "iv_shaders"
+    PREFIX "/"
+    FILES
+        shaders/mks_horizontal.frag
+        shaders/mks_vertical.frag
 )
 
 target_include_directories(iv_ui

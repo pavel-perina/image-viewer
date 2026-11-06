@@ -7,6 +7,8 @@ namespace iv {
 
 namespace {
 constexpr double kMaxZoom = 64.0;
+constexpr double kMaxResampleZoom = 2.0;
+constexpr int kMaxResampleTexture = 8192;
 }
 
 void Viewport::setImageSize(Size size) {
@@ -125,6 +127,29 @@ RectD tileRect(const LevelInfo& level, Size fullSize, int col, int row) {
     const int right = std::min(left + level.tileSize.width, level.size.width);
     const int bottom = std::min(top + level.tileSize.height, level.size.height);
     return {left * scaleX, top * scaleY, (right - left) * scaleX, (bottom - top) * scaleY};
+}
+
+ResampleGeometry resampleGeometry(const Viewport& viewport, Size imageSize, double levelScale, double supportRadius) {
+    ResampleGeometry g;
+    const double zoom = viewport.zoom();
+    if (zoom >= kMaxResampleZoom || std::abs(zoom / levelScale - 1.0) < 1e-6 || imageSize.width <= 0 || imageSize.height <= 0 ||
+        viewport.viewWidth() <= 0 || viewport.viewHeight() <= 0) {
+        return g;
+    }
+    g.ratio = levelScale / zoom;
+    g.spacing = std::max(g.ratio, 1.0);
+    g.scale = levelScale;
+    const double margin = std::ceil(supportRadius * g.spacing) + 1;
+    g.marginPixels = margin / levelScale;
+    g.translateX = std::ceil(viewport.offsetX() * g.ratio) + margin;
+    g.translateY = std::ceil(viewport.offsetY() * g.ratio) + margin;
+    g.phaseX = g.translateX - viewport.offsetX() * g.ratio;
+    g.phaseY = g.translateY - viewport.offsetY() * g.ratio;
+    g.textureWidth = static_cast<int>(std::ceil(g.phaseX + viewport.viewWidth() * g.ratio + margin));
+    g.textureHeight = static_cast<int>(std::ceil(g.phaseY + viewport.viewHeight() * g.ratio + margin));
+    g.imageTexels = {g.translateX, g.translateY, std::round(imageSize.width * levelScale), std::round(imageSize.height * levelScale)};
+    g.active = g.textureWidth <= kMaxResampleTexture && g.textureHeight <= kMaxResampleTexture;
+    return g;
 }
 
 }  // namespace iv

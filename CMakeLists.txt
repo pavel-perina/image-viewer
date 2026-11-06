@@ -18,7 +18,7 @@ option(IV_BUILD_TESTS "Build the test suite" ON)
 # Added before Qt is set up, so that core cannot pick up any Qt settings.
 add_subdirectory(src/core)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_subdirectory(src/ui)

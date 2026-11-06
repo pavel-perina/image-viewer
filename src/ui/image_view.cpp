@@ -8,6 +8,7 @@
 #include <QMatrix4x4>
 #include <QMouseEvent>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QSGSimpleTextureNode>
 #include <QSGTexture>
 #include <QSGTransformNode>
@@ -51,6 +52,8 @@ constexpr qint64 kTextureBudgetBytes = 768ll * 1024 * 1024;
 constexpr qint64 kUploadBytesPerFrame = 64ll * 1024 * 1024;
 // From this zoom up, show individual pixels instead of blurring them.
 constexpr double kNearestFilterZoom = 2.0;
+// How far Magic Kernel Sharp 2013 reaches, in its own units.
+constexpr double kResampleSupport = 2.5;
 
 struct TileKey {
     int level = 0;
@@ -134,6 +137,9 @@ struct ImageView::Impl {
     QVariantList fileDetails;
     QVariantList details;
 
+    bool resampling = false;
+    ResampleGeometry resample;  // inactive unless it is in use
+
     bool histogramEnabled = false;
     bool histogramValid = false;    // the histogram below belongs to the current page
     bool histogramPending = false;  // a worker is computing it
@@ -165,7 +171,25 @@ struct ImageView::Impl {
         viewChanged();
     }
 
+    bool gpuAvailable() const {
+        return q->window() && q->window()->rendererInterface()->graphicsApi() != QSGRendererInterface::Software;
+    }
+
+    double levelScale(int level) const {
+        return static_cast<double>(levels()[static_cast<std::size_t>(level)].size.width) / fullSize.width;
+    }
+
+    void updateResampling() {
+        resample = {};
+        if (resampling && source && gpuAvailable()) {
+            const int level = chooseLevel(levels(), viewport.zoom());
+            resample = resampleGeometry(viewport, displaySize(fullSize, subimage().orientation), levelScale(level), kResampleSupport);
+        }
+        emit q->resampleChanged();
+    }
+
     void viewChanged() {
+        updateResampling();
         emit q->zoomChanged();
         if (source) {
             requestVisibleTiles();
@@ -186,7 +210,17 @@ struct ImageView::Impl {
     }
 
     RectD visibleStoredRect() const {
-        return imageToDisplay.inverse().mapRect(viewport.visibleRect());
+        RectD visible = viewport.visibleRect();
+        if (resample.active) {  // the kernel also reads what lies just outside the view
+            const Size image = displaySize(fullSize, subimage().orientation);
+            const double right = std::min<double>(image.width, visible.x + visible.width + resample.marginPixels);
+            const double bottom = std::min<double>(image.height, visible.y + visible.height + resample.marginPixels);
+            visible.x = std::max(0.0, visible.x - resample.marginPixels);
+            visible.y = std::max(0.0, visible.y - resample.marginPixels);
+            visible.width = right - visible.x;
+            visible.height = bottom - visible.y;
+        }
+        return imageToDisplay.inverse().mapRect(visible);
     }
 
     void requestVisibleTiles() {
@@ -544,7 +578,9 @@ struct ImageView::Impl {
             auto* node = new QSGSimpleTextureNode;
             node->setOwnsTexture(false);
             node->setTexture(texture);
-            node->setFiltering(filtering);
+            // Going through the kernel the target level maps texel to texel, and must stay
+            // exact, while what stands in for it until it arrives is enlarged as usual.
+            node->setFiltering(resample.active && key.level != chooseLevel(levels(), viewport.zoom()) ? QSGTexture::Linear : filtering);
             node->setRect(rect.x, rect.y, rect.width, rect.height);
             root.appendChildNode(node);
         }
@@ -573,6 +609,19 @@ struct ImageView::Impl {
     }
 
     QMatrix4x4 storedToItemMatrix() const {
+        if (resample.active) {
+            // Item coordinates are stretched over the texture, so one texel per level pixel
+            // here means this.
+            const double unitX = q->width() / resample.textureWidth;
+            const double unitY = q->height() / resample.textureHeight;
+            const Affine& m = imageToDisplay;
+            return QMatrix4x4(static_cast<float>(m.a * resample.scale * unitX), static_cast<float>(m.c * resample.scale * unitX), 0,
+                              static_cast<float>((m.tx * resample.scale + resample.translateX) * unitX),
+                              static_cast<float>(m.b * resample.scale * unitY), static_cast<float>(m.d * resample.scale * unitY), 0,
+                              static_cast<float>((m.ty * resample.scale + resample.translateY) * unitY),
+                              0, 0, 1, 0,
+                              0, 0, 0, 1);
+        }
         const double scale = viewport.zoom() / devicePixelRatio();
         const double offsetX = viewport.offsetX() / devicePixelRatio();
         const double offsetY = viewport.offsetY() / devicePixelRatio();
@@ -650,6 +699,41 @@ QVariant ImageView::histogram() const {
     return m_impl->histogram ? QVariant::fromValue(m_impl->histogram) : QVariant();
 }
 
+bool ImageView::resampling() const { return m_impl->resampling; }
+
+void ImageView::setResampling(bool enabled) {
+    if (enabled == m_impl->resampling) {
+        return;
+    }
+    m_impl->resampling = enabled;
+    m_impl->viewChanged();
+}
+
+bool ImageView::resampleActive() const { return m_impl->resample.active; }
+
+QSize ImageView::resampleTextureSize() const { return {m_impl->resample.textureWidth, m_impl->resample.textureHeight}; }
+
+QPointF ImageView::resamplePhase() const { return {m_impl->resample.phaseX, m_impl->resample.phaseY}; }
+
+QRectF ImageView::resampleBounds() const {
+    const RectD& r = m_impl->resample.imageTexels;
+    return {r.x, r.y, r.width, r.height};
+}
+
+QRectF ImageView::resampleImageRect() const {
+    const auto& vp = m_impl->viewport;
+    if (!m_impl->resample.active || vp.viewWidth() <= 0 || vp.viewHeight() <= 0) {
+        return {};
+    }
+    const Size image = displaySize(m_impl->fullSize, m_impl->subimage().orientation);
+    return {vp.offsetX() / vp.viewWidth(), vp.offsetY() / vp.viewHeight(), image.width * vp.zoom() / vp.viewWidth(),
+            image.height * vp.zoom() / vp.viewHeight()};
+}
+
+double ImageView::resampleRatio() const { return m_impl->resample.ratio; }
+double ImageView::resampleSpacing() const { return m_impl->resample.spacing; }
+double ImageView::resampleDevicePixelRatio() const { return m_impl->devicePixelRatio(); }
+
 void ImageView::zoomIn() {
     auto& vp = m_impl->viewport;
     vp.zoomBy(kZoomStep, vp.viewWidth() / 2, vp.viewHeight() / 2);
@@ -702,7 +786,7 @@ QSGNode* ImageView::updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData*) {
     for (const TileKey& key : tiles) {
         root->textures.at(key).lastDrawnFrame = root->frame;
     }
-    const auto filtering = d.viewport.zoom() >= kNearestFilterZoom ? QSGTexture::Nearest : QSGTexture::Linear;
+    const auto filtering = d.resample.active || d.viewport.zoom() >= kNearestFilterZoom ? QSGTexture::Nearest : QSGTexture::Linear;
     d.syncTileNodes(*root, tiles, filtering);
     d.evictTextures(*root);
     root->setMatrix(d.storedToItemMatrix());

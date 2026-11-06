@@ -69,9 +69,21 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Public Qt Quick scene graph API only (`QSGSimpleTextureNode`), so it runs on every RHI
   backend. Qt Quick already runs on Vulkan through RHI, so no direct Vulkan dependency.
 * 16-bit images are converted to 8-bit on the CPU for display, so changing the display range
-  redraws through the worker. Live adjustment may later need a custom `QSGMaterial` with
-  shaders, which adds `qt6-shadertools`.
+  redraws through the worker. Live adjustment could use shaders too, now that
+  `qt6-shadertools` is a dependency.
 * Orientation is applied by the scene graph transform, not by rotating pixels.
+* Sharp resampling is optional and off by default, until a settings dialog exists. It uses
+  Magic Kernel Sharp 2013 in linear light, in two separable passes. That kernel already
+  contains the post-sharpening step, stretched along when minifying, so no separate pass
+  follows, and another would sharpen twice.
+* It is built from `ShaderEffect` and layers, public API only. Tiles cannot be filtered one by
+  one, as the kernel reaches past their edges, so the view draws them into a texture at the
+  level's own resolution, aligned to its pixels, and the kernel reads from that.
+* It stays out at exactly a level's scale, where the kernel would sharpen pixels shown as they
+  are; from 200%, where pixels are meant to be seen; and on the software renderer. Tiles
+  outside the view are read for the kernel's margin, so it costs slightly more decoding.
+* The passes assume the sRGB curve, so with another display profile linear light is
+  approximate. The filter applies to the large view, not to the browser's preview.
 
 ## Colour
 * LittleCMS (MIT) converts on the CPU in `toDisplay`, on the workers, so it is part of making

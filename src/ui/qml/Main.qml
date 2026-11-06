@@ -94,6 +94,14 @@ ApplicationWindow {
         checked: viewerPage.panelAnimated
         onTriggered: viewerPage.panelAnimated = checked
     }
+    Action {
+        id: sharpResamplingAction
+        text: "&Sharp Resampling"
+        shortcut: "M"
+        checkable: true
+        checked: viewerPage.sharpResampling
+        onTriggered: viewerPage.sharpResampling = checked
+    }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
     Action { id: fitAction; text: "Fit"; shortcut: "F"; onTriggered: window.activeView.fitToView() }
@@ -147,6 +155,7 @@ ApplicationWindow {
             MenuItem { action: fitAction }
             MenuItem { action: actualSizeAction }
             MenuItem { action: autoContrastAction }
+            MenuItem { action: sharpResamplingAction }
             MenuSeparator {}
             MenuItem { action: colorManagedAction }
             MenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.open() }

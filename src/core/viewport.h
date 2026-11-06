@@ -65,4 +65,27 @@ TileRange tilesInRect(const LevelInfo& level, Size fullSize, const RectD& rect);
 // The area a tile covers, in level 0 coordinates.
 RectD tileRect(const LevelInfo& level, Size fullSize, int col, int row);
 
+// How to draw through a resampling kernel: a level's tiles go into a texture at one texel per
+// pixel of the level, aligned to it, and the kernel takes that texture to the view. A
+// "texel" position below is in that texture, where a texel's centre is at +0.5.
+struct ResampleGeometry {
+    bool active = false;
+    double ratio = 1;    // texels per device pixel
+    double spacing = 1;  // how far the kernel is stretched, in texels; only when minifying
+    int textureWidth = 0;
+    int textureHeight = 0;
+    double scale = 1;       // texels per image pixel
+    double translateX = 0;  // texel = image * scale + translate; whole numbers, for alignment
+    double translateY = 0;
+    double phaseX = 0;  // the texel position of the view's corner
+    double phaseY = 0;
+    RectD imageTexels;     // the image in the texture
+    double marginPixels = 0;  // how far beyond the view the kernel reads, in image pixels
+};
+
+// Inactive at exactly the level's scale, where the kernel would sharpen pixels that are shown
+// as they are; from 200%, where individual pixels are shown; and if the texture would be
+// unreasonably large for the GPU. The kernel reaches supportRadius of its own units.
+ResampleGeometry resampleGeometry(const Viewport& viewport, Size imageSize, double levelScale, double supportRadius);
+
 }  // namespace iv

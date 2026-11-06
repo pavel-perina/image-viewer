@@ -1,6 +1,9 @@
 #pragma once
 
+#include <QPointF>
 #include <QQuickItem>
+#include <QRectF>
+#include <QSize>
 #include <QString>
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
@@ -30,6 +33,18 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(bool histogramEnabled READ histogramEnabled WRITE setHistogramEnabled NOTIFY histogramChanged)
     // Opaque; meant for HistogramView.histogram. Empty until computed.
     Q_PROPERTY(QVariant histogram READ histogram NOTIFY histogramChanged)
+    // Whether to draw through ResampledView where that helps. The rest describes how, for that
+    // item, and resampleActive says whether it applies now: it needs the GPU, and some zooms
+    // show pixels as they are.
+    Q_PROPERTY(bool resampling READ resampling WRITE setResampling NOTIFY resampleChanged)
+    Q_PROPERTY(bool resampleActive READ resampleActive NOTIFY resampleChanged)
+    Q_PROPERTY(QSize resampleTextureSize READ resampleTextureSize NOTIFY resampleChanged)
+    Q_PROPERTY(QPointF resamplePhase READ resamplePhase NOTIFY resampleChanged)
+    Q_PROPERTY(QRectF resampleBounds READ resampleBounds NOTIFY resampleChanged)
+    Q_PROPERTY(QRectF resampleImageRect READ resampleImageRect NOTIFY resampleChanged)
+    Q_PROPERTY(double resampleRatio READ resampleRatio NOTIFY resampleChanged)
+    Q_PROPERTY(double resampleSpacing READ resampleSpacing NOTIFY resampleChanged)
+    Q_PROPERTY(double resampleDevicePixelRatio READ resampleDevicePixelRatio NOTIFY resampleChanged)
 
 public:
     enum class Status { Null, Loading, Ready, Error };
@@ -55,6 +70,16 @@ public:
     bool histogramEnabled() const;
     void setHistogramEnabled(bool enabled);
     QVariant histogram() const;
+    bool resampling() const;
+    void setResampling(bool enabled);
+    bool resampleActive() const;
+    QSize resampleTextureSize() const;
+    QPointF resamplePhase() const;
+    QRectF resampleBounds() const;
+    QRectF resampleImageRect() const;  // the image in the view, from 0 to 1
+    double resampleRatio() const;
+    double resampleSpacing() const;
+    double resampleDevicePixelRatio() const;
 
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
@@ -68,6 +93,7 @@ signals:
     void pageChanged();
     void detailsChanged();
     void histogramChanged();
+    void resampleChanged();
 
 protected:
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* data) override;

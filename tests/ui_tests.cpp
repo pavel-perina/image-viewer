@@ -14,12 +14,15 @@
 #include <QQuickTextureFactory>
 #include <QQuickView>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QUrl>
 #include <QtQml/QQmlExtensionPlugin>
 
+#include <array>
+#include <cmath>
 #include <functional>
 #include <memory>
 
@@ -1195,6 +1198,152 @@ TEST(ViewerPage, PanelTakesRoomFromTheImageExceptAtFullScreen) {
     page->setProperty("fullScreen", false);
     EXPECT_TRUE(waitUntil([&] { return image->width() == withPanel; }));
     page->setProperty("panelPinned", false);  // the settings outlive the test
+}
+
+TEST(ImageView, ResamplingNeedsTheGpuAndLeavesTheSoftwareRendererAlone) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("a.jpg"));
+    JpegOptions options;
+    options.width = 800;
+    options.height = 800;
+    options.pixel = [](int, int) { return Rgb{200, 40, 40}; };
+    writeJpeg(path, options);
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(path));
+    fixture.view->setResampling(true);
+    fixture.view->zoomOut();
+    if (fixture.window.rendererInterface()->graphicsApi() != QSGRendererInterface::Software) {
+        GTEST_SKIP() << "for the software renderer";
+    }
+    EXPECT_FALSE(fixture.view->resampleActive());
+    expectColor(fixture.grab(), 200, 200, QColor(200, 40, 40));
+}
+
+namespace {
+
+double srgbToLinear(double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
+
+double linearToSrgb(double c) {
+    c = std::clamp(c, 0.0, 1.0);
+    return c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(c, 1 / 2.4) - 0.055;
+}
+
+double mks2013(double x) {
+    x = std::abs(x);
+    if (x <= 0.5) {
+        return 17.0 / 16.0 - 1.75 * x * x;
+    }
+    if (x <= 1.5) {
+        return (1.0 - x) * (1.75 - x);
+    }
+    return x <= 2.5 ? -0.125 * (x - 2.5) * (x - 2.5) : 0.0;
+}
+
+}  // namespace
+
+// Needs a GPU or at least a GL driver, so run this one by hand on a real display or Xvfb:
+//   QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl iv_ui_tests --gtest_filter='ResampledView.*'
+TEST(ResampledView, MatchesTheKernelComputedOnTheCpu) {
+    QTemporaryDir dir;
+    const int width = 600;
+    const int height = 500;
+    const auto pattern = [](int x, int y) {
+        const auto v = static_cast<std::uint8_t>((x / 7 + y / 5) % 2 != 0 ? 230 : 25);
+        return Rgb{v, static_cast<std::uint8_t>((x * 255) / 600), static_cast<std::uint8_t>(255 - v)};
+    };
+    TiffImage image;
+    image.width = width;
+    image.height = height;
+    image.pixel = pattern;
+    const QString path = dir.filePath(QStringLiteral("a.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
+
+    BrowseContext context;
+    QQuickView window;
+    window.engine()->addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    window.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                 {QStringLiteral("active"), true},
+                                 {QStringLiteral("fullScreen"), true}});
+    window.setResizeMode(QQuickView::SizeRootObjectToView);
+    window.resize(400, 400);
+    window.loadFromModule("ImageViewer", "ViewerPage");
+    window.show();
+    ASSERT_TRUE(waitUntil([&] { return window.isExposed(); }));
+    QCoreApplication::processEvents();
+    if (window.rendererInterface()->graphicsApi() == QSGRendererInterface::Software) {
+        GTEST_SKIP() << "needs a GPU";
+    }
+    auto* view = window.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(view, nullptr);
+    window.rootObject()->setProperty("sharpResampling", true);
+    context.openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+    ASSERT_TRUE(waitUntil([&] { return view->resampleActive(); }));
+
+    QImage shown;
+    const auto settle = [&] {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 500) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        }
+        shown = window.grabWindow().convertToFormat(QImage::Format_RGB32);
+    };
+    settle();
+
+    const auto expected = [&](int px, int py) {
+        const double ratio = view->resampleRatio();
+        const double spacing = view->resampleSpacing();
+        const QRectF bounds = view->resampleBounds();
+        const double cx = view->resamplePhase().x() + (px + 0.5) * ratio - bounds.x();
+        const double cy = view->resamplePhase().y() + (py + 0.5) * ratio - bounds.y();
+        std::array<double, 3> sum{};
+        double weights = 0;
+        const int radiusX = static_cast<int>(std::ceil(2.5 * spacing));
+        for (int j = static_cast<int>(std::floor(cy)) - radiusX; j <= static_cast<int>(std::floor(cy)) + radiusX; ++j) {
+            const double wy = mks2013((j + 0.5 - cy) / spacing);
+            for (int i = static_cast<int>(std::floor(cx)) - radiusX; i <= static_cast<int>(std::floor(cx)) + radiusX; ++i) {
+                const double w = wy * mks2013((i + 0.5 - cx) / spacing);
+                const Rgb c = pattern(std::clamp(i, 0, width - 1), std::clamp(j, 0, height - 1));
+                sum[0] += w * srgbToLinear(c.r / 255.0);
+                sum[1] += w * srgbToLinear(c.g / 255.0);
+                sum[2] += w * srgbToLinear(c.b / 255.0);
+                weights += w;
+            }
+        }
+        return std::array<int, 3>{static_cast<int>(std::lround(255 * linearToSrgb(sum[0] / weights))),
+                                  static_cast<int>(std::lround(255 * linearToSrgb(sum[1] / weights))),
+                                  static_cast<int>(std::lround(255 * linearToSrgb(sum[2] / weights)))};
+    };
+
+    const auto compareAll = [&](int tolerance) {
+        const QRectF rect = view->resampleImageRect();
+        int worst = 0;
+        int checked = 0;
+        for (int y = 0; y < shown.height(); ++y) {
+            for (int x = 0; x < shown.width(); ++x) {
+                const double u = (x + 0.5) / shown.width();
+                const double v = (y + 0.5) / shown.height();
+                if (u < rect.left() || v < rect.top() || u >= rect.right() || v >= rect.bottom()) {
+                    continue;
+                }
+                const auto e = expected(x, y);
+                const QColor c = shown.pixelColor(x, y);
+                worst = std::max({worst, std::abs(c.red() - e[0]), std::abs(c.green() - e[1]), std::abs(c.blue() - e[2])});
+                ++checked;
+            }
+        }
+        EXPECT_GT(checked, 1000);
+        EXPECT_LE(worst, tolerance);
+    };
+    compareAll(2);  // minifying
+    view->zoomIn();
+    view->zoomIn();
+    view->zoomIn();
+    ASSERT_TRUE(view->resampleActive());
+    settle();
+    compareAll(2);  // stretched less or not at all, panned to wherever the zoom left it
+    window.rootObject()->setProperty("sharpResampling", false);
 }
 
 TEST(BrowserPage, ClicksWithModifiersReachTheSelection) {

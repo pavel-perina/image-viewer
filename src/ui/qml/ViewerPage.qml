@@ -15,6 +15,7 @@ Rectangle {
     readonly property alias view: view
     property alias panelPinned: settings.panelPinned
     property alias panelAnimated: settings.panelAnimated
+    property alias sharpResampling: settings.sharpResampling
     property bool panelRevealed: false
     readonly property bool panelShown: fullScreen ? panelRevealed : panelPinned
 
@@ -31,6 +32,13 @@ Rectangle {
         clip: true
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: page.panelShown
+        resampling: settings.sharpResampling
+    }
+
+    Loader {
+        anchors.fill: view
+        active: view.resampleActive
+        sourceComponent: ResampledView { view: page.view }
     }
 
     Settings {
@@ -38,6 +46,7 @@ Rectangle {
         category: "InfoPanel"
         property bool panelPinned: false
         property bool panelAnimated: true
+        property bool sharpResampling: false
         property alias logScale: panel.logScale
         property alias fitRange: panel.fitRange
     }

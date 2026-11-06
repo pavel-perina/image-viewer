@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -116,6 +117,67 @@ TEST(Exif, ReadsBigEndian) {
     const std::vector<std::uint8_t> data{'E', 'x', 'i', 'f', 0, 0, 'M', 'M', 0, 42, 0, 0, 0, 8,
                                          0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0};
     EXPECT_EQ(parseExif(data).orientation, Orientation::Rotate90CW);
+}
+
+namespace {
+
+Viewport viewAt(double zoom, Size image = {1000, 1000}) {
+    Viewport vp;
+    vp.setImageSize(image);
+    vp.setViewSize(400, 300);
+    vp.setFitMode(FitMode::Manual);
+    vp.zoomBy(1 / vp.zoom(), 200, 150);  // from wherever fitting left it, to 100%
+    vp.zoomBy(zoom, 200, 150);
+    return vp;
+}
+
+}  // namespace
+
+TEST(Resample, OnlyWhereItChangesWhatIsShown) {
+    EXPECT_FALSE(resampleGeometry(viewAt(1.0), {1000, 1000}, 1.0, 2.5).active);    // as they are
+    EXPECT_FALSE(resampleGeometry(viewAt(0.5), {1000, 1000}, 0.5, 2.5).active);    // on a level
+    EXPECT_FALSE(resampleGeometry(viewAt(2.0), {1000, 1000}, 1.0, 2.5).active);    // nearest
+    EXPECT_FALSE(resampleGeometry(viewAt(3.0), {1000, 1000}, 1.0, 2.5).active);
+    EXPECT_TRUE(resampleGeometry(viewAt(0.7), {1000, 1000}, 1.0, 2.5).active);
+    EXPECT_TRUE(resampleGeometry(viewAt(1.5), {1000, 1000}, 1.0, 2.5).active);
+    EXPECT_FALSE(resampleGeometry(Viewport{}, {1000, 1000}, 1.0, 2.5).active);
+}
+
+TEST(Resample, KernelStretchesOnlyWhenMinifying) {
+    const auto down = resampleGeometry(viewAt(0.5), {1000, 1000}, 1.0, 2.5);
+    EXPECT_DOUBLE_EQ(down.ratio, 2.0);
+    EXPECT_DOUBLE_EQ(down.spacing, 2.0);
+    const auto up = resampleGeometry(viewAt(1.5), {1000, 1000}, 1.0, 2.5);
+    EXPECT_NEAR(up.ratio, 1 / 1.5, 1e-9);
+    EXPECT_DOUBLE_EQ(up.spacing, 1.0);
+}
+
+TEST(Resample, TextureAlignsWithTheLevelAndCoversTheKernel) {
+    Viewport vp = viewAt(0.7);
+    vp.panBy(13.37, -4.21);
+    const auto g = resampleGeometry(vp, {1000, 1000}, 1.0, 2.5);
+    ASSERT_TRUE(g.active);
+    // Pixels of the level land exactly on texels.
+    EXPECT_DOUBLE_EQ(g.translateX, std::round(g.translateX));
+    EXPECT_DOUBLE_EQ(g.translateY, std::round(g.translateY));
+    // The view's corner maps to the same image point both ways.
+    EXPECT_NEAR((g.phaseX - g.translateX) / g.scale, -vp.offsetX() / vp.zoom(), 1e-9);
+    EXPECT_NEAR((g.phaseY - g.translateY) / g.scale, -vp.offsetY() / vp.zoom(), 1e-9);
+    // The kernel at either edge of the view stays inside the texture.
+    const double reach = 2.5 * g.spacing;
+    EXPECT_GE(g.phaseX - reach, 0);
+    EXPECT_GE(g.phaseY - reach, 0);
+    EXPECT_LE(g.phaseX + vp.viewWidth() * g.ratio + reach, g.textureWidth);
+    EXPECT_LE(g.phaseY + vp.viewHeight() * g.ratio + reach, g.textureHeight);
+}
+
+TEST(Resample, RefusesTexturesTooLargeForTheGpu) {
+    // A hundredth of the zoom shown from full size, as a file with no levels would be.
+    Viewport vp;
+    vp.setImageSize({40000, 40000});
+    vp.setViewSize(1000, 1000);
+    EXPECT_FALSE(resampleGeometry(vp, {40000, 40000}, 1.0, 2.5).active);
+    EXPECT_TRUE(resampleGeometry(vp, {40000, 40000}, 0.05, 2.5).active);
 }
 
 TEST(Viewport, ShrinkToFitDoesNotEnlarge) {
