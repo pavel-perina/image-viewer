@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "core/image_source.h"
 #include "core/work_queue.h"
@@ -41,7 +42,7 @@ QStringList scanDirectory(const QString& directory) {
 
 class FileListModel final : public QAbstractListModel {
 public:
-    enum Role { NameRole = Qt::UserRole + 1, PathRole, ThumbnailRole };
+    enum Role { NameRole = Qt::UserRole + 1, PathRole, ThumbnailRole, SelectedRole };
 
     using QAbstractListModel::QAbstractListModel;
 
@@ -51,7 +52,29 @@ public:
         beginResetModel();
         m_directory = QDir(directory);
         m_names = names;
+        m_selected.assign(static_cast<std::size_t>(names.size()), 0);
         endResetModel();
+    }
+
+    const std::vector<char>& selected() const { return m_selected; }
+
+    // Replaces the selection, telling views only about the rows that differ.
+    bool setSelected(const std::vector<char>& selected) {
+        int first = -1;
+        int last = -1;
+        for (int row = 0; row < rowCount(); ++row) {
+            const auto i = static_cast<std::size_t>(row);
+            if ((selected[i] != 0) != (m_selected[i] != 0)) {
+                first = first < 0 ? row : first;
+                last = row;
+            }
+        }
+        if (first < 0) {
+            return false;
+        }
+        m_selected = selected;
+        emit dataChanged(index(first), index(last), {SelectedRole});
+        return true;
     }
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override {
@@ -71,18 +94,21 @@ public:
             return m_directory.filePath(name);
         case ThumbnailRole:
             return ThumbnailProvider::urlForPath(m_directory.filePath(name));
+        case SelectedRole:
+            return m_selected[static_cast<std::size_t>(index.row())] != 0;
         default:
             return {};
         }
     }
 
     QHash<int, QByteArray> roleNames() const override {
-        return {{NameRole, "name"}, {PathRole, "path"}, {ThumbnailRole, "thumbnail"}};
+        return {{NameRole, "name"}, {PathRole, "path"}, {ThumbnailRole, "thumbnail"}, {SelectedRole, "selected"}};
     }
 
 private:
     QDir m_directory;
     QStringList m_names;
+    std::vector<char> m_selected;
 };
 
 }  // namespace
@@ -97,6 +123,41 @@ struct BrowseContext::Impl {
     QString currentName;
     FileListModel files;
     int currentIndex = -1;
+    int anchor = -1;  // where a range selection starts
+
+    std::size_t rowCount() const { return files.selected().size(); }
+
+    void selectOnly(BrowseContext* owner, int index) {
+        std::vector<char> selected(rowCount(), 0);
+        if (index >= 0) {
+            selected[static_cast<std::size_t>(index)] = 1;
+        }
+        anchor = index;
+        apply(owner, selected);
+    }
+
+    void apply(BrowseContext* owner, const std::vector<char>& selected) {
+        if (files.setSelected(selected)) {
+            emit owner->selectionChanged();
+        }
+    }
+
+    void moveCurrent(BrowseContext* owner, int index) {
+        if (index != currentIndex) {
+            currentIndex = index;
+            currentName = files.names().at(index);
+            emit owner->currentChanged();
+        }
+    }
+
+    // Marks the rows from the anchor to index, in addition to those in base.
+    std::vector<char> withRange(std::vector<char> base, int index) const {
+        const int start = anchor >= 0 ? anchor : index;
+        for (int row = std::min(start, index); row <= std::max(start, index); ++row) {
+            base[static_cast<std::size_t>(row)] = 1;
+        }
+        return base;
+    }
 };
 
 BrowseContext::BrowseContext(QObject* parent) : QObject(parent), m_impl(std::make_unique<Impl>(this)) {}
@@ -150,11 +211,13 @@ void BrowseContext::openPath(const QString& path) {
     m_impl->directory = directory;
     m_impl->files.reset(directory, {});
     m_impl->currentIndex = -1;
+    m_impl->anchor = -1;
     // A file shows immediately; the rest of the directory arrives when the scan finishes.
     m_impl->currentName = isDirectory ? QString() : info.fileName();
     emit directoryChanged();
     emit filesChanged();
     emit currentChanged();
+    emit selectionChanged();
 
     m_impl->queue.submit(m_impl->group, kScanPriority, [this, directory, generation](std::stop_token) {
         QStringList files = scanDirectory(directory);
@@ -169,6 +232,7 @@ void BrowseContext::openPath(const QString& path) {
             m_impl->currentIndex = static_cast<int>(files.indexOf(m_impl->currentName));
             emit filesChanged();
             emit currentChanged();
+            m_impl->selectOnly(this, m_impl->currentIndex);
         });
     });
 }
@@ -179,9 +243,58 @@ void BrowseContext::setCurrentIndex(int index) {
     if (index < 0 || index >= fileCount() || index == m_impl->currentIndex) {
         return;
     }
-    m_impl->currentIndex = index;
-    m_impl->currentName = m_impl->files.names().at(index);
-    emit currentChanged();
+    m_impl->moveCurrent(this, index);
+    m_impl->selectOnly(this, index);
+}
+
+void BrowseContext::clickFile(int index, bool ctrl, bool shift) {
+    if (index < 0 || index >= fileCount()) {
+        return;
+    }
+    if (shift) {
+        m_impl->apply(this, m_impl->withRange(ctrl ? m_impl->files.selected() : std::vector<char>(m_impl->rowCount(), 0), index));
+    } else if (ctrl) {
+        std::vector<char> selected = m_impl->files.selected();
+        char& row = selected[static_cast<std::size_t>(index)];
+        row = row != 0 ? 0 : 1;
+        m_impl->anchor = index;
+        m_impl->apply(this, selected);
+    } else {
+        m_impl->selectOnly(this, index);
+    }
+    m_impl->moveCurrent(this, index);
+}
+
+void BrowseContext::extendSelectionTo(int index) {
+    if (index < 0 || index >= fileCount()) {
+        return;
+    }
+    if (m_impl->anchor < 0) {
+        m_impl->anchor = m_impl->currentIndex;
+    }
+    m_impl->apply(this, m_impl->withRange(std::vector<char>(m_impl->rowCount(), 0), index));
+    m_impl->moveCurrent(this, index);
+}
+
+void BrowseContext::selectAll() { m_impl->apply(this, std::vector<char>(m_impl->rowCount(), 1)); }
+
+void BrowseContext::clearSelection() { m_impl->apply(this, std::vector<char>(m_impl->rowCount(), 0)); }
+
+int BrowseContext::selectedCount() const {
+    const auto& selected = m_impl->files.selected();
+    return static_cast<int>(std::ranges::count_if(selected, [](char value) { return value != 0; }));
+}
+
+QStringList BrowseContext::selectedPaths() const {
+    QStringList paths;
+    const auto& selected = m_impl->files.selected();
+    const QDir directory(m_impl->directory);
+    for (std::size_t row = 0; row < selected.size(); ++row) {
+        if (selected[row] != 0) {
+            paths << directory.filePath(m_impl->files.names().at(static_cast<qsizetype>(row)));
+        }
+    }
+    return paths;
 }
 
 void BrowseContext::next() {

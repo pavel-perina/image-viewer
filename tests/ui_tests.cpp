@@ -7,10 +7,15 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QMouseEvent>
+#include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickTextureFactory>
+#include <QQuickView>
 #include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QtQml/QQmlExtensionPlugin>
 
 #include <functional>
 #include <memory>
@@ -23,6 +28,8 @@
 #include "ui/histogram_view.h"
 #include "ui/image_view.h"
 #include "ui/thumbnail_provider.h"
+
+Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 
 using iv::BrowseContext;
 using iv::ImageView;
@@ -478,6 +485,195 @@ TEST(ImageView, DrawsAFlatLargeTiffThroughOverviewsAndRealTiles) {
     expectColor(image, 300, 200, QColor(30, 30, 220));
 }
 
+namespace {
+
+// A context showing a folder of a.jpg, b.jpg and so on.
+struct SelectionFixture {
+    QTemporaryDir dir;
+    BrowseContext context;
+
+    explicit SelectionFixture(int count = 6) {
+        for (int i = 0; i < count; ++i) {
+            writeJpeg(dir.filePath(QString(QChar(u'a' + i)) + QStringLiteral(".jpg")));
+        }
+        context.openPath(dir.path());
+        EXPECT_TRUE(waitUntil([&] { return context.fileCount() == count && context.selectedCount() == 1; }));
+    }
+
+    QString names() const {
+        QString out;
+        for (const QString& path : context.selectedPaths()) {
+            out += QFileInfo(path).baseName();
+        }
+        return out;
+    }
+};
+
+}  // namespace
+
+TEST(Selection, StartsWithTheOpenedImage) {
+    SelectionFixture f;
+    EXPECT_EQ(f.names(), QStringLiteral("a"));
+    EXPECT_EQ(f.context.currentIndex(), 0);
+
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("x.jpg")));
+    writeJpeg(dir.filePath(QStringLiteral("y.jpg")));
+    BrowseContext context;
+    context.openPath(dir.filePath(QStringLiteral("y.jpg")));
+    ASSERT_TRUE(waitUntil([&] { return context.selectedCount() == 1; }));
+    EXPECT_EQ(QFileInfo(context.selectedPaths().front()).fileName(), QStringLiteral("y.jpg"));
+}
+
+TEST(Selection, PlainClickSelectsOnlyThatFile) {
+    SelectionFixture f;
+    f.context.selectAll();
+    EXPECT_EQ(f.context.selectedCount(), 6);
+    f.context.clickFile(2, false, false);
+    EXPECT_EQ(f.names(), QStringLiteral("c"));
+    EXPECT_EQ(f.context.currentIndex(), 2);
+    // Also when it is the current one already, where only the selection changes.
+    f.context.selectAll();
+    f.context.clickFile(2, false, false);
+    EXPECT_EQ(f.names(), QStringLiteral("c"));
+}
+
+TEST(Selection, CtrlTogglesAndMovesTheCurrentFile) {
+    SelectionFixture f;
+    f.context.clickFile(2, true, false);
+    EXPECT_EQ(f.names(), QStringLiteral("ac"));
+    EXPECT_EQ(f.context.currentIndex(), 2);
+    f.context.clickFile(4, true, false);
+    EXPECT_EQ(f.names(), QStringLiteral("ace"));
+    f.context.clickFile(2, true, false);
+    EXPECT_EQ(f.names(), QStringLiteral("ae"));
+    EXPECT_EQ(f.context.currentIndex(), 2);  // current without being selected
+}
+
+TEST(Selection, ShiftSelectsARangeFromTheAnchorInBothDirections) {
+    SelectionFixture f;
+    f.context.clickFile(2, false, false);
+    f.context.clickFile(4, false, true);
+    EXPECT_EQ(f.names(), QStringLiteral("cde"));
+    EXPECT_EQ(f.context.currentIndex(), 4);
+    // The anchor stays, so the range turns around it instead of growing.
+    f.context.clickFile(0, false, true);
+    EXPECT_EQ(f.names(), QStringLiteral("abc"));
+    f.context.clickFile(2, false, true);
+    EXPECT_EQ(f.names(), QStringLiteral("c"));
+}
+
+TEST(Selection, ShiftRangeStartsAtTheLastCtrlClick) {
+    SelectionFixture f;
+    f.context.clickFile(3, true, false);
+    EXPECT_EQ(f.names(), QStringLiteral("ad"));
+    f.context.clickFile(5, false, true);  // replaces, as plain shift does
+    EXPECT_EQ(f.names(), QStringLiteral("def"));
+}
+
+TEST(Selection, CtrlShiftAddsARange) {
+    SelectionFixture f;
+    f.context.clickFile(4, true, false);
+    EXPECT_EQ(f.names(), QStringLiteral("ae"));
+    f.context.clickFile(5, true, true);
+    EXPECT_EQ(f.names(), QStringLiteral("aef"));
+}
+
+TEST(Selection, KeyboardExtendsFromTheAnchor) {
+    SelectionFixture f;
+    f.context.clickFile(2, false, false);
+    f.context.extendSelectionTo(3);
+    f.context.extendSelectionTo(4);
+    EXPECT_EQ(f.names(), QStringLiteral("cde"));
+    EXPECT_EQ(f.context.currentIndex(), 4);
+    f.context.extendSelectionTo(3);
+    EXPECT_EQ(f.names(), QStringLiteral("cd"));
+    f.context.extendSelectionTo(1);
+    EXPECT_EQ(f.names(), QStringLiteral("bc"));
+    // Past either end nothing happens.
+    f.context.extendSelectionTo(-1);
+    f.context.extendSelectionTo(99);
+    EXPECT_EQ(f.names(), QStringLiteral("bc"));
+    EXPECT_EQ(f.context.currentIndex(), 1);
+}
+
+TEST(Selection, MovingToAnotherImageSelectsOnlyIt) {
+    SelectionFixture f;
+    f.context.selectAll();
+    f.context.next();
+    EXPECT_EQ(f.names(), QStringLiteral("b"));
+    f.context.selectAll();
+    f.context.setCurrentIndex(4);
+    EXPECT_EQ(f.names(), QStringLiteral("e"));
+    // And the anchor moves along, for a range started from the keyboard.
+    f.context.extendSelectionTo(5);
+    EXPECT_EQ(f.names(), QStringLiteral("ef"));
+}
+
+TEST(Selection, ClearingKeepsTheCurrentImage) {
+    SelectionFixture f;
+    f.context.clickFile(3, false, false);
+    f.context.clearSelection();
+    EXPECT_EQ(f.context.selectedCount(), 0);
+    EXPECT_EQ(f.context.currentIndex(), 3);
+    EXPECT_FALSE(f.context.currentPath().isEmpty());
+}
+
+TEST(Selection, ReachesTheModelAndNotifiesOnlyOnChange) {
+    SelectionFixture f;
+    QAbstractItemModel* model = f.context.files();
+    const int role = model->roleNames().key("selected");
+    int changes = 0;
+    QObject::connect(&f.context, &BrowseContext::selectionChanged, [&] { ++changes; });
+    QList<int> changedRows;
+    QObject::connect(model, &QAbstractItemModel::dataChanged, [&](const QModelIndex& first, const QModelIndex& last, const QList<int>& roles) {
+        EXPECT_EQ(roles, QList<int>{role});
+        for (int row = first.row(); row <= last.row(); ++row) {
+            changedRows << row;
+        }
+    });
+
+    f.context.clickFile(1, true, false);
+    EXPECT_EQ(changes, 1);
+    EXPECT_EQ(changedRows, QList<int>{1});
+    EXPECT_TRUE(model->data(model->index(1, 0), role).toBool());
+    EXPECT_FALSE(model->data(model->index(2, 0), role).toBool());
+
+    f.context.selectAll();
+    EXPECT_EQ(changes, 2);
+    f.context.selectAll();
+    EXPECT_EQ(changes, 2);  // nothing changed
+}
+
+TEST(Selection, DoesNotSurviveAnotherFolder) {
+    SelectionFixture f;
+    f.context.selectAll();
+    QTemporaryDir other;
+    writeJpeg(other.filePath(QStringLiteral("only.jpg")));
+    f.context.openPath(other.path());
+    EXPECT_EQ(f.context.selectedCount(), 0);  // until the new folder is listed
+    ASSERT_TRUE(waitUntil([&] { return f.context.selectedCount() == 1; }));
+    EXPECT_EQ(QFileInfo(f.context.selectedPaths().front()).fileName(), QStringLiteral("only.jpg"));
+}
+
+TEST(Selection, IgnoresFilesThatDoNotExistAndEmptyFolders) {
+    SelectionFixture f;
+    f.context.clickFile(-1, false, false);
+    f.context.clickFile(99, true, true);
+    EXPECT_EQ(f.names(), QStringLiteral("a"));
+
+    QTemporaryDir empty;
+    BrowseContext context;
+    context.openPath(empty.path());
+    ASSERT_TRUE(waitUntil([&] { return context.directory() == QFileInfo(empty.path()).absoluteFilePath(); }));
+    context.selectAll();
+    context.clearSelection();
+    context.extendSelectionTo(0);
+    context.clickFile(0, false, false);
+    EXPECT_EQ(context.selectedCount(), 0);
+    EXPECT_TRUE(context.selectedPaths().isEmpty());
+}
+
 TEST(BrowseContext, ListsTiffFiles) {
     QTemporaryDir dir;
     writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
@@ -779,6 +975,166 @@ TEST(ImageView, DestroyingWhileLoadingIsSafe) {
     }
     QCoreApplication::processEvents();
     SUCCEED();
+}
+
+namespace {
+
+// The real browser page in a window, for what only exists in QML. Any QML warning fails the
+// test, since a mistake in a binding shows up as nothing more than that.
+struct BrowserPageFixture {
+    QTemporaryDir dir;
+    BrowseContext context;
+    QQuickView view;
+
+    BrowserPageFixture() {
+        for (const char* name : {"a.jpg", "b.jpg", "c.jpg", "d.jpg"}) {
+            writeJpeg(dir.filePath(QString::fromLatin1(name)));
+        }
+        EXPECT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("inner/deeper")));
+
+        view.engine()->addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+        QObject::connect(view.engine(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+            for (const QQmlError& warning : warnings) {
+                ADD_FAILURE() << warning.toString().toStdString();
+            }
+        });
+        view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), false}});
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.resize(1300, 700);  // room for all the thumbnails in one row
+        view.loadFromModule("ImageViewer", "BrowserPage");
+        view.show();
+        EXPECT_NE(view.rootObject(), nullptr);
+        EXPECT_TRUE(waitUntil([&] { return view.isExposed(); }));
+        context.openPath(dir.path());
+        EXPECT_TRUE(waitUntil([&] { return context.fileCount() == 4; }));
+    }
+
+    QQuickItem* find(const char* className) const {
+        for (QQuickItem* item : view.rootObject()->findChildren<QQuickItem*>()) {
+            if (item->inherits(className)) {
+                return item;
+            }
+        }
+        return nullptr;
+    }
+
+    void clickAt(QPointF point, Qt::KeyboardModifiers modifiers) {
+        const QPointF global = view.mapToGlobal(point);
+        QMouseEvent press(QEvent::MouseButtonPress, point, point, global, Qt::LeftButton, Qt::LeftButton, modifiers);
+        QCoreApplication::sendEvent(&view, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, point, point, global, Qt::LeftButton, Qt::NoButton, modifiers);
+        QCoreApplication::sendEvent(&view, &release);
+        QCoreApplication::processEvents();
+    }
+
+    // Clicks a thumbnail, which are 180 by 200 and laid out from the corner of the grid.
+    void clickFile(int index, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        QQuickItem* grid = find("QQuickGridView");
+        ASSERT_NE(grid, nullptr);
+        ASSERT_TRUE(waitUntil([&] { return grid->property("count").toInt() == 4; }));
+        QCoreApplication::processEvents();
+        clickAt(grid->mapToScene(QPointF(90 + 180 * index, 100)), modifiers);
+    }
+
+    QString selected() const {
+        QString out;
+        for (const QString& path : context.selectedPaths()) {
+            out += QFileInfo(path).baseName();
+        }
+        return out;
+    }
+};
+
+}  // namespace
+
+TEST(BrowserPage, ClicksWithModifiersReachTheSelection) {
+    BrowserPageFixture f;
+    ASSERT_EQ(f.selected(), QStringLiteral("a"));
+    f.clickFile(2, Qt::ControlModifier);
+    EXPECT_EQ(f.selected(), QStringLiteral("ac"));
+    EXPECT_EQ(f.context.currentIndex(), 2);
+    f.clickFile(1);
+    EXPECT_EQ(f.selected(), QStringLiteral("b"));
+    f.clickFile(3, Qt::ShiftModifier);
+    EXPECT_EQ(f.selected(), QStringLiteral("bcd"));
+}
+
+TEST(BrowserPage, DoubleClickWithCtrlTogglesOnce) {
+    BrowserPageFixture f;
+    f.clickFile(2, Qt::ControlModifier);
+    f.clickFile(2, Qt::ControlModifier);
+    EXPECT_EQ(f.selected(), QStringLiteral("ac"));
+}
+
+TEST(BrowserPage, ClickBetweenThumbnailsClearsTheSelection) {
+    BrowserPageFixture f;
+    f.clickFile(1);
+    QQuickItem* grid = f.find("QQuickGridView");
+    ASSERT_NE(grid, nullptr);
+    f.clickAt(grid->mapToScene(QPointF(90, 500)), Qt::NoModifier);
+    EXPECT_EQ(f.selected(), QString());
+    EXPECT_EQ(f.context.currentIndex(), 1);
+}
+
+namespace {
+
+struct TreeFixture : BrowserPageFixture {
+    QQuickItem* tree = find("QQuickTreeView");
+    iv::DirectoryTreeModel* model = qobject_cast<iv::DirectoryTreeModel*>(tree->property("model").value<QObject*>());
+
+    QString path(const QString& relative) const { return QDir(context.directory()).filePath(relative); }
+
+    int rowOf(const QString& path) const {
+        int row = -1;
+        QMetaObject::invokeMethod(tree, "rowAtIndex", Q_RETURN_ARG(int, row), Q_ARG(QModelIndex, model->indexForPath(path)));
+        return row;
+    }
+
+    // Where the name of a row is, past its arrow.
+    QPointF nameOf(const QString& path) const {
+        QQuickItem* row = nullptr;
+        QMetaObject::invokeMethod(tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(QModelIndex, model->indexForPath(path)));
+        return row ? row->mapToScene(QPointF(row->width() - 20, row->height() / 2)) : QPointF();
+    }
+
+    void settle() {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 100) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        }
+    }
+};
+
+}  // namespace
+
+TEST(BrowserPage, TreeExpandsTheOpenedFolder) {
+    TreeFixture f;
+    const QString inner = f.path(QStringLiteral("inner"));
+    EXPECT_TRUE(waitUntil([&] { return f.rowOf(inner) > f.rowOf(f.context.directory()); }));
+}
+
+TEST(BrowserPage, ClickingAFolderOpensAndExpandsIt) {
+    TreeFixture f;
+    const QString inner = f.path(QStringLiteral("inner"));
+    ASSERT_TRUE(waitUntil([&] { return !f.nameOf(inner).isNull(); }));
+    f.clickAt(f.nameOf(inner), Qt::NoModifier);
+    EXPECT_EQ(f.context.directory(), inner);
+    const QString deeper = QDir(inner).filePath(QStringLiteral("deeper"));
+    EXPECT_TRUE(waitUntil([&] { return f.rowOf(deeper) > f.rowOf(inner); }));
+}
+
+TEST(BrowserPage, DoubleClickingAFolderLeavesItExpanded) {
+    TreeFixture f;
+    const QString inner = f.path(QStringLiteral("inner"));
+    ASSERT_TRUE(waitUntil([&] { return !f.nameOf(inner).isNull(); }));
+    const QPointF name = f.nameOf(inner);
+    f.clickAt(name, Qt::NoModifier);
+    f.clickAt(name, Qt::NoModifier);
+    f.settle();
+    EXPECT_EQ(f.context.directory(), inner);
+    const QString deeper = QDir(inner).filePath(QStringLiteral("deeper"));
+    EXPECT_TRUE(waitUntil([&] { return f.rowOf(deeper) > f.rowOf(inner); }));
 }
 
 int main(int argc, char** argv) {

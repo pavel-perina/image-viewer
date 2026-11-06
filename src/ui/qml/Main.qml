@@ -98,6 +98,11 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Up"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(-1) }
     Shortcut { sequence: "Down"; enabled: !window.viewing; onActivated: browserPage.moveCurrent(1) }
+    Shortcut { sequence: "Shift+Left"; enabled: !window.viewing; onActivated: context.extendSelectionTo(context.currentIndex - 1) }
+    Shortcut { sequence: "Shift+Right"; enabled: !window.viewing; onActivated: context.extendSelectionTo(context.currentIndex + 1) }
+    Shortcut { sequence: "Shift+Up"; enabled: !window.viewing; onActivated: browserPage.extendSelection(-1) }
+    Shortcut { sequence: "Shift+Down"; enabled: !window.viewing; onActivated: browserPage.extendSelection(1) }
+    Shortcut { sequence: "Ctrl+A"; enabled: !window.viewing; onActivated: context.selectAll() }
     Shortcut {
         sequences: ["Return", "Enter"]
         enabled: !window.viewing && context.currentPath !== ""
@@ -194,6 +199,10 @@ ApplicationWindow {
                 text: "page " + (window.activeView.page + 1) + " / " + window.activeView.pageCount
             }
             Label {
+                visible: !window.viewing && context.selectedCount > 1
+                text: context.selectedCount + " selected"
+            }
+            Label {
                 visible: context.fileCount > 0
                 text: (context.currentIndex + 1) + " / " + context.fileCount
             }
@@ -222,7 +231,7 @@ ApplicationWindow {
     FileDialog {
         id: openDialog
         title: "Open Image"
-        nameFilters: ["Images (*.jpg *.jpeg *.jpe *.jfif *.tif *.tiff)", "All files (*)"]
+        nameFilters: ["Images (*.jpg *.jpeg *.jpe *.jfif *.tif *.tiff *.png *.webp *.avif *.jxl)", "All files (*)"]
         onAccepted: context.openUrl(selectedFile)
     }
 

@@ -4,9 +4,21 @@
 #include <fstream>
 #include <new>
 
+#ifdef IV_HAVE_AVIF
+#include "core/avif_source.h"
+#endif
 #include "core/jpeg_source.h"
+#ifdef IV_HAVE_JXL
+#include "core/jxl_source.h"
+#endif
 #include "core/overview_source.h"
+#ifdef IV_HAVE_PNG
+#include "core/png_source.h"
+#endif
 #include "core/tiff_source.h"
+#ifdef IV_HAVE_WEBP
+#include "core/webp_source.h"
+#endif
 
 namespace iv {
 
@@ -50,12 +62,40 @@ Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path
     Result<std::shared_ptr<ImageSource>> source = std::unexpected("unsupported image format");
     if (isTiff(header)) {
         source = openTiffSource(path);
-    } else if (isJpeg(header)) {
-        auto bytes = readFile(path);
-        if (!bytes) {
-            return std::unexpected(bytes.error());
+    } else {
+        // These formats need their whole file in memory anyway, to decode it.
+        using Opener = Result<std::shared_ptr<ImageSource>> (*)(std::vector<std::uint8_t>);
+        Opener opener = nullptr;
+        if (isJpeg(header)) {
+            opener = openJpegSource;
         }
-        source = openJpegSource(std::move(*bytes));
+#ifdef IV_HAVE_PNG
+        if (isPng(header)) {
+            opener = openPngSource;
+        }
+#endif
+#ifdef IV_HAVE_WEBP
+        if (isWebp(header)) {
+            opener = openWebpSource;
+        }
+#endif
+#ifdef IV_HAVE_AVIF
+        if (isAvif(header)) {
+            opener = openAvifSource;
+        }
+#endif
+#ifdef IV_HAVE_JXL
+        if (isJxl(header)) {
+            opener = openJxlSource;
+        }
+#endif
+        if (opener) {
+            auto bytes = readFile(path);
+            if (!bytes) {
+                return std::unexpected(bytes.error());
+            }
+            source = opener(std::move(*bytes));
+        }
     }
     if (!source) {
         return source;
@@ -64,7 +104,21 @@ Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path
 }
 
 std::span<const std::string_view> supportedExtensions() {
-    static constexpr std::array<std::string_view, 6> kExtensions{"jpg", "jpeg", "jpe", "jfif", "tif", "tiff"};
+    static const std::vector<std::string_view> kExtensions{
+        "jpg", "jpeg", "jpe", "jfif", "tif", "tiff",
+#ifdef IV_HAVE_PNG
+        "png",
+#endif
+#ifdef IV_HAVE_WEBP
+        "webp",
+#endif
+#ifdef IV_HAVE_AVIF
+        "avif",
+#endif
+#ifdef IV_HAVE_JXL
+        "jxl",
+#endif
+    };
     return kExtensions;
 }
 

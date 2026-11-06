@@ -27,8 +27,8 @@ struct ExifData {
     std::optional<int> iso;
 };
 
-// Reads the payload of a JPEG APP1 marker ("Exif\0\0" + TIFF structure). The data is
-// untrusted; whatever is malformed is left out.
+// Reads a TIFF structure holding EXIF, with or without the "Exif\0\0" that precedes it in a
+// JPEG APP1 marker. The data is untrusted; whatever is malformed is left out.
 ExifData parseExif(std::span<const std::uint8_t> app1);
 
 // Turns "2024:05:01 12:30:00" into "2024-05-01 12:30:00". Cameras write blanks or zeros for

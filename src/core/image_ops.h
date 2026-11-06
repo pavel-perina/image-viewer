@@ -14,6 +14,10 @@ ImageBuffer shrink(const ImageBuffer& source, Size size);
 // memory. The target must have the block's format.
 void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size fullSize, const ImageBuffer& target);
 
+// Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
+// and light content stay visible, and makes it opaque. Not for gray formats, which have none.
+void flattenAlpha(const ImageBuffer& image);
+
 // The sample values that map to black and white on screen.
 struct DisplayRange {
     double low = 0;

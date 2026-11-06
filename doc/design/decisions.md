@@ -27,6 +27,15 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * One libtiff handle per source, guarded by a mutex. A pool of handles is only worth adding
   if measurements on real files justify it.
 
+* PNG, WebP, AVIF and JPEG XL cannot be entered at a tile or scaled while decoding, so they share
+  a source that decodes the whole picture on first use and serves tiles as views. Large ones
+  get overviews like any flat image. Each is optional at build time.
+* Alpha is not displayed yet. These formats flatten it onto mid gray, where dark and light
+  content both stay visible, while TIFF still drops it. Real transparency needs an alpha
+  format through the whole display path.
+* AV1 and JPEG XL have no flag for lossless. AVIF storing RGB directly is treated as lossless.
+  JPEG XL keeping the original colour space is called "likely lossless".
+
 ## Overviews
 * A flat image larger than 2048 pixels gets generated levels, down to 2048 on the long
   edge, because fit-to-window would otherwise need every tile. They are built once, by
@@ -90,8 +99,7 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Thumbnails will be stored as compressed blobs, so they do not need zstd.
 
 ## Planned, not built
-* Formats: PNG, WebP, AVIF, JPEG XL,
-  and PCX, BMP, TGA, GIF. Animation in GIF, WebP and JPEG XL.
+* Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
 * Colour management with LittleCMS. ICC profiles are already read and kept.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
   the selection of the current panel.
@@ -99,6 +107,10 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   optional system integration layer, along with KDE or Windows places.
 
 ## Browser
+* The selection belongs to `BrowseContext`, so each tab or panel has its own and tools read
+  it from there. It is separate from the current image: Ctrl+click can remove the current
+  image from the selection, while it stays shown in the preview. Moving to another image
+  selects only that one, including moving in the large view.
 * The browser and large view are two pages sharing one `BrowseContext`, each with its own
   `ImageView`. A page's view loads only while the page is active.
 * Thumbnails go through an async QML image provider on the shared work queue, below all

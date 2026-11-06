@@ -20,6 +20,10 @@ SplitView {
         page.context.setCurrentIndex(page.context.currentIndex + rows * grid.columns)
     }
 
+    function extendSelection(rows) {
+        page.context.extendSelectionTo(page.context.currentIndex + rows * grid.columns)
+    }
+
     orientation: Qt.Horizontal
 
     SplitView {
@@ -36,19 +40,44 @@ SplitView {
                 id: treeModel
             }
 
+            // Opens the folder too, so its subfolders show. Only when arriving at a folder, so
+            // that one the user has collapsed stays that way.
+            property string revealedPath
+
             function reveal(path) {
+                if (path === revealedPath)
+                    return
+                revealedPath = path
                 const index = treeModel.indexForPath(path)
                 expandToIndex(index)
                 forceLayout()
-                positionViewAtRow(rowAtIndex(index), TableView.Contain)
+                const row = rowAtIndex(index)
+                expand(row)
+                positionViewAtRow(row, TableView.Contain)
             }
 
             delegate: TreeViewDelegate {
                 id: treeRow
                 implicitWidth: tree.width
-                highlighted: treeModel.pathForIndex(tree.index(row, column)) === page.context.directory
+                highlighted: treeModel.pathForIndex(tree.index(row, 0)) === page.context.directory
                 TapHandler {
-                    onTapped: page.context.openPath(treeModel.pathForIndex(tree.index(treeRow.row, treeRow.column)))
+                    // The arrow belongs to expanding and collapsing, not to opening.
+                    function onArrow(point) {
+                        return point.position.x < treeRow.indicator.x + treeRow.indicator.width
+                    }
+                    onTapped: (point) => {
+                        if (onArrow(point))
+                            return
+                        const path = treeModel.pathForIndex(tree.index(treeRow.row, 0))
+                        if (path !== page.context.directory)
+                            page.context.openPath(path)
+                    }
+                    // The delegate toggles on a double click, which would close what the first
+                    // click just opened. Later, so that it comes after the toggle.
+                    onDoubleTapped: (point) => {
+                        if (!onArrow(point))
+                            Qt.callLater(tree.expand, treeRow.row)
+                    }
                 }
             }
 
@@ -134,12 +163,23 @@ SplitView {
 
             ScrollBar.vertical: ScrollBar {}
 
+            // A click between the thumbnails clears the selection.
+            TapHandler {
+                onTapped: (point) => {
+                    const x = point.position.x + grid.contentX
+                    const y = point.position.y + grid.contentY
+                    if (grid.indexAt(x, y) < 0)
+                        page.context.clearSelection()
+                }
+            }
+
             delegate: Item {
                 id: cell
 
                 required property int index
                 required property string name
                 required property string thumbnail
+                required property bool selected
 
                 width: grid.cellWidth
                 height: grid.cellHeight
@@ -147,7 +187,10 @@ SplitView {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 2
-                    color: cell.index === page.context.currentIndex ? palette.highlight : "transparent"
+                    color: cell.selected ? palette.highlight : "transparent"
+                    // The current image is shown large, and can be outside the selection.
+                    border.width: cell.index === page.context.currentIndex ? 2 : 0
+                    border.color: palette.highlightedText
                 }
 
                 Image {
@@ -177,11 +220,17 @@ SplitView {
                 }
 
                 TapHandler {
-                    onTapped: page.context.setCurrentIndex(cell.index)
-                    onDoubleTapped: {
-                        page.context.setCurrentIndex(cell.index)
-                        page.viewRequested()
+                    id: cellTap
+                    onTapped: {
+                        // On the handler's point: the signal's own argument has no modifiers.
+                        const modifiers = cellTap.point.modifiers
+                        // The second tap of a double click only views what the first one chose.
+                        if (cellTap.tapCount === 1) {
+                            page.context.clickFile(cell.index, (modifiers & Qt.ControlModifier) !== 0,
+                                                   (modifiers & Qt.ShiftModifier) !== 0)
+                        }
                     }
+                    onDoubleTapped: page.viewRequested()
                 }
             }
         }

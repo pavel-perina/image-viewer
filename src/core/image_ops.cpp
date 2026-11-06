@@ -206,6 +206,45 @@ void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size full
     }
 }
 
+void flattenAlpha(const ImageBuffer& image) {
+    const int width = image.width();
+    for (int y = 0; y < image.height(); ++y) {
+        if (image.format() == PixelFormat::Bgrx8) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
+            for (int x = 0; x < width; ++x, p += 4) {
+                const unsigned alpha = p[3];
+                if (alpha != 255) {
+                    for (int c = 0; c < 3; ++c) {
+                        p[c] = static_cast<std::uint8_t>((p[c] * alpha + 128u * (255 - alpha) + 127) / 255);
+                    }
+                    p[3] = 255;
+                }
+            }
+        } else if (image.format() == PixelFormat::Rgba16) {
+            auto* p = reinterpret_cast<std::uint16_t*>(image.row(y));
+            for (int x = 0; x < width; ++x, p += 4) {
+                const std::uint32_t alpha = p[3];
+                if (alpha != 65535) {
+                    for (int c = 0; c < 3; ++c) {
+                        const std::uint64_t mixed = static_cast<std::uint64_t>(p[c]) * alpha + 32768ull * (65535 - alpha);
+                        p[c] = static_cast<std::uint16_t>((mixed + 32767) / 65535);
+                    }
+                    p[3] = 65535;
+                }
+            }
+        } else if (image.format() == PixelFormat::Rgba32F) {
+            auto* p = reinterpret_cast<float*>(image.row(y));
+            for (int x = 0; x < width; ++x, p += 4) {
+                const float alpha = std::clamp(p[3], 0.0F, 1.0F);
+                for (int c = 0; c < 3; ++c) {
+                    p[c] = p[c] * alpha + 0.5F * (1 - alpha);
+                }
+                p[3] = 1;
+            }
+        }
+    }
+}
+
 ImageBuffer shrink(const ImageBuffer& source, Size size) {
     if (source.size() == size) {
         return source;

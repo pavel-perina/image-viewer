@@ -92,6 +92,9 @@ std::vector<DetailRow> describeImage(const SubimageInfo& subimage) {
     if (stored.storedLevels > 1) {
         add(image, "Pyramid", std::format("{} levels", stored.storedLevels));
     }
+    if (stored.animated) {
+        add(image, "Animation", "First frame shown");
+    }
     if (!subimage.iccProfile.empty()) {
         add(image, "Profile", "Embedded");
     }

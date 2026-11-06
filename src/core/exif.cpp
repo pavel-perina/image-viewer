@@ -171,10 +171,11 @@ std::string normalizeExifDate(std::string_view date) {
 ExifData parseExif(std::span<const std::uint8_t> app1) {
     ExifData exif;
     static constexpr std::array<std::uint8_t, 6> kSignature{'E', 'x', 'i', 'f', 0, 0};
-    if (app1.size() < kSignature.size() + 8 || !std::equal(kSignature.begin(), kSignature.end(), app1.begin())) {
+    const bool signed_ = app1.size() >= kSignature.size() && std::equal(kSignature.begin(), kSignature.end(), app1.begin());
+    const auto tiff = signed_ ? app1.subspan(kSignature.size()) : app1;
+    if (tiff.size() < 8) {
         return exif;
     }
-    const auto tiff = app1.subspan(kSignature.size());
     if (!(tiff[0] == 'I' && tiff[1] == 'I') && !(tiff[0] == 'M' && tiff[1] == 'M')) {
         return exif;
     }

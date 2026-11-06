@@ -42,6 +42,7 @@ struct StoredFormat {
     bool floatSamples = false;
     bool signedSamples = false;
     int storedLevels = 1;  // resolutions present in the file; scaled JPEG decoding does not count
+    bool animated = false;  // has more frames, of which only the first is shown so far
 };
 
 // A picture inside a file. Pages and animation frames are both subimages; reduced
