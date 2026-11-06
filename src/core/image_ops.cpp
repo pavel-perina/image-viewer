@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <vector>
 
+#include "core/color.h"
+
 namespace iv {
 
 namespace {
@@ -283,11 +285,21 @@ DisplayRange autoRange(std::span<const ImageBuffer> samples) {
 }
 
 bool usesAutoRangeByDefault(PixelFormat format) {
-    // 16-bit RGB is normally a photograph, where stretching would falsify its exposure.
-    return format == PixelFormat::Gray16 || format == PixelFormat::Gray32F || format == PixelFormat::Rgba32F;
+    // 16-bit images have a natural range, and stretching a photograph would falsify its
+    // exposure. Floats have none, so 0 to 1 may show nothing at all.
+    return format == PixelFormat::Gray32F || format == PixelFormat::Rgba32F;
 }
 
-ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range) {
+ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+    if (transform) {
+        const PixelFormat format = source.format();
+        if (format == PixelFormat::Bgrx8 || (format != PixelFormat::Gray16 && format != PixelFormat::Gray32F && range == fullRange(format))) {
+            return transform->apply(source);
+        }
+        if (format == PixelFormat::Rgba16) {
+            return transform->apply(toDisplay(source, range));
+        }
+    }
     if (source.format() == PixelFormat::Bgrx8) {
         return source;
     }

@@ -1,6 +1,8 @@
 qt_add_library(iv_ui STATIC
     browse_context.cpp
     browse_context.h
+    color_settings.cpp
+    color_settings.h
     directory_tree_model.cpp
     directory_tree_model.h
     histogram_handle.h

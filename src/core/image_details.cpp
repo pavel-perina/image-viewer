@@ -1,10 +1,11 @@
 #include "core/image_details.h"
-
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <format>
 #include <string_view>
+
+#include "core/color.h"
 
 namespace iv {
 
@@ -96,7 +97,8 @@ std::vector<DetailRow> describeImage(const SubimageInfo& subimage) {
         add(image, "Animation", "First frame shown");
     }
     if (!subimage.iccProfile.empty()) {
-        add(image, "Profile", "Embedded");
+        const std::string name = iccDescription(subimage.iccProfile);
+        add(image, "Profile", name.empty() ? "Embedded" : name);
     }
 
     const ExifData& exif = subimage.exif;

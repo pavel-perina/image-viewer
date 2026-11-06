@@ -89,7 +89,7 @@ ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation)
 
 }  // namespace
 
-Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge, std::stop_token stop) {
+Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge, std::stop_token stop, const ColorTarget& target) {
     const auto source = openImageSource(path);
     if (!source) {
         return std::unexpected(source.error());
@@ -111,7 +111,8 @@ Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge
         const ImageBuffer small = shrink(*level, size);
         const std::array samples{small};
         const DisplayRange range = usesAutoRangeByDefault(small.format()) ? autoRange(samples) : fullRange(small.format());
-        return applyOrientation(toDisplay(small, range), subimage.orientation);
+        const auto transform = displayTransform(subimage, target);
+        return applyOrientation(toDisplay(small, range, transform.get()), subimage.orientation);
     } catch (const std::bad_alloc&) {
         return std::unexpected("not enough memory for thumbnail");
     }

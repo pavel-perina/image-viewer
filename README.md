@@ -7,12 +7,12 @@ Image Viewer. Early development: it currently opens JPEG, TIFF (including pyrami
 
 ## Build
 
-Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2), libjpeg-turbo, libtiff
+Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2), libjpeg-turbo, libtiff, LittleCMS 2
 and, for the tests, GoogleTest. libpng, libwebp, libavif and libjxl are optional, and each adds its format.
 
 openSUSE:
 
-    sudo zypper in qt6-base-devel qt6-declarative-devel libjpeg62-devel libtiff-devel libpng16-devel libwebp-devel libavif-devel libjxl-devel gtest
+    sudo zypper in qt6-base-devel qt6-declarative-devel libjpeg62-devel libtiff-devel liblcms2-devel libpng16-devel libwebp-devel libavif-devel libjxl-devel gtest
 
 Build and test:
 
@@ -35,6 +35,7 @@ Run:
 | Left, PgUp, Backspace | Previous image |
 | Ctrl+PgDown, Ctrl+PgUp | Next or previous page of a multipage file |
 | Up, Down | Move one row in the browser |
+| C | Turn colour management on or off |
 | Ctrl+click | Add or remove a thumbnail from the selection |
 | Shift+click, Shift+arrows | Select a range; with Ctrl+click, add a range |
 | Ctrl+A | Select all images in the folder |

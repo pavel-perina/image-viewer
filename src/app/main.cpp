@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QtQml/QQmlExtensionPlugin>
 
+#include "ui/color_settings.h"
 #include "ui/thumbnail_provider.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
@@ -15,6 +16,8 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
+
+    iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
 
     const QStringList arguments = QCoreApplication::arguments();
 

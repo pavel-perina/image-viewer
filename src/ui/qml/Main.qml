@@ -71,6 +71,14 @@ ApplicationWindow {
         onTriggered: window.activeView.autoContrast = checked
     }
     Action {
+        id: colorManagedAction
+        text: "&Colour Management"
+        shortcut: "C"
+        checkable: true
+        checked: ColorSettings.enabled
+        onTriggered: ColorSettings.enabled = checked
+    }
+    Action {
         id: infoAction
         text: "Info"
         shortcut: "I"
@@ -139,6 +147,10 @@ ApplicationWindow {
             MenuItem { action: fitAction }
             MenuItem { action: actualSizeAction }
             MenuItem { action: autoContrastAction }
+            MenuSeparator {}
+            MenuItem { action: colorManagedAction }
+            MenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.open() }
+            MenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
             MenuSeparator {}
             MenuItem { action: infoAction }
             MenuItem { action: animatePanelAction }
@@ -226,6 +238,27 @@ ApplicationWindow {
             active: window.viewing
             fullScreen: window.visibility === Window.FullScreen
         }
+    }
+
+    FileDialog {
+        id: displayProfileDialog
+        title: "Choose Display Profile"
+        nameFilters: ["ICC profiles (*.icc *.icm)", "All files (*)"]
+        onAccepted: {
+            const problem = ColorSettings.useDisplayProfile(selectedFile)
+            if (problem) {
+                profileProblem.text = problem
+                profileProblemDialog.open()
+            }
+        }
+    }
+
+    Dialog {
+        id: profileProblemDialog
+        anchors.centerIn: parent
+        title: "Cannot Use This Profile"
+        standardButtons: Dialog.Ok
+        Label { id: profileProblem }
     }
 
     FileDialog {

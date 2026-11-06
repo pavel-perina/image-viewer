@@ -51,7 +51,8 @@ struct SubimageInfo {
     SubimageRole role = SubimageRole::Page;
     PixelFormat format = PixelFormat::Bgrx8;
     Orientation orientation = Orientation::Normal;
-    std::vector<std::uint8_t> iccProfile;  // empty when the file has no embedded profile
+    // Embedded, or made from what the file says about its colours. Empty means sRGB.
+    std::vector<std::uint8_t> iccProfile;
     std::vector<LevelInfo> levels;
     std::chrono::milliseconds frameDelay{0};
     StoredFormat stored;

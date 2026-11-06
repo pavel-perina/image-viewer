@@ -25,6 +25,7 @@ struct ExifData {
     std::optional<double> focalLength35mm;  // millimetres, the equivalent on 35mm film
     std::optional<double> exposureBias;     // EV
     std::optional<int> iso;
+    bool adobeRgb = false;  // a camera set to Adobe RGB, which says so here instead of a profile
 };
 
 // Reads a TIFF structure holding EXIF, with or without the "Exif\0\0" that precedes it in a

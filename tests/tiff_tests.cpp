@@ -565,7 +565,7 @@ TEST(DisplayRange, EightBitImagesAreNotCopied) {
 TEST(DisplayRange, DefaultsSuitTheKindOfImage) {
     EXPECT_FALSE(usesAutoRangeByDefault(PixelFormat::Bgrx8));
     EXPECT_FALSE(usesAutoRangeByDefault(PixelFormat::Rgba16));  // photographs keep their exposure
-    EXPECT_TRUE(usesAutoRangeByDefault(PixelFormat::Gray16));
+    EXPECT_FALSE(usesAutoRangeByDefault(PixelFormat::Gray16));
     EXPECT_TRUE(usesAutoRangeByDefault(PixelFormat::Gray32F));
 }
 
@@ -592,8 +592,16 @@ TEST(Thumbnail, WorksForHighBitDepthAndPyramids) {
     gray.height = 400;
     gray.bits = 16;
     gray.samples = 1;
-    // Only a narrow range of values, so it would be near black without stretching.
+    // Only a narrow range of values, which stays near black because 16 bits are not stretched.
     gray.pixel = [](int x, int) { return x < 400 ? Rgb{2, 2, 2} : Rgb{4, 4, 4}; };
+    writeTiff(dir.file("g16.tif"), {gray});
+    const auto unstretched = makeThumbnail(dir.file("g16.tif"), 256, {});
+    ASSERT_TRUE(unstretched.has_value()) << unstretched.error();
+    EXPECT_LT(reinterpret_cast<const std::uint8_t*>(unstretched->row(60))[4 * 240], 20);
+
+    // Floats are.
+    gray.bits = 32;
+    gray.sampleFormat = SAMPLEFORMAT_IEEEFP;
     writeTiff(dir.file("g.tif"), {gray});
 
     const auto thumbnail = makeThumbnail(dir.file("g.tif"), 256, {});

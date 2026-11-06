@@ -12,6 +12,7 @@
 
 #include <jpeglib.h>
 
+#include "core/color.h"
 #include "core/exif.h"
 #include "core/image_details.h"
 
@@ -277,6 +278,9 @@ Result<std::shared_ptr<ImageSource>> openJpegSource(std::vector<std::uint8_t> by
     if (jpeg_read_icc_profile(&cinfo, &icc, &iccLength)) {
         info.iccProfile.assign(icc, icc + iccLength);
         std::free(icc);
+    }
+    if (info.iccProfile.empty() && info.exif.adobeRgb) {
+        info.iccProfile = adobeRgbProfile();
     }
 
     return std::make_shared<JpegSource>(std::move(bytes), std::move(info));

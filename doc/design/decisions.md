@@ -47,10 +47,11 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 
 ## Display range
 * Pixels are converted to `Bgrx8` on the worker thread, with a low and high value per image.
-* Gray and float images default to auto contrast (0.1% percentiles of the coarsest level),
-  because their useful range is often a small part of the format's range. 16-bit RGB is
-  usually a photograph, where stretching would falsify the exposure, so it defaults to the
-  full range. The choice is per image and does not carry over to the next one.
+* Float images default to auto contrast (0.1% percentiles of the coarsest level), because
+  they have no natural range. 16-bit images default to the full range, because stretching a
+  photograph would falsify its exposure, so one that uses a small part of the range looks
+  dark until auto contrast is turned on. Thumbnails follow the same default. The choice is
+  per image and does not carry over to the next one.
 
 ## Histogram and details
 * A histogram measures the file's values, not what is on screen, with 256 or 65536 bins,
@@ -68,9 +69,33 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Public Qt Quick scene graph API only (`QSGSimpleTextureNode`), so it runs on every RHI
   backend. Qt Quick already runs on Vulkan through RHI, so no direct Vulkan dependency.
 * 16-bit images are converted to 8-bit on the CPU for display, so changing the display range
-  redraws through the worker. Live adjustment or colour management may later need a custom
-  `QSGMaterial` with shaders, which adds `qt6-shadertools`.
+  redraws through the worker. Live adjustment may later need a custom `QSGMaterial` with
+  shaders, which adds `qt6-shadertools`.
 * Orientation is applied by the scene graph transform, not by rotating pixels.
+
+## Colour
+* LittleCMS (MIT) converts on the CPU in `toDisplay`, on the workers, so it is part of making
+  a tile and the GPU only sees the result. It is required, unlike the optional formats.
+* Only what is displayed is converted. Decoded pixels, the histogram and the file stay in the
+  image's own colours, so editing can work in those too.
+* An image whose conversion would change no colour by more than one 8-bit level gets no
+  transform at all. Most files are sRGB, and those keep their zero-copy path.
+* Transforms are cached per profile, format and display, since a folder tends to use one or
+  two profiles.
+* Relative colorimetric with black point compensation, not a setting: colours inside the
+  display's gamut stay exact and shadows do not clip.
+* 16-bit and float RGB convert directly to 8-bit, as going through 8 bits first would lose
+  gradations. A stretched 16-bit image goes through 8 bits, and stretched floats are not
+  converted, as they are data whose encoding may be linear.
+* No profile means sRGB. A damaged profile, or one that does not fit the pixels such as CMYK
+  on pixels already converted to RGB, is treated the same.
+* What a file says without a profile is turned into one, so there is a single path: AVIF
+  code points, PNG cICP, gAMA and cHRM in the order of the PNG specification, and EXIF for
+  cameras set to Adobe RGB. PNG's gamma of 1/2.2 counts as sRGB, as that is what encoders mean.
+* The display defaults to sRGB, which is correct where the compositor manages colour, as KWin
+  does on Wayland. Choosing a monitor profile is for systems where nothing else applies one;
+  doing so under such a compositor would correct twice.
+* One display target for the application, not per window, until a second window exists.
 
 ## Threads
 * Own work queue instead of oneTBB, because visible-first priorities and cancelling work
@@ -100,7 +125,6 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 
 ## Planned, not built
 * Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
-* Colour management with LittleCMS. ICC profiles are already read and kept.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
   the selection of the current panel.
 * Possibly a dual-panel file manager. File icons are OS dependent, so they belong in the
@@ -210,8 +234,15 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   do, and a changed file keeps its old thumbnail until the application restarts.
 * Directories are not watched, so new or removed files appear only after reopening. The
   grid lists images only, not subdirectories.
-* Colour management is missing, so wide-gamut JPEGs look slightly off. CMYK JPEGs use a
-  rough conversion.
+* CMYK JPEGs use a rough conversion, and their CMYK profile is not applied.
+* HDR images (PQ and HLG curves) are not tone mapped. In AVIF and PNG they are shown as sRGB,
+  so they look flat. A JPEG XL or a file with such an ICC profile goes through that profile
+  and looks dark.
+* Colours outside the display's gamut are clipped. On Wayland that display is sRGB as far as
+  the application knows, so a wide-gamut monitor shows no more than sRGB.
+* The monitor profile is not detected. Windows and X11 could provide one (`GetICMProfile`,
+  the `_ICC_PROFILE` atom), which belongs in the system integration layer.
+* 16-bit gray and all stretched floats are not colour managed.
 * Tiles do not overlap, so a faint seam is possible at tile edges between 100% and 200%
   zoom. From 200% up, filtering is nearest-neighbour and this does not apply.
 * Opening decodes the smallest level, then the one the view needs. For JPEG this costs

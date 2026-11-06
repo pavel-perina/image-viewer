@@ -6,6 +6,8 @@
 
 namespace iv {
 
+class ColorTransform;
+
 // Shrinks by averaging. Works for every pixel format.
 ImageBuffer shrink(const ImageBuffer& source, Size size);
 
@@ -29,14 +31,15 @@ struct DisplayRange {
 DisplayRange fullRange(PixelFormat format);
 
 // Ignores the darkest and brightest 0.1% of samples, so a few outliers do not flatten the
-// image. Scientific images often use a small part of the 16-bit range and look black without
-// this.
+// image. Images that use a small part of their range look black without this.
 DisplayRange autoRange(std::span<const ImageBuffer> samples);
 
 // Whether a format looks right only after stretching to its content by default.
 bool usesAutoRangeByDefault(PixelFormat format);
 
-// Converts for display. An 8-bit image is returned as is, without copying.
-ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range);
+// Converts for display. An 8-bit image without a transform is returned as is, without copying.
+// A transform applies to RGB, but not to floats that were stretched: those are data rather than
+// colours, and their encoding may be linear, which 8 bits could not hold before converting.
+ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
 
 }  // namespace iv

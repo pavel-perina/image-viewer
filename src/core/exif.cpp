@@ -15,6 +15,7 @@ constexpr std::size_t kMaxTextLength = 256;
 enum Type : std::uint32_t { Byte = 1, Ascii = 2, Short = 3, Long = 4, Rational = 5, SRational = 10 };
 
 enum Tag : std::uint32_t {
+    InteropIndex = 0x0001,
     Make = 0x010F,
     Model = 0x0110,
     OrientationTag = 0x0112,
@@ -26,6 +27,8 @@ enum Tag : std::uint32_t {
     DateTimeOriginal = 0x9003,
     ExposureBias = 0x9204,
     FocalLength = 0x920A,
+    ColorSpaceTag = 0xA001,
+    InteropIfd = 0xA005,
     FocalLength35mm = 0xA405,
     LensMake = 0xA433,
     LensModel = 0xA434,
@@ -204,6 +207,8 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
 
     std::string lensMake;
     std::string dateOriginal;
+    std::uint64_t colorSpace = 0;
+    std::size_t interopIfd = 0;
     if (exifIfd != 0) {
         reader.forEachEntry(exifIfd, [&](std::size_t entry) {
             switch (reader.read16(entry)) {
@@ -214,6 +219,8 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
             case DateTimeOriginal: dateOriginal = reader.text(entry); break;
             case LensMake:         lensMake = reader.text(entry); break;
             case LensModel:        exif.lens = reader.text(entry); break;
+            case ColorSpaceTag:    colorSpace = reader.integer(entry).value_or(0); break;
+            case InteropIfd:       interopIfd = reader.integer(entry).value_or(0); break;
             case Iso:
                 if (const auto value = reader.integer(entry); value && *value > 0) {
                     exif.iso = static_cast<int>(*value);
@@ -225,6 +232,14 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
                 }
                 break;
             default: break;
+            }
+        });
+    }
+    // Design rule for cameras: "R03" marks Adobe RGB, and 1 would mean sRGB.
+    if (interopIfd != 0 && colorSpace != 1) {
+        reader.forEachEntry(interopIfd, [&](std::size_t entry) {
+            if (reader.read16(entry) == InteropIndex && reader.text(entry) == "R03") {
+                exif.adobeRgb = true;
             }
         });
     }

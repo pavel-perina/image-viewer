@@ -12,6 +12,7 @@
 #include "core/image_buffer.h"
 #include "core/thumbnail.h"
 #include "core/work_queue.h"
+#include "ui/color_settings.h"
 #include "ui/qimage_bridge.h"
 
 namespace iv {
@@ -29,7 +30,7 @@ public:
         m_task = WorkQueue::global().submit(
             group(), priority,
             [link = m_link, file = QFileInfo(path).filesystemFilePath()](std::stop_token stop) {
-                auto thumbnail = makeThumbnail(file, kThumbnailEdge, stop);
+                auto thumbnail = makeThumbnail(file, kThumbnailEdge, stop, ColorSettings::target());
                 const std::scoped_lock lock(link->mutex);
                 if (link->response) {
                     link->response->complete(thumbnail);
@@ -100,13 +101,13 @@ private:
 QString ThumbnailProvider::urlForPath(const QString& path) {
     // Hex keeps any file name intact on its way through the URL handling.
     return QStringLiteral("image://") + QLatin1StringView(kProviderId) + QLatin1Char('/') +
-           QString::fromLatin1(path.toUtf8().toHex());
+           QString::fromLatin1(path.toUtf8().toHex()) + QLatin1Char('/') + QString::number(ColorSettings::generation());
 }
 
 QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, const QSize&) {
     // The latest request is the one the user is looking at now.
     static std::atomic<int> sequence = 0;
-    const QString path = QString::fromUtf8(QByteArray::fromHex(id.toLatin1()));
+    const QString path = QString::fromUtf8(QByteArray::fromHex(id.section(QLatin1Char('/'), 0, 0).toLatin1()));
     return new ThumbnailResponse(path, kBasePriority + sequence.fetch_add(1, std::memory_order_relaxed));
 }
 

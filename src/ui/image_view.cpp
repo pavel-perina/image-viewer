@@ -26,12 +26,14 @@
 #include <utility>
 #include <vector>
 
+#include "core/color.h"
 #include "core/histogram.h"
 #include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
+#include "ui/color_settings.h"
 #include "ui/histogram_handle.h"
 #include "ui/qimage_bridge.h"
 
@@ -123,6 +125,7 @@ struct ImageView::Impl {
     bool autoContrast = false;
     DisplayRange autoDisplayRange;
     DisplayRange displayRange;
+    std::shared_ptr<const ColorTransform> colorTransform;
     std::vector<std::pair<TileKey, ImageBuffer>> preview;
     Size fullSize;
     Affine imageToDisplay;
@@ -219,11 +222,11 @@ struct ImageView::Impl {
     void requestTile(const TileKey& key) {
         const std::uint64_t doc = document;
         const auto id = queue.submit(group, kTilePriority,
-                                     [this, source = source, key, doc, page = page, range = displayRange](std::stop_token stop) {
+                                     [this, source = source, key, doc, page = page, range = displayRange, color = colorTransform](std::stop_token stop) {
             Result<ImageBuffer> tile = source->readTile({page, key.level, key.col, key.row}, stop);
             if (tile) {
                 try {
-                    tile = toDisplay(*tile, range);
+                    tile = toDisplay(*tile, range, color.get());
                 } catch (const std::bad_alloc&) {
                     tile = std::unexpected("not enough memory for tile");
                 }
@@ -277,6 +280,7 @@ struct ImageView::Impl {
             }
         }
         loaded.autoRange = autoRange(tiles);
+        displayTransform(info, ColorSettings::target());  // cached, so showing the page does not wait for it
         return loaded;
     }
 
@@ -427,12 +431,13 @@ struct ImageView::Impl {
         ++document;
         const PixelFormat format = subimage().format;
         displayRange = autoContrast ? autoDisplayRange : fullRange(format);
+        colorTransform = displayTransform(subimage(), ColorSettings::target());
         inFlight.clear();
         uploaded.clear();
         failed.clear();
         pendingUpload.clear();
         for (const auto& [key, tile] : preview) {
-            pendingUpload.emplace(key, toQImage(toDisplay(tile, displayRange)));
+            pendingUpload.emplace(key, toQImage(toDisplay(tile, displayRange, colorTransform.get())));
         }
     }
 
@@ -441,6 +446,18 @@ struct ImageView::Impl {
             return;
         }
         autoContrast = enabled;
+        redisplay();
+    }
+
+    void colorSettingsChanged() {
+        if (status == Status::Loading) {
+            open(path);  // what is being loaded would be cancelled along with the tiles
+        } else if (source) {
+            redisplay();
+        }
+    }
+
+    void redisplay() {
         queue.cancelGroup(group);
         histogramPending = false;
         startDisplaying();
@@ -452,6 +469,7 @@ struct ImageView::Impl {
     void closeDocument() {
         ++document;
         source.reset();
+        colorTransform.reset();
         page = 0;
         autoContrast = false;
         preview.clear();
@@ -571,6 +589,7 @@ struct ImageView::Impl {
 ImageView::ImageView(QQuickItem* parent) : QQuickItem(parent), m_impl(std::make_unique<Impl>(this)) {
     setFlag(ItemHasContents, true);
     setAcceptedMouseButtons(Qt::LeftButton);
+    connect(ColorSettings::instance(), &ColorSettings::changed, this, [this] { m_impl->colorSettingsChanged(); });
 }
 
 ImageView::~ImageView() {

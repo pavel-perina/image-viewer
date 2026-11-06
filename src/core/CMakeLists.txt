@@ -2,7 +2,12 @@
 find_package(JPEG REQUIRED)
 find_package(TIFF REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET GLOBAL lcms2)
+
 add_library(iv_core STATIC
+    color.cpp
+    color.h
     exif.cpp
     exif.h
     geometry.cpp
@@ -34,10 +39,9 @@ add_library(iv_core STATIC
 )
 
 target_include_directories(iv_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(iv_core PRIVATE JPEG::JPEG TIFF::TIFF)
+target_link_libraries(iv_core PRIVATE JPEG::JPEG TIFF::TIFF PkgConfig::LCMS2)
 
 # Optional formats: the viewer builds without them and simply does not list them.
-find_package(PkgConfig REQUIRED)
 find_package(PNG)
 if(PNG_FOUND)
     target_sources(iv_core PRIVATE png_source.cpp png_source.h)

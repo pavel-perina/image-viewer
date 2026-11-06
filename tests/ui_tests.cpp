@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <QColor>
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -13,8 +14,10 @@
 #include <QQuickTextureFactory>
 #include <QQuickView>
 #include <QQuickWindow>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QUrl>
 #include <QtQml/QQmlExtensionPlugin>
 
 #include <functional>
@@ -22,7 +25,9 @@
 
 #include "test_jpeg.h"
 #include "test_tiff.h"
+#include "core/color.h"
 #include "ui/browse_context.h"
+#include "ui/color_settings.h"
 #include "ui/directory_tree_model.h"
 #include "ui/histogram_handle.h"
 #include "ui/histogram_view.h"
@@ -216,6 +221,16 @@ TEST(DirectoryTreeModel, ShowsOneColumnAndMapsPaths) {
     EXPECT_EQ(model.pathForIndex(index), dir.path());
 }
 
+namespace {
+
+// What Qt hands the provider: the URL without its scheme and provider name.
+QString thumbnailId(const QString& path) {
+    const QString prefix = QStringLiteral("image://") + QLatin1StringView(iv::ThumbnailProvider::kProviderId) + QLatin1Char('/');
+    return iv::ThumbnailProvider::urlForPath(path).mid(prefix.size());
+}
+
+}  // namespace
+
 TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("100% #1 ?é.jpg"));
@@ -224,11 +239,8 @@ TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
     options.height = 500;
     writeJpeg(path, options);
 
-    const QString url = iv::ThumbnailProvider::urlForPath(path);
-    const QString id = url.mid(url.lastIndexOf(QLatin1Char('/')) + 1);
-
     iv::ThumbnailProvider provider;
-    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(id, {}));
+    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(path), {}));
     bool finished = false;
     QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(),
                      [&] { finished = true; });
@@ -242,14 +254,10 @@ TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
 
 TEST(ThumbnailProvider, ReportsUnreadableFiles) {
     iv::ThumbnailProvider provider;
-    const QString url = iv::ThumbnailProvider::urlForPath(QStringLiteral("/does/not/exist.jpg"));
-    std::unique_ptr<QQuickImageResponse> response(
-        provider.requestImageResponse(url.mid(url.lastIndexOf(QLatin1Char('/')) + 1), {}));
-    bool finished = false;
-    QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(),
-                     [&] { finished = true; });
-    ASSERT_TRUE(waitUntil([&] { return finished; }));
-    EXPECT_FALSE(response->errorString().isEmpty());
+    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(QStringLiteral("/does/not/exist.jpg")), {}));
+    // This fails so fast that finished() can come before anyone could connect to it, which
+    // Qt allows for when it loads images, so look at the result instead.
+    EXPECT_TRUE(waitUntil([&] { return !response->errorString().isEmpty(); }));
 }
 
 // Qt deletes a response only after finished(), so a cancelled one must still emit it.
@@ -261,10 +269,8 @@ TEST(ThumbnailProvider, CancelledResponsesFinishExactlyOnce) {
     options.height = 2000;
     writeJpeg(path, options);
 
-    const QString url = iv::ThumbnailProvider::urlForPath(path);
     iv::ThumbnailProvider provider;
-    std::unique_ptr<QQuickImageResponse> response(
-        provider.requestImageResponse(url.mid(url.lastIndexOf(QLatin1Char('/')) + 1), {}));
+    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(path), {}));
     int finishedCount = 0;
     QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(),
                      [&] { ++finishedCount; });
@@ -286,8 +292,7 @@ TEST(ThumbnailProvider, DestroyingPendingResponsesIsSafe) {
     options.height = 3000;
     writeJpeg(path, options);
 
-    const QString url = iv::ThumbnailProvider::urlForPath(path);
-    const QString id = url.mid(url.lastIndexOf(QLatin1Char('/')) + 1);
+    const QString id = thumbnailId(path);
     iv::ThumbnailProvider provider;
     for (int i = 0; i < 50; ++i) {
         std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(id, {}));
@@ -412,7 +417,7 @@ TEST(ImageView, ShowsPagesAndResetsThemForTheNextImage) {
     EXPECT_EQ(fixture.view->imageWidth(), 200);
 }
 
-TEST(ImageView, HighBitDepthGrayIsStretchedAndContrastResetsPerImage) {
+TEST(ImageView, SixteenBitGrayStretchesOnRequestAndContrastResetsPerImage) {
     QTemporaryDir dir;
     // A narrow range of 16-bit values, which would look black without stretching.
     TiffImage gray;
@@ -433,21 +438,21 @@ TEST(ImageView, HighBitDepthGrayIsStretchedAndContrastResetsPerImage) {
     ViewFixture fixture;
     ASSERT_TRUE(fixture.load(grayPath));
     EXPECT_TRUE(fixture.view->contrastAdjustable());
-    EXPECT_TRUE(fixture.view->autoContrast());
+    EXPECT_FALSE(fixture.view->autoContrast());
     QImage image = fixture.grab();
+    EXPECT_LT(image.pixelColor(250, 200).red(), 20);  // the true values are almost black
+
+    fixture.view->setAutoContrast(true);
+    EXPECT_TRUE(fixture.view->autoContrast());
+    image = fixture.grab();
     EXPECT_LT(image.pixelColor(150, 200).red(), 40);   // bottom of the stretched range
     EXPECT_GT(image.pixelColor(250, 200).red(), 215);  // top of it
-
-    fixture.view->setAutoContrast(false);
-    EXPECT_FALSE(fixture.view->autoContrast());
-    image = fixture.grab();
-    EXPECT_LT(image.pixelColor(250, 200).red(), 20);  // the true values are almost black
 
     // The manual choice belongs to that image and does not carry over.
     ASSERT_TRUE(fixture.load(photoPath));
     EXPECT_FALSE(fixture.view->autoContrast());
     ASSERT_TRUE(fixture.load(grayPath));
-    EXPECT_TRUE(fixture.view->autoContrast());
+    EXPECT_FALSE(fixture.view->autoContrast());
 }
 
 TEST(ImageView, EightBitImagesHaveNoContrastToAdjust) {
@@ -979,6 +984,107 @@ TEST(ImageView, DestroyingWhileLoadingIsSafe) {
 
 namespace {
 
+// Puts settings back for the next test.
+struct ColorSettingsGuard {
+    ~ColorSettingsGuard() {
+        iv::ColorSettings::instance()->setEnabled(true);
+        iv::ColorSettings::instance()->useSrgbDisplay();
+    }
+};
+
+QString writeAdobeJpeg(const QTemporaryDir& dir, const QString& name) {
+    const QString path = dir.filePath(name);
+    JpegOptions options;
+    options.iccProfile = iv::adobeRgbProfile();
+    options.pixel = [](int, int) { return Rgb{60, 200, 90}; };
+    writeJpeg(path, options);
+    return path;
+}
+
+}  // namespace
+
+TEST(ColorView, ConvertsAndFollowsTheSetting) {
+    const ColorSettingsGuard guard;
+    QTemporaryDir dir;
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(writeAdobeJpeg(dir, QStringLiteral("a.jpg"))));
+    fixture.view->fitToView();
+    const QColor managed = fixture.grab().pixelColor(200, 200);
+    EXPECT_LT(managed.red(), 30);  // sRGB has to go well below the file's 60 to match Adobe's green
+    EXPECT_NEAR(managed.green(), 200, 4);
+
+    iv::ColorSettings::instance()->setEnabled(false);
+    const QColor unmanaged = fixture.grab().pixelColor(200, 200);
+    EXPECT_NEAR(unmanaged.red(), 60, 4);
+    EXPECT_NEAR(unmanaged.green(), 200, 4);
+    EXPECT_NEAR(unmanaged.blue(), 90, 4);
+
+    iv::ColorSettings::instance()->setEnabled(true);
+    EXPECT_NEAR(fixture.grab().pixelColor(200, 200).red(), managed.red(), 1);
+}
+
+TEST(ColorView, FollowsADisplayProfile) {
+    const ColorSettingsGuard guard;
+    QTemporaryDir dir;
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(writeAdobeJpeg(dir, QStringLiteral("a.jpg"))));
+    fixture.view->fitToView();
+    EXPECT_LT(fixture.grab().pixelColor(200, 200).red(), 30);
+
+    // Showing Adobe RGB on an Adobe RGB display changes nothing.
+    const QString profile = dir.filePath(QStringLiteral("display.icc"));
+    iv::test::writeFile(QFileInfo(profile).filesystemFilePath(), iv::adobeRgbProfile());
+    EXPECT_EQ(iv::ColorSettings::instance()->useDisplayProfile(QUrl::fromLocalFile(profile)), QString());
+    EXPECT_EQ(iv::ColorSettings::instance()->displayProfileName(), QStringLiteral("Adobe RGB (1998)"));
+    EXPECT_NEAR(fixture.grab().pixelColor(200, 200).red(), 60, 4);
+
+    iv::ColorSettings::instance()->useSrgbDisplay();
+    EXPECT_EQ(iv::ColorSettings::instance()->displayProfileName(), QStringLiteral("sRGB"));
+    EXPECT_LT(fixture.grab().pixelColor(200, 200).red(), 30);
+}
+
+TEST(ColorView, RefusesFilesThatAreNoDisplayProfile) {
+    const ColorSettingsGuard guard;
+    QTemporaryDir dir;
+    const QString junk = dir.filePath(QStringLiteral("junk.icc"));
+    iv::test::writeFile(QFileInfo(junk).filesystemFilePath(), {1, 2, 3, 4});
+    EXPECT_FALSE(iv::ColorSettings::instance()->useDisplayProfile(QUrl::fromLocalFile(junk)).isEmpty());
+    EXPECT_FALSE(iv::ColorSettings::instance()->useDisplayProfile(QUrl::fromLocalFile(dir.filePath(QStringLiteral("none.icc")))).isEmpty());
+    EXPECT_FALSE(iv::ColorSettings::instance()->hasDisplayProfile());
+}
+
+TEST(ColorView, AChangeWhileLoadingIsNotLost) {
+    const ColorSettingsGuard guard;
+    QTemporaryDir dir;
+    ViewFixture fixture;
+    fixture.view->setSource(writeAdobeJpeg(dir, QStringLiteral("a.jpg")));
+    iv::ColorSettings::instance()->setEnabled(false);
+    ASSERT_TRUE(waitUntil([&] { return fixture.view->status() == ImageView::Status::Ready; }));
+    fixture.view->fitToView();
+    EXPECT_NEAR(fixture.grab().pixelColor(200, 200).red(), 60, 4);
+}
+
+TEST(ColorView, ThumbnailsGetNewUrlsWhenTheSettingChanges) {
+    const ColorSettingsGuard guard;
+    QTemporaryDir dir;
+    writeAdobeJpeg(dir, QStringLiteral("a.jpg"));
+    BrowseContext context;
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 1; }));
+    QAbstractItemModel* model = context.files();
+    const int role = model->roleNames().key("thumbnail");
+    const QString before = model->data(model->index(0, 0), role).toString();
+    int changes = 0;
+    QObject::connect(model, &QAbstractItemModel::dataChanged, [&](const QModelIndex&, const QModelIndex&, const QList<int>& roles) {
+        changes += roles.contains(role) ? 1 : 0;
+    });
+    iv::ColorSettings::instance()->setEnabled(false);
+    EXPECT_EQ(changes, 1);
+    EXPECT_NE(model->data(model->index(0, 0), role).toString(), before);
+}
+
+namespace {
+
 // The real browser page in a window, for what only exists in QML. Any QML warning fails the
 // test, since a mistake in a binding shows up as nothing more than that.
 struct BrowserPageFixture {
@@ -1139,6 +1245,10 @@ TEST(BrowserPage, DoubleClickingAFolderLeavesItExpanded) {
 
 int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
+    // Tests run side by side, and must neither see each other's settings nor touch the user's.
+    const QTemporaryDir settingsFolder;
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsFolder.path());
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

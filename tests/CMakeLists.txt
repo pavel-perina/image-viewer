@@ -5,6 +5,7 @@ include(GoogleTest)
 
 # Links no Qt, so a Qt dependency creeping into core breaks this build.
 add_executable(iv_core_tests
+    color_tests.cpp
     core_tests.cpp
     format_tests.cpp
     info_tests.cpp
@@ -17,7 +18,7 @@ add_executable(iv_core_tests
     tiff_tests.cpp
 )
 set_target_properties(iv_core_tests PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
-target_link_libraries(iv_core_tests PRIVATE iv_core JPEG::JPEG TIFF::TIFF GTest::gtest GTest::gtest_main)
+target_link_libraries(iv_core_tests PRIVATE iv_core JPEG::JPEG TIFF::TIFF PkgConfig::LCMS2 GTest::gtest GTest::gtest_main)
 # The formats' own encoders create the test files.
 find_package(PkgConfig REQUIRED)
 if(PNG_FOUND)

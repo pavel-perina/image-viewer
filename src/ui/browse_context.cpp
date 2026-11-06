@@ -15,6 +15,7 @@
 
 #include "core/image_source.h"
 #include "core/work_queue.h"
+#include "ui/color_settings.h"
 #include "ui/thumbnail_provider.h"
 
 namespace iv {
@@ -57,6 +58,12 @@ public:
     }
 
     const std::vector<char>& selected() const { return m_selected; }
+
+    void thumbnailsChanged() {
+        if (rowCount() > 0) {
+            emit dataChanged(index(0), index(rowCount() - 1), {ThumbnailRole});
+        }
+    }
 
     // Replaces the selection, telling views only about the rows that differ.
     bool setSelected(const std::vector<char>& selected) {
@@ -160,7 +167,9 @@ struct BrowseContext::Impl {
     }
 };
 
-BrowseContext::BrowseContext(QObject* parent) : QObject(parent), m_impl(std::make_unique<Impl>(this)) {}
+BrowseContext::BrowseContext(QObject* parent) : QObject(parent), m_impl(std::make_unique<Impl>(this)) {
+    connect(ColorSettings::instance(), &ColorSettings::changed, this, [this] { m_impl->files.thumbnailsChanged(); });
+}
 
 BrowseContext::~BrowseContext() {
     // A running scan posts its result to this object, so it must finish first.

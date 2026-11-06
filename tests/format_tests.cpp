@@ -29,6 +29,7 @@
 #endif
 
 #include "core/histogram.h"
+#include "core/color.h"
 #include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
@@ -181,13 +182,26 @@ void appendToBytes(png_structp png, png_bytep data, png_size_t length) {
     out->insert(out->end(), data, data + length);
 }
 
-// Puts a chunk just after the header or just before the end, without a valid checksum,
-// which only matters to libpng for chunks it reads.
+std::uint32_t pngChecksum(const std::uint8_t* data, std::size_t size) {
+    std::uint32_t crc = 0xFFFFFFFFu;
+    for (std::size_t i = 0; i < size; ++i) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; ++bit) {
+            crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+    }
+    return ~crc;
+}
+
+// Puts a chunk just after the header or just before the end.
 void insertChunk(Bytes& png, const char* type, const Bytes& payload, bool atEnd) {
     Bytes chunk{std::uint8_t(payload.size() >> 24), std::uint8_t(payload.size() >> 16), std::uint8_t(payload.size() >> 8), std::uint8_t(payload.size())};
     chunk.insert(chunk.end(), type, type + 4);
     chunk.insert(chunk.end(), payload.begin(), payload.end());
-    chunk.resize(chunk.size() + 4, 0);
+    const std::uint32_t crc = pngChecksum(chunk.data() + 4, chunk.size() - 4);
+    for (const int shift : {24, 16, 8, 0}) {
+        chunk.push_back(static_cast<std::uint8_t>(crc >> shift));
+    }
     const std::size_t at = atEnd ? png.size() - 12 : 8 + 25;  // IEND, or after signature and IHDR
     png.insert(png.begin() + static_cast<std::ptrdiff_t>(at), chunk.begin(), chunk.end());
 }
@@ -416,6 +430,60 @@ TEST(Png, ReadsIccAndExifEvenAfterThePixels) {
     expectPicture(*source, 0);
 }
 
+namespace {
+
+Bytes bigEndian32(std::initializer_list<std::uint32_t> values) {
+    Bytes out;
+    for (const std::uint32_t v : values) {
+        for (const int shift : {24, 16, 8, 0}) {
+            out.push_back(static_cast<std::uint8_t>(v >> shift));
+        }
+    }
+    return out;
+}
+
+// The profile a PNG ends up with once these chunks are put before its pixels.
+std::vector<std::uint8_t> pngProfile(const std::string& name, const std::vector<std::pair<const char*, Bytes>>& chunks, const Bytes& icc = {}) {
+    PngOptions options;
+    options.icc = icc;
+    Bytes png = encodePng(options);
+    for (const auto& [type, payload] : chunks) {
+        insertChunk(png, type, payload, false);
+    }
+    return open(write(name, png))->subimages()[0].iccProfile;
+}
+
+}  // namespace
+
+TEST(PngColor, ChunksDescribeTheColours) {
+    EXPECT_TRUE(pngProfile("none.png", {}).empty());
+    EXPECT_TRUE(pngProfile("srgb.png", {{"sRGB", {0}}}).empty());
+    // What encoders write when they mean sRGB, so it must not turn into a slow transform.
+    EXPECT_TRUE(pngProfile("g22.png", {{"gAMA", bigEndian32({45455})}}).empty());
+    EXPECT_FALSE(pngProfile("g1.png", {{"gAMA", bigEndian32({100000})}}).empty());
+
+    const Bytes adobeChrm = bigEndian32({31270, 32900, 64000, 33000, 21000, 71000, 15000, 6000});
+    const auto wide = pngProfile("chrm.png", {{"gAMA", bigEndian32({45455})}, {"cHRM", adobeChrm}});
+    SubimageInfo info;
+    info.stored.colorModel = "RGB";
+    info.iccProfile = wide;
+    EXPECT_NE(displayTransform(info, {}), nullptr);
+}
+
+TEST(PngColor, PrecedenceFollowsTheSpecification) {
+    const IccBytes adobe = adobeRgbProfile();
+    // A profile wins over sRGB and gamma chunks,
+    EXPECT_EQ(pngProfile("icc_gamma.png", {{"gAMA", bigEndian32({100000})}}, adobe), adobe);
+    // and an sRGB chunk over a gamma chunk,
+    EXPECT_TRUE(pngProfile("srgb_gamma.png", {{"gAMA", bigEndian32({100000})}, {"sRGB", {0}}}).empty());
+#ifdef PNG_cICP_SUPPORTED
+    // and cICP over them all.
+    const auto p3 = pngProfile("cicp.png", {{"cICP", {12, 13, 0, 1}}}, adobe);
+    EXPECT_EQ(iccDescription(p3), "Display P3");
+    EXPECT_TRUE(pngProfile("cicp_srgb.png", {{"cICP", {1, 13, 0, 1}}}, adobe).empty());
+#endif
+}
+
 TEST(Png, MarksAnApngAsAnimated) {
     Bytes bytes = encodePng({});
     insertChunk(bytes, "acTL", Bytes{0, 0, 0, 2, 0, 0, 0, 0}, false);
@@ -598,6 +666,8 @@ struct AvifOptions {
     bool lossless = false;
     bool alpha = false;
     avifPixelFormat yuv = AVIF_PIXEL_FORMAT_YUV420;
+    int primaries = 0;  // 0 leaves the encoder's default
+    int transfer = 0;
     int rotationAngle = -1;
     Bytes exif;
     Bytes icc;
@@ -627,6 +697,10 @@ Bytes encodeAvif(const AvifOptions& options) {
         EXPECT_EQ(avifImageSetProfileICC(image, options.icc.data(), options.icc.size()), AVIF_RESULT_OK);
     }
 
+    if (options.primaries != 0) {
+        image->colorPrimaries = static_cast<avifColorPrimaries>(options.primaries);
+        image->transferCharacteristics = static_cast<avifTransferCharacteristics>(options.transfer);
+    }
     avifRGBImage rgb;
     avifRGBImageSetDefaults(&rgb, image);
     rgb.depth = 8;
@@ -737,6 +811,27 @@ TEST_F(AvifTest, ExifAndIccAreRead) {
     EXPECT_EQ(info.iccProfile, options.icc);
     // The EXIF block says rotated while the container says not: the container wins.
     EXPECT_EQ(info.orientation, Orientation::Normal);
+}
+
+TEST_F(AvifTest, ColourCodePointsBecomeAProfile) {
+    AvifOptions p3;
+    p3.primaries = 12;
+    p3.transfer = 13;
+    EXPECT_EQ(iccDescription(open(write("p3.avif", encodeAvif(p3)))->subimages()[0].iccProfile), "Display P3");
+
+    AvifOptions srgb;
+    srgb.primaries = 1;
+    srgb.transfer = 13;
+    EXPECT_TRUE(open(write("srgb.avif", encodeAvif(srgb)))->subimages()[0].iccProfile.empty());
+
+    AvifOptions hdr;  // cannot be expressed yet, and must not be mistaken for something else
+    hdr.primaries = 9;
+    hdr.transfer = 16;
+    EXPECT_TRUE(open(write("hdr.avif", encodeAvif(hdr)))->subimages()[0].iccProfile.empty());
+
+    AvifOptions both = p3;  // an embedded profile has the final say
+    both.icc = adobeRgbProfile();
+    EXPECT_EQ(open(write("both.avif", encodeAvif(both)))->subimages()[0].iccProfile, both.icc);
 }
 
 TEST_F(AvifTest, SurvivesDamage) { survivesDamage("x.avif", encodeAvif({})); }

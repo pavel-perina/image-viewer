@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include "core/color.h"
 #include "core/image_ops.h"
 #include "core/whole_image_source.h"
 
@@ -171,6 +172,34 @@ Result<ImageBuffer> decode(const std::vector<std::uint8_t>& bytes, PixelFormat f
     return image;
 }
 
+// In the order the PNG specification gives them precedence.
+IccBytes describedProfile(png_structp png, png_infop info, IccBytes embedded) {
+#ifdef PNG_cICP_SUPPORTED
+    png_byte primaries = 0;
+    png_byte transfer = 0;
+    png_byte matrix = 0;
+    png_byte range = 0;
+    if (png_get_cICP(png, info, &primaries, &transfer, &matrix, &range) != 0) {
+        return profileFromCicp(primaries, transfer);
+    }
+#endif
+    if (!embedded.empty()) {
+        return embedded;
+    }
+    int intent = 0;
+    if (png_get_sRGB(png, info, &intent) != 0) {
+        return {};
+    }
+    double gamma = 0;
+    if (png_get_gAMA(png, info, &gamma) == 0) {
+        return {};
+    }
+    RgbPrimaries p;
+    const bool hasPrimaries = png_get_cHRM(png, info, &p.white.x, &p.white.y, &p.red.x, &p.red.y, &p.green.x, &p.green.y,
+                                           &p.blue.x, &p.blue.y) != 0;
+    return profileFromPngGamma(gamma, hasPrimaries ? &p : nullptr);
+}
+
 }  // namespace
 
 bool isPng(std::span<const std::uint8_t> h) {
@@ -205,6 +234,7 @@ Result<std::shared_ptr<ImageSource>> openPngSource(std::vector<std::uint8_t> byt
     if (png_get_iCCP(png, pngInfo, &iccName, &iccCompression, &icc, &iccLength) != 0 && icc) {
         info.iccProfile.assign(icc, icc + iccLength);
     }
+    info.iccProfile = describedProfile(png, pngInfo, std::move(info.iccProfile));
     readExtraChunks(bytes, info);
 
     StoredFormat& stored = info.stored;

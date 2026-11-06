@@ -9,6 +9,7 @@
 #include <thread>
 #include <utility>
 
+#include "core/color.h"
 #include "core/image_ops.h"
 #include "core/whole_image_source.h"
 
@@ -125,6 +126,8 @@ Result<std::shared_ptr<ImageSource>> openAvifSource(std::vector<std::uint8_t> by
     info.orientation = orientationOf(image);
     if (image.icc.size > 0) {
         info.iccProfile.assign(image.icc.data, image.icc.data + image.icc.size);
+    } else {
+        info.iccProfile = profileFromCicp(image.colorPrimaries, image.transferCharacteristics);
     }
     if (image.exif.size > 0) {
         info.exif = parseExif({image.exif.data, image.exif.size});
