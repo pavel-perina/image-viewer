@@ -23,6 +23,8 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(int imageWidth READ imageWidth NOTIFY statusChanged)
     Q_PROPERTY(int imageHeight READ imageHeight NOTIFY statusChanged)
     Q_PROPERTY(double zoom READ zoom NOTIFY zoomChanged)
+    // The part of the image in view, as fractions of it. Changes with panning too.
+    Q_PROPERTY(QRectF visibleArea READ visibleArea NOTIFY zoomChanged)
     Q_PROPERTY(int page READ page WRITE setPage NOTIFY pageChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
     Q_PROPERTY(bool contrastAdjustable READ contrastAdjustable NOTIFY pageChanged)
@@ -60,6 +62,7 @@ public:
     int imageWidth() const;
     int imageHeight() const;
     double zoom() const;  // device pixels per image pixel
+    QRectF visibleArea() const;
     int page() const;
     void setPage(int page);
     int pageCount() const;

@@ -85,6 +85,14 @@ RectD Viewport::visibleRect() const {
     return {left, top, std::max(0.0, right - left), std::max(0.0, bottom - top)};
 }
 
+RectD Viewport::visibleFraction() const {
+    if (m_image.width <= 0 || m_image.height <= 0) {
+        return {0, 0, 1, 1};
+    }
+    const RectD visible = visibleRect();
+    return {visible.x / m_image.width, visible.y / m_image.height, visible.width / m_image.width, visible.height / m_image.height};
+}
+
 int chooseLevel(std::span<const LevelInfo> levels, double zoom) {
     const int full = levels.front().size.width;
     int chosen = 0;

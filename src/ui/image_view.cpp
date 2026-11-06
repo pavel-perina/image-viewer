@@ -682,6 +682,11 @@ void ImageView::setAutoContrast(bool enabled) { m_impl->setAutoContrast(enabled)
 
 double ImageView::zoom() const { return m_impl->viewport.zoom(); }
 
+QRectF ImageView::visibleArea() const {
+    const RectD area = m_impl->viewport.visibleFraction();
+    return {area.x, area.y, area.width, area.height};
+}
+
 QVariantList ImageView::details() const { return m_impl->details; }
 
 bool ImageView::histogramEnabled() const { return m_impl->histogramEnabled; }

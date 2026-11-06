@@ -25,6 +25,7 @@ Rectangle {
     readonly property alias editText: field.text
     readonly property alias menuFolders: subfolders.folders
     readonly property alias menuOpen: menu.visible
+    readonly property alias menu: menu
     readonly property var crumbNames: context.breadcrumbs.map(crumb => crumb.name)
     readonly property string boldCrumb: crumbNames.length > 0 ? crumbNames[crumbNames.length - 1] : ""
 
@@ -65,7 +66,8 @@ Rectangle {
         subfolders.path = path
         if (anchorItem) {
             const place = anchorItem.mapToItem(Overlay.overlay, 0, anchorItem.height)
-            menu.x = place.x
+            // Stays inside the window under a caret at the far right.
+            menu.x = Math.max(0, Math.min(place.x, Overlay.overlay.width - menu.width - 4))
             menu.y = place.y
         }
         menu.open()
@@ -203,7 +205,12 @@ Rectangle {
                 }
             }
 
-            ScrollIndicator.horizontal: ScrollIndicator {}
+            // A hint that part of a deep path is out of sight. The wheel does the scrolling.
+            ScrollBar.horizontal: AppScrollBar {
+                thickness: 4
+                padding: 1
+                interactive: false
+            }
 
             Row {
                 id: crumbsRow
@@ -364,9 +371,7 @@ Rectangle {
             Keys.onReturnPressed: if (currentIndex >= 0) bar.chooseSubfolder(subfolders.folders[currentIndex])
             Keys.onEnterPressed: if (currentIndex >= 0) bar.chooseSubfolder(subfolders.folders[currentIndex])
 
-            ScrollBar.vertical: ScrollBar {
-                policy: list.contentHeight > list.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
-            }
+            ScrollBar.vertical: AppScrollBar {}
 
             delegate: Rectangle {
                 id: row

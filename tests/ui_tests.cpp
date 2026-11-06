@@ -11,6 +11,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QMimeData>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
@@ -1164,6 +1165,105 @@ struct BrowserPageFixture {
 
 }  // namespace
 
+TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("big.jpg"));
+    JpegOptions options;
+    options.width = 4000;
+    options.height = 2000;
+    writeJpeg(path, options);
+    BrowseContext context;
+    QQuickView view;
+    QObject::connect(view.engine(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+        for (const QQmlError& warning : warnings) {
+            ADD_FAILURE() << warning.toString().toStdString();
+        }
+    });
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                               {QStringLiteral("active"), true},
+                               {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(1000, 500);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    ASSERT_NE(view.rootObject(), nullptr);
+    view.rootObject()->setProperty("panelAnimated", false);
+    context.openPath(path);
+    auto* image = view.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(image, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->width() == 1000; }));
+    auto* horizontal = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("horizontalHandle"));
+    auto* vertical = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("verticalHandle"));
+    ASSERT_NE(horizontal, nullptr);
+    ASSERT_NE(vertical, nullptr);
+
+    auto* bars = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("imageScrollBars"));
+    ASSERT_NE(bars, nullptr);
+    const auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, at, view.mapToGlobal(at), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(&view, &event);
+        QCoreApplication::processEvents();
+    };
+    const auto drag = [&](QPointF from, QPointF by) {
+        send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+        for (int step = 1; step <= 4; ++step) {
+            send(QEvent::MouseMove, from + by * step / 4, Qt::NoButton, Qt::LeftButton);
+        }
+        send(QEvent::MouseButtonRelease, from + by, Qt::LeftButton, Qt::NoButton);
+    };
+
+    EXPECT_FALSE(horizontal->isVisible()) << "all of it fits";
+    EXPECT_FALSE(vertical->isVisible());
+
+    image->actualSize();
+    ASSERT_TRUE(horizontal->isVisible());
+    ASSERT_TRUE(vertical->isVisible());
+    // The tracks leave a margin at each end and the corner where the handles would meet.
+    constexpr double kAcross = 1000 - 2 * 2 - 10;
+    constexpr double kDown = 500 - 2 * 2 - 10;
+    EXPECT_DOUBLE_EQ(horizontal->width(), 0.25 * kAcross);
+    EXPECT_DOUBLE_EQ(vertical->height(), 0.25 * kDown);
+
+    // A press on a handle's strip drags the image like anywhere else.
+    const QRectF before = image->visibleArea();
+    const QPointF onHandle = horizontal->mapToScene(QPointF(horizontal->width() / 2, horizontal->height() / 2));
+    drag(onHandle, QPointF(-200, -100));
+    const QRectF after = image->visibleArea();
+    EXPECT_DOUBLE_EQ(after.x(), before.x() + 200.0 / 4000);
+    EXPECT_DOUBLE_EQ(after.y(), before.y() + 100.0 / 2000);
+    EXPECT_DOUBLE_EQ(horizontal->x(), 2 + after.x() * kAcross);
+    EXPECT_DOUBLE_EQ(vertical->y(), 2 + after.y() * kDown);
+
+    // Seen as it moved, and gone about half a second after it stopped.
+    EXPECT_EQ(bars->opacity(), 1);
+    QElapsedTimer sinceStop;
+    sinceStop.start();
+    EXPECT_TRUE(waitUntil([&] { return bars->opacity() == 0; }, 3000));
+    EXPECT_GE(sinceStop.elapsed(), 300);
+    EXPECT_LE(sinceStop.elapsed(), 1000);
+    const double zoomBefore = image->zoom();
+    const QPointF middle(500, 250);
+    QWheelEvent wheel(middle, view.mapToGlobal(middle), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(&view, &wheel);
+    EXPECT_GT(image->zoom(), zoomBefore);
+    EXPECT_EQ(bars->opacity(), 1) << "zooming shows them again at once";
+
+    // A tiny part of the image still gives a visible handle, which reaches the end of its track.
+    while (image->visibleArea().width() * kAcross > 32 && image->zoom() < 32) {
+        image->zoomIn();
+    }
+    ASSERT_LT(image->visibleArea().width() * kAcross, 32);
+    EXPECT_DOUBLE_EQ(horizontal->width(), 32);
+    drag(onHandle, QPointF(-100000, 0));
+    EXPECT_DOUBLE_EQ(image->visibleArea().right(), 1);
+    EXPECT_DOUBLE_EQ(horizontal->x() + horizontal->width(), 2 + kAcross);
+
+    image->fitToView();
+    EXPECT_FALSE(horizontal->isVisible()) << "fitted again";
+    EXPECT_FALSE(vertical->isVisible());
+}
+
 TEST(ViewerPage, PanelTakesRoomFromTheImageExceptAtFullScreen) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("a.jpg"));
@@ -2064,6 +2164,68 @@ TEST(BrowserPage, PathBarEditsAndKeepsAProblemOnScreen) {
     EXPECT_FALSE(bar->property("editing").toBool());
     EXPECT_EQ(f.context.directory(), inner);
     EXPECT_TRUE(bar->property("problem").toString().isEmpty());
+}
+
+TEST(BrowserPage, ScrollbarAppearsOverItsListInTheAccentColourAndFades) {
+    BrowserPageFixture f;
+    QQuickItem* grid = f.find("QQuickGridView");
+    ASSERT_NE(grid, nullptr);
+    QQuickItem* bar = nullptr;
+    for (QQuickItem* item : f.view.rootObject()->findChildren<QQuickItem*>()) {
+        if (item->inherits("QQuickScrollBar") && item->parentItem() == grid) {
+            bar = item;
+        }
+    }
+    ASSERT_NE(bar, nullptr);
+    EXPECT_FALSE(bar->isVisible()) << "four files fit, so nothing to scroll";
+
+    f.view.resize(700, 300);  // two rows, and room for one
+    ASSERT_TRUE(waitUntil([&] { return bar->isVisible() && bar->property("size").toDouble() < 1; }));
+
+    const auto moveTo = [&](QPointF at) {
+        QMouseEvent move(QEvent::MouseMove, at, at, f.view.mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&f.view, &move);
+        QCoreApplication::processEvents();
+    };
+    const QPointF overList = grid->mapToScene(QPointF(50, 50));
+    const QPointF elsewhere = f.view.rootObject()->mapToScene(QPointF(5, f.view.height() - 5));
+
+    // Out of sight while the mouse is elsewhere and nothing moves.
+    moveTo(elsewhere);
+    EXPECT_TRUE(waitUntil([&] { return bar->opacity() == 0; }, 2000));
+
+    moveTo(overList);
+    EXPECT_TRUE(waitUntil([&] { return bar->opacity() == 1; }, 2000)) << "over the list";
+
+    // The handle is the accent colour at 20%, over whatever lies under it.
+    const QPoint handle = bar->mapToScene(QPointF(bar->width() / 2, 10)).toPoint();
+    const QImage with = f.view.grabWindow();
+    bar->setVisible(false);
+    const QImage without = f.view.grabWindow();
+    bar->setVisible(true);
+    const QColor under = without.pixelColor(handle);
+    const QColor accent(QStringLiteral("#5a93aa"));
+    const QColor seen = with.pixelColor(handle);
+    EXPECT_NEAR(seen.red(), under.red() * 0.8 + accent.red() * 0.2, 2);
+    EXPECT_NEAR(seen.green(), under.green() * 0.8 + accent.green() * 0.2, 2);
+    EXPECT_NEAR(seen.blue(), under.blue() * 0.8 + accent.blue() * 0.2, 2);
+
+    moveTo(elsewhere);
+    EXPECT_TRUE(waitUntil([&] { return bar->opacity() == 0; }, 2000)) << "and it fades again";
+}
+
+TEST(BrowserPage, SubfolderListStaysInsideTheWindowUnderTheLastCaret) {
+    TreeFixture f;
+    auto* bar = f.view.rootObject()->findChild<QObject*>(QStringLiteral("pathBar"));
+    ASSERT_NE(bar, nullptr);
+    auto* anchor = qobject_cast<QQuickItem*>(bar);
+    ASSERT_NE(anchor, nullptr);
+    QQuickItem corner(anchor);  // as far right as a caret can be
+    corner.setPosition(QPointF(anchor->width() - 1, 0));
+    QMetaObject::invokeMethod(bar, "openSubfolders", Q_ARG(QVariant, f.dir.path()), Q_ARG(QVariant, QVariant::fromValue(&corner)));
+    QObject* menu = bar->property("menu").value<QObject*>();
+    ASSERT_NE(menu, nullptr);
+    EXPECT_LE(menu->property("x").toDouble() + menu->property("width").toDouble(), f.view.width());
 }
 
 TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {

@@ -113,7 +113,7 @@ SplitView {
                 }
             }
 
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: AppScrollBar {}
 
             Connections {
                 target: page.context
@@ -172,7 +172,7 @@ SplitView {
             currentIndex: page.context.currentIndex
             onCurrentIndexChanged: positionViewAtIndex(currentIndex, GridView.Contain)
 
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: AppScrollBar {}
 
             // A click between the thumbnails clears the selection.
             TapHandler {

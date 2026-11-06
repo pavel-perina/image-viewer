@@ -48,6 +48,12 @@ Rectangle {
         sourceComponent: ResampledView { view: page.view }
     }
 
+    ImageScrollBars {
+        objectName: "imageScrollBars"
+        anchors.fill: view
+        view: page.view
+    }
+
     Settings {
         id: settings
         category: "InfoPanel"

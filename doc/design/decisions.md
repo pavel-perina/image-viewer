@@ -45,6 +45,15 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   Pyramid files avoid it and open in milliseconds. Parallel decoding would speed it up, and
   a persistent cache of overviews could avoid it for flat files too.
 
+## Viewer handles
+* Handles over a zoomed image show the part in view as fractions of the image, so pixels
+  1000-2000 of 4000 give a handle from 25% to 50%. They are at least 32 pixels long.
+* They are light with a dark edge rather than from the colour scheme, as they lie on the image.
+* They show while the image pans or zooms and fade about half a second after it stops, so that a
+  static image has nothing over it.
+* They only indicate and take no mouse input. The image itself can be dragged, and a draggable
+  strip at the right edge would conflict with the panel that appears there in full screen.
+
 ## Display range
 * Pixels are converted to `Bgrx8` on the worker thread, with a low and high value per image.
 * Float images default to auto contrast (0.1% percentiles of the coarsest level), because
@@ -136,6 +145,9 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Thumbnails will be stored as compressed blobs, so they do not need zstd.
 
 ## Planned, not built
+* Appearance in its final form: a dark and a less dark look, an accent colour or following the
+  system, with other colours derived from these, such as a darker accent or a mix. `AppScrollBar`
+  and `PathBar` draw flat controls from the palette in the meantime.
 * Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
   the selection of the current panel.

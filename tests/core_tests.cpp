@@ -227,6 +227,21 @@ TEST(Viewport, ZoomKeepsThePointUnderTheCursorInPlace) {
     EXPECT_DOUBLE_EQ((50 - vp.offsetY()) / vp.zoom(), 350);
 }
 
+TEST(Viewport, VisibleFractionIsThePartOfTheImageInView) {
+    Viewport vp;
+    EXPECT_EQ(vp.visibleFraction(), (RectD{0, 0, 1, 1})) << "no image";
+
+    vp.setViewSize(1000, 500);
+    vp.setImageSize({4000, 2000});
+    EXPECT_DOUBLE_EQ(vp.visibleFraction().width, 1.0) << "fitted, all of it shows";
+
+    vp.zoomBy(10.0, 0, 0);  // 100%, stopping there
+    ASSERT_DOUBLE_EQ(vp.zoom(), 1.0);
+    vp.panBy(-1000, -500);
+    // Pixels 1000-2000 of 4000 across, and 500-1000 of 2000 down.
+    EXPECT_EQ(vp.visibleFraction(), (RectD{0.25, 0.25, 0.25, 0.25}));
+}
+
 TEST(Viewport, ZoomStopsAtOneHundredPercentWhenCrossingIt) {
     Viewport vp;
     vp.setViewSize(100, 100);

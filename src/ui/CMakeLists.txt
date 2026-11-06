@@ -18,17 +18,22 @@ qt_add_library(iv_ui STATIC
     thumbnail_provider.h
 )
 
+set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(iv_ui
     URI ImageViewer
     VERSION 1.0
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewer
     QML_FILES
+        qml/AppScrollBar.qml
         qml/BrowserPage.qml
         qml/FileActions.qml
+        qml/ImageScrollBars.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/PathBar.qml
         qml/ResampledView.qml
+        qml/Theme.qml
         qml/ViewerPage.qml
 )
 

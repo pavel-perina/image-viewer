@@ -35,6 +35,8 @@ public:
 
     // The part of the image that is visible, in image coordinates.
     RectD visibleRect() const;
+    // The same as fractions of the image, from 0 to 1, or all of it if there is no image.
+    RectD visibleFraction() const;
 
 private:
     void applyFit();

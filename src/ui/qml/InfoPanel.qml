@@ -30,7 +30,7 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
         clip: true
 
-        ScrollBar.vertical: ScrollBar {}
+        ScrollBar.vertical: AppScrollBar {}
 
         ColumnLayout {
             id: content
