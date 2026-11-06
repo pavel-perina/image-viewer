@@ -265,6 +265,23 @@ TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
     EXPECT_EQ(factory->textureSize(), QSize(256, 128));
 }
 
+TEST(ThumbnailProvider, MakesTheRequestedSize) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("a.jpg"));
+    JpegOptions options;
+    options.width = 1000;
+    options.height = 500;
+    writeJpeg(path, options);
+    iv::ThumbnailProvider provider;
+    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(path), {164, 164}));
+    bool finished = false;
+    QObject::connect(response.get(), &QQuickImageResponse::finished, response.get(), [&] { finished = true; });
+    ASSERT_TRUE(waitUntil([&] { return finished; }));
+    std::unique_ptr<QQuickTextureFactory> factory(response->textureFactory());
+    ASSERT_TRUE(factory);
+    EXPECT_EQ(factory->textureSize(), QSize(164, 82));
+}
+
 TEST(ThumbnailProvider, ReportsUnreadableFiles) {
     iv::ThumbnailProvider provider;
     std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(QStringLiteral("/does/not/exist.jpg")), {}));
@@ -2218,6 +2235,50 @@ TEST(BrowserPage, PreviewUsesTheSharpSetting) {
     EXPECT_FALSE(preview->resampling());
     f.view.rootObject()->setProperty("sharpResampling", true);
     EXPECT_TRUE(preview->resampling());
+}
+
+TEST(BrowserPage, ThumbnailsAreShownOnePixelForOne) {
+    BrowserPageFixture f;
+    QQuickItem* image = nullptr;
+    // Delegates are children of the items they show in, but not of the page as objects.
+    const std::function<QQuickItem*(QQuickItem*)> loadedThumbnail = [&](QQuickItem* item) -> QQuickItem* {
+        if (item->objectName() == QStringLiteral("thumbnailImage") && item->property("status").toInt() == 1 && item->width() > 0) {
+            return item;
+        }
+        for (QQuickItem* child : item->childItems()) {
+            if (QQuickItem* found = loadedThumbnail(child)) {
+                return found;
+            }
+        }
+        return nullptr;
+    };
+    ASSERT_TRUE(waitUntil([&] { return (image = loadedThumbnail(f.view.contentItem())) != nullptr; }));
+    EXPECT_EQ(image->property("sourceSize").toSize(), QSize(164, 164));
+    EXPECT_LE(std::max(image->width(), image->height()), 164);
+    const double scale = f.view.effectiveDevicePixelRatio();
+    EXPECT_DOUBLE_EQ(image->width() * scale, std::round(image->width() * scale));
+    const QPointF corner = image->mapToScene(QPointF(0, 0)) * scale;
+    EXPECT_DOUBLE_EQ(corner.x(), std::round(corner.x()));
+    EXPECT_DOUBLE_EQ(corner.y(), std::round(corner.y()));
+}
+
+TEST(BrowserPage, PageKeysMoveWholeRowsAndStopAtTheEnds) {
+    BrowserPageFixture f;
+    f.view.resize(700, 300);  // room for one row of three at a time, as the fixture has four
+    QCoreApplication::processEvents();
+    f.context.setCurrentIndex(0);
+    QObject* page = f.view.rootObject();
+    QMetaObject::invokeMethod(page, "movePage", Q_ARG(QVariant, 1));
+    const int columns = f.find("QQuickGridView")->property("columns").toInt();
+    ASSERT_GT(columns, 0);
+    EXPECT_EQ(f.context.currentIndex(), std::min(columns, 3));
+    QMetaObject::invokeMethod(page, "movePage", Q_ARG(QVariant, 100));
+    EXPECT_EQ(f.context.currentIndex(), 3) << "stops at the last, rather than not moving";
+    QMetaObject::invokeMethod(page, "extendSelectionByPage", Q_ARG(QVariant, -100));
+    EXPECT_EQ(f.context.currentIndex(), 0);
+    EXPECT_EQ(f.context.selectedCount(), 4);
+    QMetaObject::invokeMethod(page, "movePage", Q_ARG(QVariant, -1));
+    EXPECT_EQ(f.context.currentIndex(), 0);
 }
 
 TEST(BrowserPage, ScrollbarAppearsOverItsListInTheAccentColourAndFades) {

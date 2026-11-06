@@ -29,6 +29,20 @@ SplitView {
         page.context.extendSelectionTo(page.context.currentIndex + rows * grid.columns)
     }
 
+    // A full page of whole rows, stopping at the first or last image rather than not moving.
+    function pageTarget(pages) {
+        const rows = Math.max(1, Math.floor(grid.height / grid.cellHeight))
+        return Math.max(0, Math.min(page.context.fileCount - 1, page.context.currentIndex + pages * rows * grid.columns))
+    }
+
+    function movePage(pages) {
+        page.context.setCurrentIndex(pageTarget(pages))
+    }
+
+    function extendSelectionByPage(pages) {
+        page.context.extendSelectionTo(pageTarget(pages))
+    }
+
     orientation: Qt.Horizontal
 
     // The side buttons of a mouse.
@@ -213,18 +227,27 @@ SplitView {
                     border.color: palette.highlightedText
                 }
 
-                Image {
-                    id: thumbnailImage
+                Item {
+                    id: thumbnailArea
                     anchors.fill: parent
                     anchors.margins: 8
                     anchors.bottomMargin: 28
-                    asynchronous: true
-                    fillMode: Image.PreserveAspectFit
-                    source: cell.thumbnail
+
+                    // Made at the size it is shown, one pixel for one, so nothing filters it
+                    // again. Centring rounds to whole pixels, which keeps that exact.
+                    Image {
+                        id: thumbnailImage
+                        objectName: "thumbnailImage"
+                        anchors.centerIn: parent
+                        asynchronous: true
+                        // From the cell, as the area has no size yet when this starts loading.
+                        sourceSize: Qt.size(grid.cellWidth - 16, grid.cellWidth - 16)
+                        source: cell.thumbnail
+                    }
                 }
 
                 Label {
-                    anchors.centerIn: thumbnailImage
+                    anchors.centerIn: thumbnailArea
                     visible: thumbnailImage.status === Image.Error
                     text: "Cannot read"
                 }

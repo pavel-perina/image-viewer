@@ -29,6 +29,11 @@ ImageBuffer halve(const ImageBuffer& source);
 // this way, so the strip has to contain rows 2 * firstRow - 1 to 2 * endRow, where they exist.
 void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow);
 
+// Any size to any size with Magic Kernel Sharp 2013, stretched along when reducing. 8-bit images
+// are filtered in linear light, assuming the sRGB curve, and other formats as they are. Works on
+// the whole image, so use it for what has to be right, not for what has to be drawn quickly.
+ImageBuffer resize(const ImageBuffer& source, Size size);
+
 // Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
 // and light content stay visible, and makes it opaque. Not for gray formats, which have none.
 void flattenAlpha(const ImageBuffer& image);

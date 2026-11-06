@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
@@ -296,7 +297,8 @@ struct PlainSamples {
         if constexpr (std::is_floating_point_v<Sample>) {
             return value;
         } else {
-            return static_cast<Sample>(value + 0.5F);
+            // The range matters to a kernel that can overshoot.
+            return static_cast<Sample>(std::clamp(value, 0.0F, static_cast<float>(std::numeric_limits<Sample>::max())) + 0.5F);
         }
     }
 };
@@ -308,7 +310,7 @@ struct DisplaySamples {
     }
     static std::uint8_t encode(float value, int channel) {
         if (channel == 3) {
-            return static_cast<std::uint8_t>(value + 0.5F);
+            return static_cast<std::uint8_t>(std::clamp(value, 0.0F, 255.0F) + 0.5F);
         }
         return linearToSrgbTable()[static_cast<std::size_t>(std::clamp(value, 0.0F, 1.0F) * kEncodeSteps + 0.5F)];
     }
@@ -363,7 +365,115 @@ void halveTyped(const ImageBuffer& strip, int stripY, int fullHeight, const Imag
     }
 }
 
+double mks2013(double x) {
+    x = std::abs(x);
+    if (x <= 0.5) {
+        return 17.0 / 16.0 - 1.75 * x * x;
+    }
+    if (x <= 1.5) {
+        return (1.0 - x) * (1.75 - x);
+    }
+    if (x <= 2.5) {
+        return -0.125 * (x - 2.5) * (x - 2.5);
+    }
+    return 0.0;
+}
+
+// The source pixels of one target pixel, in a row, and how much of each.
+struct KernelSpan {
+    int first = 0;
+    std::vector<float> weights;
+};
+
+std::vector<KernelSpan> kernelSpans(int sourceLength, int targetLength) {
+    constexpr double kSupport = 2.5;
+    const double ratio = static_cast<double>(sourceLength) / targetLength;
+    const double spacing = std::max(ratio, 1.0);
+    std::vector<KernelSpan> spans(static_cast<std::size_t>(targetLength));
+    for (int target = 0; target < targetLength; ++target) {
+        const double centre = (target + 0.5) * ratio;
+        const int first = static_cast<int>(std::ceil(centre - 0.5 - kSupport * spacing));
+        const int last = static_cast<int>(std::floor(centre - 0.5 + kSupport * spacing));
+        KernelSpan& span = spans[static_cast<std::size_t>(target)];
+        span.first = std::clamp(first, 0, sourceLength - 1);
+        span.weights.assign(static_cast<std::size_t>(std::clamp(last, 0, sourceLength - 1) - span.first + 1), 0.0F);
+        double sum = 0;
+        std::vector<double> weights(span.weights.size(), 0.0);
+        for (int i = first; i <= last; ++i) {
+            const double weight = mks2013((i + 0.5 - centre) / spacing);
+            // The edge pixel continues outwards, as nothing lies beyond the image.
+            weights[static_cast<std::size_t>(std::clamp(i, 0, sourceLength - 1) - span.first)] += weight;
+            sum += weight;
+        }
+        for (std::size_t i = 0; i < weights.size(); ++i) {
+            span.weights[i] = static_cast<float>(weights[i] / sum);
+        }
+    }
+    return spans;
+}
+
+template <typename Sample, int Channels, typename Samples>
+ImageBuffer resizeTyped(const ImageBuffer& source, Size size) {
+    const ImageBuffer target = ImageBuffer::create(size, source.format());
+    const std::vector<KernelSpan> across = kernelSpans(source.width(), size.width);
+    const std::vector<KernelSpan> down = kernelSpans(source.height(), size.height);
+
+    // Across first, into floats that keep linear light and the overshoot.
+    const auto rowLength = static_cast<std::size_t>(size.width) * Channels;
+    std::vector<float> reduced(rowLength * static_cast<std::size_t>(source.height()));
+    std::vector<float> decoded(static_cast<std::size_t>(source.width()) * Channels);
+    for (int y = 0; y < source.height(); ++y) {
+        const auto* in = reinterpret_cast<const Sample*>(source.row(y));
+        for (std::size_t i = 0; i < decoded.size(); ++i) {
+            decoded[i] = Samples::decode(in[i], static_cast<int>(i % Channels));
+        }
+        float* out = reduced.data() + rowLength * static_cast<std::size_t>(y);
+        for (const KernelSpan& span : across) {
+            std::array<float, Channels> sum{};
+            const float* from = decoded.data() + static_cast<std::size_t>(span.first) * Channels;
+            for (const float weight : span.weights) {
+                for (int c = 0; c < Channels; ++c) {
+                    sum[static_cast<std::size_t>(c)] += weight * *from++;
+                }
+            }
+            out = std::copy(sum.begin(), sum.end(), out);
+        }
+    }
+
+    std::vector<float> mixed(rowLength);
+    for (int y = 0; y < size.height; ++y) {
+        const KernelSpan& span = down[static_cast<std::size_t>(y)];
+        std::ranges::fill(mixed, 0.0F);
+        const float* from = reduced.data() + rowLength * static_cast<std::size_t>(span.first);
+        for (const float weight : span.weights) {
+            for (std::size_t i = 0; i < rowLength; ++i) {
+                mixed[i] += weight * from[i];
+            }
+            from += rowLength;
+        }
+        auto* out = reinterpret_cast<Sample*>(target.row(y));
+        for (std::size_t i = 0; i < rowLength; ++i) {
+            out[i] = Samples::encode(mixed[i], static_cast<int>(i % Channels));
+        }
+    }
+    return target;
+}
+
 }  // namespace
+
+ImageBuffer resize(const ImageBuffer& source, Size size) {
+    if (source.size() == size) {
+        return source;
+    }
+    switch (source.format()) {
+    case PixelFormat::Bgrx8:   return resizeTyped<std::uint8_t, 4, DisplaySamples>(source, size);
+    case PixelFormat::Gray16:  return resizeTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, size);
+    case PixelFormat::Rgba16:  return resizeTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, size);
+    case PixelFormat::Gray32F: return resizeTyped<float, 1, PlainSamples<float>>(source, size);
+    case PixelFormat::Rgba32F: return resizeTyped<float, 4, PlainSamples<float>>(source, size);
+    }
+    return {};
+}
 
 Size halvedSize(Size size) { return {std::max(1, (size.width + 1) / 2), std::max(1, (size.height + 1) / 2)}; }
 

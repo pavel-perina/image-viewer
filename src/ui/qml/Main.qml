@@ -134,8 +134,12 @@ ApplicationWindow {
     Action { id: actualSizeAction; text: "1:1"; shortcut: "1"; onTriggered: window.activeView.actualSize() }
     Action { id: fullScreenAction; text: "Full Screen"; shortcut: "F11"; onTriggered: window.toggleFullScreen() }
 
-    Shortcut { sequences: ["Right", "PgDown", "Space"]; enabled: !window.typing; onActivated: context.next() }
-    Shortcut { sequences: ["Left", "PgUp", "Backspace"]; enabled: !window.typing; onActivated: context.previous() }
+    Shortcut { sequences: ["Right", "Space"]; enabled: !window.typing; onActivated: context.next() }
+    Shortcut { sequences: ["Left", "Backspace"]; enabled: !window.typing; onActivated: context.previous() }
+    Shortcut { sequence: "PgDown"; enabled: !window.typing; onActivated: window.viewing ? context.next() : browserPage.movePage(1) }
+    Shortcut { sequence: "PgUp"; enabled: !window.typing; onActivated: window.viewing ? context.previous() : browserPage.movePage(-1) }
+    Shortcut { sequence: "Shift+PgDown"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(1) }
+    Shortcut { sequence: "Shift+PgUp"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(-1) }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Up"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(-1) }

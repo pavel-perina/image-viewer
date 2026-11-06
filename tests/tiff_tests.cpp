@@ -584,6 +584,93 @@ TEST(Halve, KeepsTheOtherFormatsAndTheirRange) {
     EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(halfShorts.row(1)), 65535);
 }
 
+TEST(Resize, KeepsEveryFlatValueExactly) {
+    for (int value = 0; value < 256; ++value) {
+        const ImageBuffer flat = ImageBuffer::create({40, 30}, PixelFormat::Bgrx8);
+        std::memset(flat.data(), value, flat.stride() * 30);
+        for (const Size size : {Size{13, 11}, Size{1, 1}, Size{97, 61}}) {
+            const ImageBuffer resized = resize(flat, size);
+            ASSERT_EQ(resized.size(), size);
+            for (int y = 0; y < size.height; ++y) {
+                const auto* row = reinterpret_cast<const std::uint8_t*>(resized.row(y));
+                for (int i = 0; i < size.width * 4; ++i) {
+                    ASSERT_EQ(row[i], value) << size.width << "x" << size.height << " at " << y << "," << i;
+                }
+            }
+        }
+    }
+}
+
+TEST(Resize, MatchesTheKernelWorkedOutByHand) {
+    // Reducing 8 pixels to 4 stretches the kernel to 2 pixels per unit. The first target pixel
+    // lies between source pixels 0 and 1, and reads 0 to 5, with the edge pixel standing in for
+    // what lies before it. Weights at distances 0.25, 0.75, 1.25, 1.75, 2.25 from the centre.
+    const auto kernel = [](double x) {
+        return x <= 0.5 ? 17.0 / 16 - 1.75 * x * x : x <= 1.5 ? (1 - x) * (1.75 - x) : -0.125 * (x - 2.5) * (x - 2.5);
+    };
+    const ImageBuffer source = ImageBuffer::create({8, 1}, PixelFormat::Gray32F);
+    const std::array<float, 8> values{10, 20, 40, 80, 160, 320, 640, 1280};
+    std::ranges::copy(values, reinterpret_cast<float*>(source.row(0)));
+    const std::array<double, 5> weight{kernel(0.25), kernel(0.75), kernel(1.25), kernel(1.75), kernel(2.25)};
+    // Pixels -4 to -1 repeat pixel 0, and pixel 0 is 0.25 from the centre on the left, pixel 1 on the right.
+    const double left = weight[0] + weight[1] + weight[2] + weight[3] + weight[4];
+    const double sum = left + weight[0] + weight[1] + weight[2] + weight[3] + weight[4];
+    const double expected = (left * 10 + weight[0] * 20 + weight[1] * 40 + weight[2] * 80 + weight[3] * 160 + weight[4] * 320) / sum;
+    const ImageBuffer resized = resize(source, {4, 1});
+    EXPECT_NEAR(*reinterpret_cast<const float*>(resized.row(0)), expected, 1e-3);
+}
+
+TEST(Resize, MixesDisplayPixelsInLinearLight) {
+    const ImageBuffer stripes = ImageBuffer::create({64, 64}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 64; ++y) {
+        std::memset(stripes.row(y), y % 2 != 0 ? 255 : 0, static_cast<std::size_t>(64) * 4);
+    }
+    const ImageBuffer resized = resize(stripes, {32, 32});
+    const auto* row = reinterpret_cast<const std::uint8_t*>(resized.row(16));
+    EXPECT_NEAR(row[0], 188, 2);
+}
+
+TEST(Resize, LeavesLessFalsePatternFromFineStripesThanAveraging) {
+    const auto contrast = [](const ImageBuffer& image) {
+        const auto* row = reinterpret_cast<const std::uint16_t*>(image.row(image.height() / 2));
+        const auto [low, high] = std::minmax_element(row + 8, row + image.width() - 8);
+        return static_cast<double>(*high) - *low;
+    };
+    const ImageBuffer stripes = ImageBuffer::create({300, 16}, PixelFormat::Gray16);
+    for (int y = 0; y < 16; ++y) {
+        auto* row = reinterpret_cast<std::uint16_t*>(stripes.row(y));
+        for (int x = 0; x < 300; ++x) {
+            row[x] = x % 3 == 0 ? 60000 : 0;
+        }
+    }
+    EXPECT_LT(contrast(resize(stripes, {150, 8})), 0.5 * contrast(shrink(stripes, {150, 8})));
+}
+
+TEST(Resize, OvershootStaysInsideTheRange) {
+    const ImageBuffer edge = ImageBuffer::create({40, 8}, PixelFormat::Gray16);
+    for (int y = 0; y < 8; ++y) {
+        auto* row = reinterpret_cast<std::uint16_t*>(edge.row(y));
+        for (int x = 0; x < 40; ++x) {
+            row[x] = x < 20 ? 0 : 65535;
+        }
+    }
+    const ImageBuffer resized = resize(edge, {17, 3});
+    const auto* row = reinterpret_cast<const std::uint16_t*>(resized.row(1));
+    EXPECT_EQ(row[0], 0);
+    EXPECT_EQ(row[6], 0) << "the dip before the edge would wrap to bright";
+    EXPECT_EQ(row[16], 65535);
+    EXPECT_EQ(row[10], 65535) << "the peak after the edge would wrap to dark";
+}
+
+TEST(Resize, HandlesEnlargingAndTheSmallestImages) {
+    const ImageBuffer one = ImageBuffer::create({1, 1}, PixelFormat::Rgba16);
+    std::fill_n(reinterpret_cast<std::uint16_t*>(one.row(0)), 4, std::uint16_t{1234});
+    const ImageBuffer large = resize(one, {5, 3});
+    EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(large.row(2)), 1234);
+    const ImageBuffer same = resize(one, {1, 1});
+    EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(same.row(0)), 1234);
+}
+
 TEST(Overviews, SmallImagesAreLeftAlone) {
     TempDir dir;
     writeTiff(dir.file("t.tif"), {level(1000, 800, {200, 0, 0}, false)});

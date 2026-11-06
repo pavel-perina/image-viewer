@@ -176,6 +176,9 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   selects only that one, including moving in the large view.
 * The browser and large view are two pages sharing one `BrowseContext`, each with its own
   `ImageView`. A page's view loads only while the page is active.
+* Thumbnails are made with Magic Kernel Sharp 2013 from a level with at least twice the pixels,
+  at the size they are shown, because a second resize would undo the sharpening. They never
+  enlarge, so a tiny image stays tiny in its cell.
 * Thumbnails go through an async QML image provider on the shared work queue, below all
   other work. The newest request runs first, and Qt cancels requests when their delegate
   goes away. Qt deletes a response only after `finished()`, so `cancel()` must emit it.

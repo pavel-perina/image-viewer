@@ -17,6 +17,7 @@ namespace {
 // Building a thumbnail for a flat image reads the whole file. Past this size that would hold
 // a worker for too long, so such files simply have no thumbnail.
 constexpr std::uint64_t kMaxScannedPixels = 256ull * 1024 * 1024;
+constexpr int kMaxOversampledEdge = 4096;
 
 int chooseThumbnailLevel(const SubimageInfo& subimage, int maxEdge) {
     int chosen = 0;
@@ -95,7 +96,9 @@ Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge
         return std::unexpected(source.error());
     }
     const SubimageInfo& subimage = (*source)->subimages()[0];
-    const int levelIndex = chooseThumbnailLevel(subimage, maxEdge);
+    // Twice the pixels gives the kernel enough to work with, as levels that come from a file
+    // can hold false detail near their own resolution.
+    const int levelIndex = chooseThumbnailLevel(subimage, maxEdge > kMaxOversampledEdge ? maxEdge : maxEdge * 2);
     if (tooExpensive(subimage, levelIndex)) {
         return std::unexpected("image has no reduced versions and is too large for a thumbnail");
     }
@@ -108,7 +111,7 @@ Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge
         const double scale = std::min(1.0, static_cast<double>(maxEdge) / std::max(level->width(), level->height()));
         const Size size{std::max(1, static_cast<int>(std::lround(level->width() * scale))),
                         std::max(1, static_cast<int>(std::lround(level->height() * scale)))};
-        const ImageBuffer small = shrink(*level, size);
+        const ImageBuffer small = resize(*level, size);
         const std::array samples{small};
         const DisplayRange range = usesAutoRangeByDefault(small.format()) ? autoRange(samples) : fullRange(small.format());
         const auto transform = displayTransform(subimage, target);

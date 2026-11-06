@@ -47,14 +47,15 @@ shaders is skipped there, so run it by hand on a display:
 | Click a thumbnail | Select it and show it in the preview |
 | Double-click a thumbnail, Enter | Open the large view |
 | Esc | Back to the browser, or leave full screen |
-| Right, PgDown, Space | Next image |
-| Left, PgUp, Backspace | Previous image |
+| Right, Space | Next image |
+| Left, Backspace | Previous image |
+| PgDown, PgUp | Move one page of thumbnails in the browser; next or previous image in the large view |
 | Ctrl+PgDown, Ctrl+PgUp | Next or previous page of a multipage file |
 | Up, Down | Move one row in the browser |
 | C | Turn colour management on or off |
 | M | Turn sharp resampling on or off (Magic Kernel Sharp 2013) |
 | Ctrl+click | Add or remove a thumbnail from the selection |
-| Shift+click, Shift+arrows | Select a range; with Ctrl+click, add a range |
+| Shift+click, Shift+arrows, Shift+PgDown, Shift+PgUp | Select a range; with Ctrl+click, add a range |
 | Ctrl+A | Select all images in the folder |
 | Click between thumbnails | Clear the selection |
 | Right-click | Menu of file operations; on a folder in the tree, of folder operations |

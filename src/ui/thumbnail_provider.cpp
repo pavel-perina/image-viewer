@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QQuickTextureFactory>
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -19,18 +20,18 @@ namespace iv {
 
 namespace {
 
-constexpr int kThumbnailEdge = 256;
+constexpr int kDefaultEdge = 256;
 // Below every other kind of work, so opening an image is never held up by thumbnails.
 constexpr int kBasePriority = -1'000'000'000;
 
 class ThumbnailResponse final : public QQuickImageResponse {
 public:
-    ThumbnailResponse(const QString& path, int priority) : m_link(std::make_shared<Link>()) {
+    ThumbnailResponse(const QString& path, int priority, int edge) : m_link(std::make_shared<Link>()) {
         m_link->response = this;
         m_task = WorkQueue::global().submit(
             group(), priority,
-            [link = m_link, file = QFileInfo(path).filesystemFilePath()](std::stop_token stop) {
-                auto thumbnail = makeThumbnail(file, kThumbnailEdge, stop, ColorSettings::target());
+            [link = m_link, edge, file = QFileInfo(path).filesystemFilePath()](std::stop_token stop) {
+                auto thumbnail = makeThumbnail(file, edge, stop, ColorSettings::target());
                 const std::scoped_lock lock(link->mutex);
                 if (link->response) {
                     link->response->complete(thumbnail);
@@ -104,11 +105,13 @@ QString ThumbnailProvider::urlForPath(const QString& path, qint64 modified) {
            QString::fromLatin1(path.toUtf8().toHex()) + QLatin1Char('/') + QString::number(ColorSettings::generation()) + QLatin1Char('/') + QString::number(modified);
 }
 
-QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, const QSize&) {
+QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, const QSize& requestedSize) {
     // The latest request is the one the user is looking at now.
     static std::atomic<int> sequence = 0;
     const QString path = QString::fromUtf8(QByteArray::fromHex(id.section(QLatin1Char('/'), 0, 0).toLatin1()));
-    return new ThumbnailResponse(path, kBasePriority + sequence.fetch_add(1, std::memory_order_relaxed));
+    const int requested = std::max(requestedSize.width(), requestedSize.height());
+    const int edge = requested > 0 ? requested : kDefaultEdge;
+    return new ThumbnailResponse(path, kBasePriority + sequence.fetch_add(1, std::memory_order_relaxed), edge);
 }
 
 }  // namespace iv
