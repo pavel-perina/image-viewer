@@ -22,7 +22,12 @@ Rectangle {
 
     ImageView {
         id: view
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        // The panel takes room from the image, except at full screen where it comes and goes
+        // with the mouse, and refitting the image each time would be restless.
+        anchors.right: page.fullScreen ? parent.right : panel.left
         clip: true
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: page.panelShown
@@ -78,12 +83,12 @@ Rectangle {
     }
 
     BusyIndicator {
-        anchors.centerIn: parent
+        anchors.centerIn: view
         running: page.loadingIsSlow && view.status === ImageView.Loading
     }
 
     Label {
-        anchors.centerIn: parent
+        anchors.centerIn: view
         color: "#e0e0e0"
         visible: view.status === ImageView.Error
         text: "Cannot open " + page.context.currentName + ": " + view.errorString

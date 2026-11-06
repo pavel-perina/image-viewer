@@ -1153,6 +1153,50 @@ struct BrowserPageFixture {
 
 }  // namespace
 
+TEST(ViewerPage, PanelTakesRoomFromTheImageExceptAtFullScreen) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("a.jpg"));
+    writeJpeg(path);
+    BrowseContext context;
+    QQuickView view;
+    QObject::connect(view.engine(), &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+        for (const QQmlError& warning : warnings) {
+            ADD_FAILURE() << warning.toString().toStdString();
+        }
+    });
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                               {QStringLiteral("active"), true},
+                               {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(1000, 600);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* const page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    page->setProperty("panelAnimated", false);
+    const auto* image = page->property("view").value<ImageView*>();
+    ASSERT_NE(image, nullptr);
+
+    page->setProperty("panelPinned", false);
+    EXPECT_TRUE(waitUntil([&] { return image->width() == 1000; }));
+
+    page->setProperty("panelPinned", true);
+    EXPECT_TRUE(waitUntil([&] { return image->width() < 1000; }));
+    const qreal withPanel = image->width();
+    EXPECT_GT(withPanel, 500);
+
+    // At full screen the panel goes over the image, shown or not.
+    page->setProperty("fullScreen", true);
+    EXPECT_TRUE(waitUntil([&] { return image->width() == 1000; }));
+    page->setProperty("panelRevealed", true);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(image->width(), 1000);
+
+    page->setProperty("fullScreen", false);
+    EXPECT_TRUE(waitUntil([&] { return image->width() == withPanel; }));
+    page->setProperty("panelPinned", false);  // the settings outlive the test
+}
+
 TEST(BrowserPage, ClicksWithModifiersReachTheSelection) {
     BrowserPageFixture f;
     ASSERT_EQ(f.selected(), QStringLiteral("a"));
@@ -1249,6 +1293,7 @@ int main(int argc, char** argv) {
     const QTemporaryDir settingsFolder;
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsFolder.path());
+    QCoreApplication::setOrganizationName(QStringLiteral("ImageViewerTests"));
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
