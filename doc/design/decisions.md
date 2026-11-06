@@ -81,6 +81,13 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   redraws through the worker. Live adjustment could use shaders too, now that
   `qt6-shadertools` is a dependency.
 * Orientation is applied by the scene graph transform, not by rotating pixels.
+* Generated levels are halved with the weights 1 3 3 1 rather than averaged over 2x2 pixels, and
+  8-bit ones in linear light. What a level keeps of detail too fine for it stays there, moving
+  with the image, and no later filter can tell it from the picture. On a fine test chart that
+  was the visible moire; it costs about twice the time of the average, 220 ms against 120 ms for
+  20 megapixels. Levels stored in a file, and scaled JPEG decoding, stay as they are.
+* Levels go down to 1024 pixels on the long edge. Without sharp resampling the view moves to the
+  next level earlier (a reduction of at most 1.6), as bilinear filtering skips pixels beyond that.
 * Sharp resampling is optional and off by default, until a settings dialog exists. It uses
   Magic Kernel Sharp 2013 in linear light, in two separable passes. That kernel already
   contains the post-sharpening step, stretched along when minifying, so no separate pass
@@ -91,6 +98,10 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * It stays out at exactly a level's scale, where the kernel would sharpen pixels shown as they
   are; from 200%, where pixels are meant to be seen; and on the software renderer. Tiles
   outside the view are read for the kernel's margin, so it costs slightly more decoding.
+* The first pass decodes through a table of 256 values, as its input is 8-bit. The second keeps
+  `pow`, because a table for its float input was no faster. On Intel UHD 620 at 1920x1000, in the
+  worst case just above 50% zoom, frames take 17-18 ms with the table and 18-19 ms with `pow`,
+  against 12-13 ms with no conversion at all, so the rest of the cost is in reading the texels.
 * The passes assume the sRGB curve, so with another display profile linear light is
   approximate. The filter applies to the large view, not to the browser's preview.
 
@@ -151,11 +162,6 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
   the selection of the current panel.
-* Optimize sharp resampling: the first pass decodes sRGB with `pow` for every texel it reads,
-  up to about 10 per pixel just above 50% zoom. Its input is 8-bit, so a 256-entry lookup would
-  do. The second pass encodes with `pow` once per pixel; its input is float, so it would need
-  a finer table or an approximation. The worst case is 18-20 ms per frame at 1920x1000 on Intel
-  UHD 620, but how much of that is `pow` is not measured, so measure before and after.
 * Possibly a dual-panel file manager. File icons are OS dependent, so they belong in the
   optional system integration layer, along with KDE or Windows places.
 

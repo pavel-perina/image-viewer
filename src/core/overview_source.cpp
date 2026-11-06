@@ -15,8 +15,9 @@ namespace iv {
 
 namespace {
 
-// The smallest level of every subimage ends up no larger than this on its long edge.
-constexpr int kMaxCoarsestEdge = 2048;
+// The smallest level of every subimage ends up no larger than this on its long edge. Going
+// further than the GPU needs also keeps zooming far out from skipping pixels.
+constexpr int kMaxCoarsestEdge = 1024;
 constexpr int kTileSize = 2048;
 constexpr std::uint64_t kMaxOverviewBytes = 2ull * 1024 * 1024 * 1024;
 
@@ -35,7 +36,7 @@ std::vector<Size> planOverviews(Size coarsest, PixelFormat format) {
     std::vector<Size> sizes;
     Size size = coarsest;
     while (std::max(size.width, size.height) > kMaxCoarsestEdge) {
-        size = {std::max(1, (size.width + 1) / 2), std::max(1, (size.height + 1) / 2)};
+        size = halvedSize(size);
         sizes.push_back(size);
     }
     std::uint64_t total = 0;
@@ -121,19 +122,81 @@ private:
             const ImageBuffer finest =
                 ImageBuffer::create(subimage.levels[static_cast<std::size_t>(realLevels)].size, subimage.format);
             std::memset(finest.data(), 0, finest.stride() * static_cast<std::size_t>(finest.height()));
-            const auto scanned = scanBase(subimageIndex, realLevels - 1, base, finest, stop);
+            // A budget that dropped the largest levels leaves more than one halving to do at once.
+            const auto scanned = halvedSize(base.size) == finest.size()
+                                     ? halveBase(subimageIndex, realLevels - 1, base, finest, stop)
+                                     : scanBase(subimageIndex, realLevels - 1, base, finest, stop);
             if (!scanned) {
                 return std::unexpected(scanned.error());
             }
             built.push_back(finest);
             for (std::size_t i = static_cast<std::size_t>(realLevels) + 1; i < subimage.levels.size(); ++i) {
-                built.push_back(shrink(built.back(), subimage.levels[i].size));
+                built.push_back(halve(built.back()));
             }
         } catch (const std::bad_alloc&) {
             return std::unexpected("not enough memory for overview");
         }
         overviews.levels = std::move(built);
         return overviews.levels;
+    }
+
+    // The weights reach past the edges of tiles, so whole rows of tiles are read into a strip,
+    // and the last rows of one stay in it for the next.
+    Result<bool> halveBase(int subimage, int levelIndex, const LevelInfo& base, const ImageBuffer& target,
+                           const std::stop_token& stop) {
+        constexpr int kKeptRows = 4;
+        const int bytes = bytesPerPixel(target.format());
+        const int rows = (base.size.height + base.tileSize.height - 1) / base.tileSize.height;
+        const int cols = (base.size.width + base.tileSize.width - 1) / base.tileSize.width;
+        const ImageBuffer strip = ImageBuffer::create({base.size.width, base.tileSize.height + kKeptRows}, target.format());
+        std::string firstError;
+        bool anyRead = false;
+        int stripY = 0;
+        int filled = 0;
+        int targetRow = 0;
+        for (int row = 0; row < rows; ++row) {
+            const int tileRow = row * base.tileSize.height;
+            const int height = std::min(base.tileSize.height, base.size.height - tileRow);
+            for (int y = filled; y < filled + height; ++y) {
+                std::memset(strip.row(y), 0, static_cast<std::size_t>(base.size.width) * bytes);  // a damaged tile stays black
+            }
+            for (int col = 0; col < cols; ++col) {
+                auto tile = m_base->readTile({subimage, levelIndex, col, row}, stop);
+                if (tile) {
+                    anyRead = true;
+                    const int x = col * base.tileSize.width;
+                    const int copied = std::min(tile->width(), base.size.width - x);
+                    for (int y = 0; y < std::min(tile->height(), height); ++y) {
+                        std::memcpy(reinterpret_cast<std::uint8_t*>(strip.row(filled + y)) + static_cast<std::size_t>(x) * bytes,
+                                    tile->row(y), static_cast<std::size_t>(copied) * bytes);
+                    }
+                } else if (tile.error() == "cancelled") {
+                    return std::unexpected(tile.error());
+                } else if (firstError.empty()) {
+                    firstError = tile.error();
+                }
+            }
+            filled += height;
+
+            // A target row can be made once the last source row it reads, 2y + 2, has arrived.
+            const int arrived = stripY + filled;
+            const int usableEnd = arrived >= base.size.height ? target.height() : std::max(targetRow, (arrived - 1) / 2);
+            if (usableEnd > targetRow) {
+                halveRows(strip.view(0, 0, base.size.width, filled), stripY, base.size.height, target, targetRow, usableEnd);
+                targetRow = usableEnd;
+            }
+            const int keepFrom = std::max(2 * targetRow - 1, stripY);
+            const int kept = arrived - keepFrom;
+            for (int y = 0; y < kept; ++y) {
+                std::memmove(strip.row(y), strip.row(keepFrom - stripY + y), static_cast<std::size_t>(base.size.width) * bytes);
+            }
+            stripY = keepFrom;
+            filled = kept;
+        }
+        if (!anyRead) {
+            return std::unexpected(firstError.empty() ? std::string("cannot read image") : firstError);
+        }
+        return true;
     }
 
     Result<bool> scanBase(int subimage, int levelIndex, const LevelInfo& base, const ImageBuffer& target,

@@ -242,6 +242,19 @@ TEST(Viewport, VisibleFractionIsThePartOfTheImageInView) {
     EXPECT_EQ(vp.visibleFraction(), (RectD{0.25, 0.25, 0.25, 0.25}));
 }
 
+TEST(Viewport, BilinearLevelNeverReducesByMuch) {
+    const std::vector<LevelInfo> levels{{{4000, 2000}, {2048, 2048}},
+                                        {{2000, 1000}, {2048, 2048}},
+                                        {{1000, 500}, {2048, 2048}}};
+    EXPECT_EQ(chooseBilinearLevel(levels, 2.0), 0);
+    EXPECT_EQ(chooseBilinearLevel(levels, 1.0), 0);
+    EXPECT_EQ(chooseBilinearLevel(levels, 0.64), 0) << "reduced by 1.56";
+    EXPECT_EQ(chooseBilinearLevel(levels, 0.6), 1) << "enlarged by 1.2 rather than reduced by 1.67";
+    EXPECT_EQ(chooseBilinearLevel(levels, 0.5), 1) << "exactly the level";
+    EXPECT_EQ(chooseBilinearLevel(levels, 0.26), 2);
+    EXPECT_EQ(chooseBilinearLevel(levels, 0.1), 2) << "nothing smaller exists";
+}
+
 TEST(Viewport, ZoomStopsAtOneHundredPercentWhenCrossingIt) {
     Viewport vp;
     vp.setViewSize(100, 100);

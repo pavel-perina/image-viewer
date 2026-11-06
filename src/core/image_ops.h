@@ -16,6 +16,19 @@ ImageBuffer shrink(const ImageBuffer& source, Size size);
 // memory. The target must have the block's format.
 void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size fullSize, const ImageBuffer& target);
 
+// The size halveRows gives, rounding up.
+Size halvedSize(Size size);
+
+// Halves with the weights 1 3 3 1 in each direction, which keeps much less of the detail that
+// the smaller image cannot hold than an average of 2x2 pixels does, and never overshoots. 8-bit
+// images are mixed in linear light, assuming the sRGB curve, and other formats as they are.
+ImageBuffer halve(const ImageBuffer& source);
+
+// The same for rows [firstRow, endRow) of the target, from a strip of the source that begins
+// at row stripY of fullHeight and has its full width. An image too large to hold is reduced
+// this way, so the strip has to contain rows 2 * firstRow - 1 to 2 * endRow, where they exist.
+void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow);
+
 // Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
 // and light content stay visible, and makes it opaque. Not for gray formats, which have none.
 void flattenAlpha(const ImageBuffer& image);

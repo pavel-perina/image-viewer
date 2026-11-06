@@ -477,6 +477,113 @@ TEST(Overviews, FlatLargeImagesGetGeneratedLevels) {
     expectColor(shownPixel(*source, 0, 0, 5900, 2900), {40, 40, 40});
 }
 
+TEST(Overviews, HalvingAcrossTileEdgesIsTheSameAsHalvingAtOnce) {
+    TempDir dir;
+    TiffImage image;
+    image.width = 3001;
+    image.height = 1537;  // odd sizes, and rows of tiles that end on both odd and even rows
+    image.samples = 3;
+    image.tileSize = 512;
+    image.compression = COMPRESSION_ADOBE_DEFLATE;
+    image.pixel = [](int x, int y) {
+        return Rgb{static_cast<std::uint8_t>(x * 7 + y * 3), static_cast<std::uint8_t>((x ^ y) * 5), static_cast<std::uint8_t>(y * 11)};
+    };
+    writeTiff(dir.file("t.tif"), {image});
+    const auto source = open(dir.file("t.tif"));
+    ASSERT_TRUE(source);
+    const auto& levels = source->subimages()[0].levels;
+    ASSERT_GE(levels.size(), 2u);
+    ASSERT_TRUE(levels[1].generated);
+    ASSERT_EQ(levels[1].size, (Size{1501, 769}));
+
+    const ImageBuffer whole = ImageBuffer::create(levels[0].size, PixelFormat::Bgrx8);
+    const int tiles = levels[0].tileSize.width;
+    for (int row = 0; row * tiles < whole.height(); ++row) {
+        for (int col = 0; col * tiles < whole.width(); ++col) {
+            const auto tile = source->readTile({0, 0, col, row}, {});
+            ASSERT_TRUE(tile);
+            for (int y = 0; y < tile->height(); ++y) {
+                std::memcpy(reinterpret_cast<std::uint8_t*>(whole.row(row * tiles + y)) + static_cast<std::size_t>(col * tiles) * 4,
+                            tile->row(y), static_cast<std::size_t>(tile->width()) * 4);
+            }
+        }
+    }
+    const ImageBuffer expected = halve(whole);
+
+    const int levelTile = levels[1].tileSize.width;
+    for (int row = 0; row * levelTile < expected.height(); ++row) {
+        for (int col = 0; col * levelTile < expected.width(); ++col) {
+            const auto tile = source->readTile({0, 1, col, row}, {});
+            ASSERT_TRUE(tile);
+            for (int y = 0; y < tile->height(); ++y) {
+                ASSERT_EQ(std::memcmp(tile->row(y),
+                                      reinterpret_cast<const std::uint8_t*>(expected.row(row * levelTile + y)) + static_cast<std::size_t>(col * levelTile) * 4,
+                                      static_cast<std::size_t>(tile->width()) * 4), 0) << "row " << row * levelTile + y;
+            }
+        }
+    }
+}
+
+TEST(Halve, KeepsEveryFlatValueExactly) {
+    for (int value = 0; value < 256; ++value) {
+        const ImageBuffer flat = ImageBuffer::create({8, 8}, PixelFormat::Bgrx8);
+        std::memset(flat.data(), value, flat.stride() * 8);
+        const ImageBuffer half = halve(flat);
+        ASSERT_EQ(half.size(), (Size{4, 4}));
+        for (int y = 0; y < 4; ++y) {
+            const auto* row = reinterpret_cast<const std::uint8_t*>(half.row(y));
+            for (int i = 0; i < 16; ++i) {
+                ASSERT_EQ(row[i], value) << "at " << y << "," << i;
+            }
+        }
+    }
+}
+
+TEST(Halve, MixesDisplayPixelsInLinearLight) {
+    // Half black and half white pixels are half as much light, which is 188 in sRGB and not 128.
+    const ImageBuffer stripes = ImageBuffer::create({64, 64}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 64; ++y) {
+        std::memset(stripes.row(y), y % 2 != 0 ? 255 : 0, static_cast<std::size_t>(64) * 4);
+    }
+    const ImageBuffer half = halve(stripes);
+    const auto* row = reinterpret_cast<const std::uint8_t*>(half.row(16));
+    EXPECT_NEAR(row[0], 188, 1);
+    EXPECT_NEAR(row[1], 188, 1);
+    EXPECT_NEAR(row[2], 188, 1);
+}
+
+TEST(Halve, LeavesLessFalsePatternFromFineStripesThanAveraging) {
+    // Stripes of 3 pixels are too fine for half the size, and what is left of them is false.
+    const auto contrast = [](const ImageBuffer& image) {
+        const auto* row = reinterpret_cast<const std::uint16_t*>(image.row(image.height() / 2));
+        const auto [low, high] = std::minmax_element(row + 8, row + image.width() - 8);
+        return static_cast<double>(*high) - *low;
+    };
+    const ImageBuffer stripes = ImageBuffer::create({300, 16}, PixelFormat::Gray16);
+    for (int y = 0; y < 16; ++y) {
+        auto* row = reinterpret_cast<std::uint16_t*>(stripes.row(y));
+        for (int x = 0; x < 300; ++x) {
+            row[x] = x % 3 == 0 ? 60000 : 0;
+        }
+    }
+    EXPECT_LT(contrast(halve(stripes)), 0.5 * contrast(shrink(stripes, {150, 8})));
+}
+
+TEST(Halve, KeepsTheOtherFormatsAndTheirRange) {
+    const ImageBuffer floats = ImageBuffer::create({4, 4}, PixelFormat::Gray32F);
+    for (int y = 0; y < 4; ++y) {
+        std::fill_n(reinterpret_cast<float*>(floats.row(y)), 4, 2.5F);
+    }
+    const ImageBuffer halfFloats = halve(floats);
+    EXPECT_FLOAT_EQ(*reinterpret_cast<const float*>(halfFloats.row(1)), 2.5F);
+    const ImageBuffer shorts = ImageBuffer::create({4, 4}, PixelFormat::Rgba16);
+    for (int y = 0; y < 4; ++y) {
+        std::fill_n(reinterpret_cast<std::uint16_t*>(shorts.row(y)), 16, std::uint16_t{65535});
+    }
+    const ImageBuffer halfShorts = halve(shorts);
+    EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(halfShorts.row(1)), 65535);
+}
+
 TEST(Overviews, SmallImagesAreLeftAlone) {
     TempDir dir;
     writeTiff(dir.file("t.tif"), {level(1000, 800, {200, 0, 0}, false)});

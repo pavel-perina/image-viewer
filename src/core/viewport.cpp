@@ -107,6 +107,8 @@ int chooseLevel(std::span<const LevelInfo> levels, double zoom) {
     return chosen;
 }
 
+int chooseBilinearLevel(std::span<const LevelInfo> levels, double zoom) { return chooseLevel(levels, zoom * 0.8); }
+
 TileRange tilesInRect(const LevelInfo& level, Size fullSize, const RectD& rect) {
     if (rect.width <= 0 || rect.height <= 0) {
         return {};

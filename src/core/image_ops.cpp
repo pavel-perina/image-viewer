@@ -256,6 +256,133 @@ ImageBuffer shrink(const ImageBuffer& source, Size size) {
     return target;
 }
 
+namespace {
+
+// Encoding by table needs enough steps not to lose any value that decoding produced, which a
+// test checks for all of them.
+constexpr int kEncodeSteps = 4095;
+
+const std::array<float, 256>& srgbToLinearTable() {
+    static const std::array<float, 256> table = [] {
+        std::array<float, 256> values{};
+        for (int i = 0; i < 256; ++i) {
+            const double c = i / 255.0;
+            values[static_cast<std::size_t>(i)] =
+                static_cast<float>(c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4));
+        }
+        return values;
+    }();
+    return table;
+}
+
+const std::array<std::uint8_t, kEncodeSteps + 1>& linearToSrgbTable() {
+    static const std::array<std::uint8_t, kEncodeSteps + 1> table = [] {
+        std::array<std::uint8_t, kEncodeSteps + 1> values{};
+        for (int i = 0; i <= kEncodeSteps; ++i) {
+            const double c = static_cast<double>(i) / kEncodeSteps;
+            const double encoded = c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(c, 1 / 2.4) - 0.055;
+            values[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(std::lround(encoded * 255));
+        }
+        return values;
+    }();
+    return table;
+}
+
+// One channel of a row as floats that can be mixed, and back.
+template <typename Sample>
+struct PlainSamples {
+    static float decode(Sample value, int) { return static_cast<float>(value); }
+    static Sample encode(float value, int) {
+        if constexpr (std::is_floating_point_v<Sample>) {
+            return value;
+        } else {
+            return static_cast<Sample>(value + 0.5F);
+        }
+    }
+};
+
+// The channels are B, G, R and the unused one, which is not light.
+struct DisplaySamples {
+    static float decode(std::uint8_t value, int channel) {
+        return channel < 3 ? srgbToLinearTable()[value] : static_cast<float>(value);
+    }
+    static std::uint8_t encode(float value, int channel) {
+        if (channel == 3) {
+            return static_cast<std::uint8_t>(value + 0.5F);
+        }
+        return linearToSrgbTable()[static_cast<std::size_t>(std::clamp(value, 0.0F, 1.0F) * kEncodeSteps + 0.5F)];
+    }
+};
+
+template <typename Sample, int Channels, typename Samples>
+void halveTyped(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
+    const int width = strip.width();
+    const auto rowLength = static_cast<std::size_t>(width) * Channels;
+
+    // Each target row uses four source rows and shares two with the next one, so the decoded
+    // rows are kept in four slots, each with the row it holds.
+    std::array<std::vector<float>, 4> decoded;
+    std::array<int, 4> decodedRow{-1, -1, -1, -1};
+    const auto rowAt = [&](int y) -> const float* {
+        const int sourceY = std::clamp(y, 0, fullHeight - 1);
+        const auto slot = static_cast<std::size_t>(sourceY & 3);
+        if (decodedRow[slot] != sourceY) {
+            decoded[slot].resize(rowLength);
+            const auto* in = reinterpret_cast<const Sample*>(strip.row(sourceY - stripY));
+            float* out = decoded[slot].data();
+            for (int x = 0; x < width; ++x) {
+                for (int c = 0; c < Channels; ++c) {
+                    *out++ = Samples::decode(*in++, c);
+                }
+            }
+            decodedRow[slot] = sourceY;
+        }
+        return decoded[slot].data();
+    };
+
+    std::vector<float> mixed(rowLength);
+    for (int y = firstRow; y < endRow; ++y) {
+        const float* r0 = rowAt(2 * y - 1);
+        const float* r1 = rowAt(2 * y);
+        const float* r2 = rowAt(2 * y + 1);
+        const float* r3 = rowAt(2 * y + 2);
+        for (std::size_t i = 0; i < rowLength; ++i) {
+            mixed[i] = r0[i] + 3 * (r1[i] + r2[i]) + r3[i];
+        }
+        auto* out = reinterpret_cast<Sample*>(target.row(y));
+        for (int x = 0; x < target.width(); ++x) {
+            const int centre = 2 * x;
+            const float* a = mixed.data() + static_cast<std::size_t>(std::max(centre - 1, 0)) * Channels;
+            const float* b = mixed.data() + static_cast<std::size_t>(centre) * Channels;
+            const float* c1 = mixed.data() + static_cast<std::size_t>(std::min(centre + 1, width - 1)) * Channels;
+            const float* d = mixed.data() + static_cast<std::size_t>(std::min(centre + 2, width - 1)) * Channels;
+            for (int c = 0; c < Channels; ++c) {
+                *out++ = Samples::encode((a[c] + 3 * (b[c] + c1[c]) + d[c]) / 64.0F, c);
+            }
+        }
+    }
+}
+
+}  // namespace
+
+Size halvedSize(Size size) { return {std::max(1, (size.width + 1) / 2), std::max(1, (size.height + 1) / 2)}; }
+
+void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
+    switch (strip.format()) {
+    case PixelFormat::Bgrx8:   halveTyped<std::uint8_t, 4, DisplaySamples>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Gray16:  halveTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Rgba16:  halveTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Gray32F: halveTyped<float, 1, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Rgba32F: halveTyped<float, 4, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    }
+}
+
+ImageBuffer halve(const ImageBuffer& source) {
+    const ImageBuffer target = ImageBuffer::create(halvedSize(source.size()), source.format());
+    halveRows(source, 0, source.height(), target, 0, target.height());
+    return target;
+}
+
 DisplayRange fullRange(PixelFormat format) {
     switch (format) {
     case PixelFormat::Bgrx8:   return {0, 255};

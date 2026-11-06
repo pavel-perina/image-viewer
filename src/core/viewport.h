@@ -60,6 +60,9 @@ struct TileRange {
 
 // The lowest resolution level that still has at least as many pixels as the zoom shows.
 int chooseLevel(std::span<const LevelInfo> levels, double zoom);
+// For bilinear filtering, which skips pixels when reducing by much: moves to the next level
+// earlier, so that a level is reduced by at most 1.6 and enlarged by at most 1.25.
+int chooseBilinearLevel(std::span<const LevelInfo> levels, double zoom);
 
 // Tiles of a level overlapping a rectangle given in level 0 coordinates.
 TileRange tilesInRect(const LevelInfo& level, Size fullSize, const RectD& rect);

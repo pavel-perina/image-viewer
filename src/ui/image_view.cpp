@@ -179,10 +179,15 @@ struct ImageView::Impl {
         return static_cast<double>(levels()[static_cast<std::size_t>(level)].size.width) / fullSize.width;
     }
 
+    // The kernel handles any reduction and wants the pixels; bilinear filtering does not.
+    int targetLevel() const {
+        return resampling && gpuAvailable() ? chooseLevel(levels(), viewport.zoom()) : chooseBilinearLevel(levels(), viewport.zoom());
+    }
+
     void updateResampling() {
         resample = {};
         if (resampling && source && gpuAvailable()) {
-            const int level = chooseLevel(levels(), viewport.zoom());
+            const int level = targetLevel();
             resample = resampleGeometry(viewport, displaySize(fullSize, subimage().orientation), levelScale(level), kResampleSupport);
         }
         emit q->resampleChanged();
@@ -224,7 +229,7 @@ struct ImageView::Impl {
     }
 
     void requestVisibleTiles() {
-        const int level = chooseLevel(levels(), viewport.zoom());
+        const int level = targetLevel();
         const std::vector<TileKey> wanted = visibleTiles(level, visibleStoredRect());
 
         // Drop queued requests that scrolled out of view or belong to another zoom.
@@ -546,7 +551,7 @@ struct ImageView::Impl {
 
     // Coarser levels go underneath as a placeholder until the target level is complete.
     std::vector<TileKey> tilesToDraw(const ImageRootNode& root) const {
-        const int target = chooseLevel(levels(), viewport.zoom());
+        const int target = targetLevel();
         const RectD visible = visibleStoredRect();
         const std::vector<TileKey> targetTiles = visibleTiles(target, visible);
         const bool complete = std::ranges::all_of(
@@ -580,7 +585,7 @@ struct ImageView::Impl {
             node->setTexture(texture);
             // Going through the kernel the target level maps texel to texel, and must stay
             // exact, while what stands in for it until it arrives is enlarged as usual.
-            node->setFiltering(resample.active && key.level != chooseLevel(levels(), viewport.zoom()) ? QSGTexture::Linear : filtering);
+            node->setFiltering(resample.active && key.level != targetLevel() ? QSGTexture::Linear : filtering);
             node->setRect(rect.x, rect.y, rect.width, rect.height);
             root.appendChildNode(node);
         }
