@@ -103,6 +103,17 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Screenshots (XDG desktop portal, Windows API) and scanners (SANE, WIA) belong in the
   system integration plugin. Check SANE's licence terms first.
 
+### Plugins
+* Filters and image format decoders can be plugins, through a versioned C API loaded at
+  run time. No C++ standard library or Qt types cross the boundary.
+* Built-in filters use the same API, so it stays honest and serves as public examples.
+* A filter declares its name, parameters, pixel formats and how many neighbouring pixels
+  it needs, and receives input and output buffers.
+* A decoder maps onto `ImageSource`: open a file, list subimages, read tiles. It also adds
+  file extensions and metadata, so neither can stay a fixed list.
+* Plugins load only from folders the user configures, with no paths built into the app.
+* Plugins run inside the application process, so a crash takes the application down.
+
 ### Open question
 * How to keep the original on the first overwrite. Proposed: send it to the system trash,
   and ask first where there is no trash. The alternative is a `.original` file beside it.
