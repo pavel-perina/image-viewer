@@ -39,6 +39,15 @@ Rectangle {
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: page.panelShown
         sharp: settings.sharpResampling
+        wheelNavigates: true
+    }
+
+    Connections {
+        target: surface.view
+        function onNavigateRequested(steps) {
+            const last = page.context.fileCount - 1
+            page.context.setCurrentIndex(Math.max(0, Math.min(last, page.context.currentIndex + steps)))
+        }
     }
 
     Settings {

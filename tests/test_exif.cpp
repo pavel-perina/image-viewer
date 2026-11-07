@@ -89,7 +89,9 @@ std::vector<std::uint8_t> exampleExifBlock(bool littleEndian) {
                              {0x8827, kShort, 1, w.u16(400)},
                              {0x9003, kAscii, static_cast<std::uint32_t>(date.size()), date},
                              {0x9204, kSRational, 1, w.rational(static_cast<std::uint32_t>(-2), 3)},
+                             {0x9207, kShort, 1, w.u16(5)},
                              {0x920A, kRational, 1, w.rational(50, 1)},
+                             {0xA403, kShort, 1, w.u16(1)},
                              {0xA405, kShort, 1, w.u16(75)},
                              {0xA434, kAscii, static_cast<std::uint32_t>(lens.size()), lens},
                          });

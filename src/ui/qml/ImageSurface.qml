@@ -8,6 +8,7 @@ Item {
 
     property alias source: imageView.source
     property alias histogramEnabled: imageView.histogramEnabled
+    property alias wheelNavigates: imageView.wheelNavigates
     property bool sharp: false
     readonly property alias view: imageView
 

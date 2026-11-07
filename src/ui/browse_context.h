@@ -40,6 +40,8 @@ class BrowseContext : public QObject {
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY historyChanged)
     Q_PROPERTY(bool canGoForward READ canGoForward NOTIFY historyChanged)
     Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY directoryChanged)
+    // "13 directories | 311 files (500 MB) | 1 selected (780 kB)"
+    Q_PROPERTY(QString summary READ summary NOTIFY summaryChanged)
 
 public:
     enum SortKey { SortByName, SortByDate, SortBySize, SortByType };
@@ -75,6 +77,7 @@ public:
     bool canGoBack() const;
     bool canGoForward() const;
     bool canGoUp() const;
+    QString summary() const;
 
     // Opens an image file and scans its directory, or scans a directory and opens its
     // first image. Scanning happens in the background.
@@ -96,6 +99,10 @@ public:
     Q_INVOKABLE void goBack();
     Q_INVOKABLE void goForward();
     Q_INVOKABLE void goUp();
+    // The folders goBack would pass through that still exist, the nearest first, and going to one
+    // of them at once: 1 is the same as goBack.
+    Q_INVOKABLE QStringList backFolders() const;
+    Q_INVOKABLE void goBackBy(int steps);
     // Opens what the user typed or pasted: a folder or file, absolute or relative to the
     // directory, with ~, quotes and file:// URLs understood. Returns why it cannot be opened,
     // or an empty string if it was.
@@ -141,6 +148,7 @@ signals:
     void jobChanged();
     void clipboardChanged();
     void historyChanged();
+    void summaryChanged();
     // The last image of the directory went away.
     void emptied();
     void operationFinished(const QStringList& problems);

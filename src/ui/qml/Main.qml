@@ -168,32 +168,32 @@ ApplicationWindow {
     menuBar: MenuBar {
         visible: window.visibility !== Window.FullScreen
 
-        Menu {
+        AppMenu {
             title: "&File"
-            MenuItem { action: openAction }
+            AppMenuItem { action: openAction }
             MenuSeparator {}
-            MenuItem { action: fileActions.renameAction }
-            MenuItem { action: fileActions.trashAction }
-            MenuItem { action: fileActions.deleteAction }
-            MenuItem { action: fileActions.copyToAction }
-            MenuItem { action: fileActions.moveToAction }
+            AppMenuItem { action: fileActions.renameAction }
+            AppMenuItem { action: fileActions.trashAction }
+            AppMenuItem { action: fileActions.deleteAction }
+            AppMenuItem { action: fileActions.copyToAction }
+            AppMenuItem { action: fileActions.moveToAction }
             MenuSeparator {}
-            MenuItem { action: fileActions.newFolderAction }
-            MenuItem { action: fileActions.openFolderAction }
+            AppMenuItem { action: fileActions.newFolderAction }
+            AppMenuItem { action: fileActions.openFolderAction }
             MenuSeparator {}
-            MenuItem { action: quitAction }
+            AppMenuItem { action: quitAction }
         }
-        Menu {
+        AppMenu {
             title: "&Edit"
-            MenuItem { action: fileActions.copyAction }
-            MenuItem { action: fileActions.pasteAction }
-            MenuItem { action: fileActions.copyPathAction }
+            AppMenuItem { action: fileActions.copyAction }
+            AppMenuItem { action: fileActions.pasteAction }
+            AppMenuItem { action: fileActions.copyPathAction }
         }
-        Menu {
+        AppMenu {
             title: "&View"
-            MenuItem { action: modeAction }
-            MenuItem { action: fileActions.refreshAction }
-            Menu {
+            AppMenuItem { action: modeAction }
+            AppMenuItem { action: fileActions.refreshAction }
+            AppMenu {
                 title: "&Sort By"
                 Action { text: "&Name"; checkable: true; ActionGroup.group: sortGroup; checked: context.sortKey === BrowseContext.SortByName; onTriggered: window.sortBy(BrowseContext.SortByName) }
                 Action { text: "&Date Modified"; checkable: true; ActionGroup.group: sortGroup; checked: context.sortKey === BrowseContext.SortByDate; onTriggered: window.sortBy(BrowseContext.SortByDate) }
@@ -211,39 +211,39 @@ ApplicationWindow {
                 }
             }
             MenuSeparator {}
-            MenuItem { action: previousAction }
-            MenuItem { action: nextAction }
+            AppMenuItem { action: previousAction }
+            AppMenuItem { action: nextAction }
             MenuSeparator {}
-            MenuItem { action: previousPageAction }
-            MenuItem { action: nextPageAction }
+            AppMenuItem { action: previousPageAction }
+            AppMenuItem { action: nextPageAction }
             MenuSeparator {}
-            MenuItem { action: zoomInAction }
-            MenuItem { action: zoomOutAction }
-            MenuItem { action: fitAction }
-            MenuItem { action: actualSizeAction }
-            MenuItem { action: autoContrastAction }
-            MenuItem { action: sharpResamplingAction }
+            AppMenuItem { action: zoomInAction }
+            AppMenuItem { action: zoomOutAction }
+            AppMenuItem { action: fitAction }
+            AppMenuItem { action: actualSizeAction }
+            AppMenuItem { action: autoContrastAction }
+            AppMenuItem { action: sharpResamplingAction }
             MenuSeparator {}
-            MenuItem { action: colorManagedAction }
-            MenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.open() }
-            MenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
+            AppMenuItem { action: colorManagedAction }
+            AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.open() }
+            AppMenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
             MenuSeparator {}
-            MenuItem { action: infoAction }
-            MenuItem { action: animatePanelAction }
+            AppMenuItem { action: infoAction }
+            AppMenuItem { action: animatePanelAction }
             MenuSeparator {}
-            MenuItem { action: fullScreenAction }
+            AppMenuItem { action: fullScreenAction }
         }
-        Menu {
+        AppMenu {
             title: "&Go"
-            MenuItem { action: backAction }
-            MenuItem { action: forwardAction }
-            MenuItem { action: upAction }
+            AppMenuItem { action: backAction }
+            AppMenuItem { action: forwardAction }
+            AppMenuItem { action: upAction }
             MenuSeparator {}
-            MenuItem { action: editPathAction }
+            AppMenuItem { action: editPathAction }
         }
-        Menu {
+        AppMenu {
             title: "&Help"
-            MenuItem { text: "&About"; onTriggered: aboutDialog.open() }
+            AppMenuItem { text: "&About"; onTriggered: aboutDialog.open() }
         }
     }
 
@@ -318,10 +318,6 @@ ApplicationWindow {
                 text: "page " + (window.activeView.page + 1) + " / " + window.activeView.pageCount
             }
             Label {
-                visible: !window.viewing && context.selectedCount > 1
-                text: context.selectedCount + " selected"
-            }
-            Label {
                 visible: context.fileCount > 0
                 text: (context.currentIndex + 1) + " / " + context.fileCount
             }
@@ -358,18 +354,17 @@ ApplicationWindow {
         onAccepted: {
             const problem = ColorSettings.useDisplayProfile(selectedFile)
             if (problem) {
-                profileProblem.text = problem
+                profileProblemDialog.text = problem
                 profileProblemDialog.open()
             }
         }
     }
 
-    Dialog {
+    MessageBox {
         id: profileProblemDialog
-        anchors.centerIn: parent
+        kind: "error"
         title: "Cannot Use This Profile"
         standardButtons: Dialog.Ok
-        Label { id: profileProblem }
     }
 
     FileDialog {
@@ -379,11 +374,11 @@ ApplicationWindow {
         onAccepted: context.openUrl(selectedFile)
     }
 
-    Dialog {
+    MessageBox {
         id: aboutDialog
-        anchors.centerIn: parent
+        kind: "info"
         title: "About Image Viewer"
+        text: "A fast, multiplatform image viewer and basic editor."
         standardButtons: Dialog.Ok
-        Label { text: "A fast, multiplatform image viewer and basic editor." }
     }
 }

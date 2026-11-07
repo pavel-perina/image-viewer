@@ -26,9 +26,11 @@ enum Tag : std::uint32_t {
     Iso = 0x8827,
     DateTimeOriginal = 0x9003,
     ExposureBias = 0x9204,
+    MeteringMode = 0x9207,
     FocalLength = 0x920A,
     ColorSpaceTag = 0xA001,
     InteropIfd = 0xA005,
+    WhiteBalance = 0xA403,
     FocalLength35mm = 0xA405,
     LensMake = 0xA433,
     LensModel = 0xA434,
@@ -221,6 +223,16 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
             case LensModel:        exif.lens = reader.text(entry); break;
             case ColorSpaceTag:    colorSpace = reader.integer(entry).value_or(0); break;
             case InteropIfd:       interopIfd = reader.integer(entry).value_or(0); break;
+            case MeteringMode:
+                if (const auto value = reader.integer(entry)) {
+                    exif.meteringMode = static_cast<int>(*value);
+                }
+                break;
+            case WhiteBalance:
+                if (const auto value = reader.integer(entry)) {
+                    exif.whiteBalance = static_cast<int>(*value);
+                }
+                break;
             case Iso:
                 if (const auto value = reader.integer(entry); value && *value > 0) {
                     exif.iso = static_cast<int>(*value);

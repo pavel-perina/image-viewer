@@ -11,7 +11,7 @@ SplitView {
 
     required property BrowseContext context
     required property bool active
-    readonly property alias preview: previewSurface.view
+    readonly property alias preview: previewPanel.view
     property bool sharpResampling: false
     readonly property alias pathBar: pathBar
 
@@ -77,6 +77,7 @@ SplitView {
                 if (path === revealedPath)
                     return
                 revealedPath = path
+                treeModel.readParentsOf(path)
                 const index = treeModel.indexForPath(path)
                 expandToIndex(index)
                 forceLayout()
@@ -136,29 +137,30 @@ SplitView {
                     tree.reveal(page.context.directory)
                 }
             }
+
+            // Its parents have filled in above it, which pushes it down, perhaps out of sight.
+            // In the middle, as its own subfolders come below it.
+            Connections {
+                target: treeModel
+                function onDirectoryLoaded(path) {
+                    if (tree.revealedPath.startsWith(path) && path !== tree.revealedPath) {
+                        Qt.callLater(() => {
+                            tree.forceLayout()
+                            tree.positionViewAtRow(tree.rowAtIndex(treeModel.indexForPath(tree.revealedPath)), TableView.AlignVCenter)
+                        })
+                    }
+                }
+            }
         }
 
-        Rectangle {
-            SplitView.preferredHeight: 260
-            SplitView.minimumHeight: 80
-            color: "#202020"
-
-            ImageSurface {
-                id: previewSurface
-                anchors.fill: parent
-                source: page.active ? page.context.currentPath : ""
-                sharp: page.sharpResampling
-            }
-
-            Label {
-                anchors.fill: parent
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                wrapMode: Text.Wrap
-                color: "#e0e0e0"
-                visible: previewSurface.view.status === ImageView.Error
-                text: previewSurface.view.errorString
-            }
+        PreviewPanel {
+            id: previewPanel
+            context: page.context
+            active: page.active
+            sharp: page.sharpResampling
+            SplitView.preferredHeight: 300
+            SplitView.minimumHeight: collapsed ? headerHeight : 140
+            SplitView.maximumHeight: collapsed ? headerHeight : Number.POSITIVE_INFINITY
         }
     }
 
@@ -286,6 +288,17 @@ SplitView {
                     }
                 }
             }
+        }
+
+        Label {
+            objectName: "browserStatus"
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.topMargin: 3
+            Layout.bottomMargin: 3
+            text: page.context.summary
+            elide: Text.ElideRight
         }
     }
 }

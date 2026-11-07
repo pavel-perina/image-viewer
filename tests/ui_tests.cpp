@@ -24,6 +24,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTest>
+#include <QQmlComponent>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QUrl>
@@ -40,6 +41,8 @@
 #include "ui/browse_context.h"
 #include "ui/color_settings.h"
 #include "ui/directory_tree_model.h"
+#include "ui/folder_lists.h"
+#include "ui/key_names.h"
 #include "ui/file_operations.h"
 #include "ui/histogram_handle.h"
 #include "ui/histogram_view.h"
@@ -1261,7 +1264,7 @@ TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage)
     EXPECT_LE(sinceStop.elapsed(), 1000);
     const double zoomBefore = image->zoom();
     const QPointF middle(500, 250);
-    QWheelEvent wheel(middle, view.mapToGlobal(middle), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+    QWheelEvent wheel(middle, view.mapToGlobal(middle), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::ControlModifier,
                       Qt::NoScrollPhase, false);
     QCoreApplication::sendEvent(&view, &wheel);
     EXPECT_GT(image->zoom(), zoomBefore);
@@ -1633,6 +1636,26 @@ TEST(BrowserPage, TreeExpandsTheOpenedFolder) {
     TreeFixture f;
     const QString inner = f.path(QStringLiteral("inner"));
     EXPECT_TRUE(waitUntil([&] { return f.rowOf(inner) > f.rowOf(f.context.directory()); }));
+}
+
+TEST(BrowserPage, TreeShowsTheOtherFoldersOnTheWayToAnOpenedOne) {
+    TreeFixture f;
+    const QDir dir(f.context.directory());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("inner/other")));
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("inner/deeper/deepest")));
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("inner/deeper/beside")));
+    const QString target = dir.filePath(QStringLiteral("inner/deeper/deepest"));
+
+    // Nothing has listed these yet, as when a path comes from the command line.
+    f.context.openPath(target);
+    for (const char* name : {"inner/other", "inner/deeper/beside"}) {
+        const QString folder = dir.filePath(QString::fromLatin1(name));
+        EXPECT_TRUE(waitUntil([&] { return f.rowOf(folder) >= 0; })) << name;
+    }
+    f.settle();
+    QQuickItem* row = nullptr;
+    QMetaObject::invokeMethod(f.tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(QModelIndex, f.model->indexForPath(target)));
+    EXPECT_NE(row, nullptr) << "the opened folder stays in sight as the rest fills in above it";
 }
 
 TEST(BrowserPage, ClickingAFolderOpensAndExpandsIt) {
@@ -2402,6 +2425,563 @@ TEST(BrowserPage, RightClickSelectsAnUnselectedFileAndKeepsASelection) {
     rightClick(3);
     EXPECT_EQ(menus.count(), 2);
     EXPECT_EQ(f.selected(), QStringLiteral("d"));
+}
+
+namespace {
+
+QStringList rowTexts(const QVariantList& rows) {
+    QStringList texts;
+    for (const QVariant& row : rows) {
+        texts << row.toMap().value(QStringLiteral("text")).toString();
+    }
+    return texts;
+}
+
+QQuickItem* findNamed(QQuickItem* parent, const QString& name) {
+    if (parent->objectName() == name) {
+        return parent;
+    }
+    for (QQuickItem* child : parent->childItems()) {
+        if (QQuickItem* found = findNamed(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+TEST(BrowseContext, SummarizesFoldersFilesAndSelection) {
+    QTemporaryDir dir;
+    iv::test::writeFile(QFileInfo(dir.filePath(QStringLiteral("big.jpg"))).filesystemFilePath(), std::vector<std::uint8_t>(5000, 0));
+    iv::test::writeFile(QFileInfo(dir.filePath(QStringLiteral("small.jpg"))).filesystemFilePath(), std::vector<std::uint8_t>(1000, 0));
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("one")));
+    BrowseContext context;
+    EXPECT_EQ(context.summary(), QString());
+    QSignalSpy changes(&context, &BrowseContext::summaryChanged);
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 2; }));
+    EXPECT_GT(changes.count(), 0);
+    EXPECT_EQ(context.summary(), QStringLiteral("1 directory | 2 files (6 kB) | 1 selected (5 kB)"));
+
+    context.clearSelection();
+    EXPECT_EQ(context.summary(), QStringLiteral("1 directory | 2 files (6 kB)"));
+    context.selectAll();
+    EXPECT_EQ(context.summary(), QStringLiteral("1 directory | 2 files (6 kB) | 2 selected (6 kB)"));
+
+    // Folders change on their own, with no image coming or going.
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("two")));
+    context.refresh();
+    EXPECT_TRUE(waitUntil([&] { return context.summary().startsWith(QStringLiteral("2 directories | ")); }));
+}
+
+TEST(BrowseContext, JumpsBackThroughTheHistoryAtOnce) {
+    QTemporaryDir dir;
+    const QDir root(dir.path());
+    for (const char* name : {"a", "b", "c", "gone", "d"}) {
+        ASSERT_TRUE(root.mkpath(QString::fromLatin1(name)));
+    }
+    BrowseContext context;
+    const auto path = [&](const char* name) { return root.filePath(QString::fromLatin1(name)); };
+    for (const char* name : {"a", "b", "c", "gone", "d"}) {
+        context.openPath(path(name));
+    }
+    EXPECT_EQ(context.backFolders(), (QStringList{path("gone"), path("c"), path("b"), path("a")}));
+    ASSERT_TRUE(QDir(path("gone")).removeRecursively());
+    EXPECT_EQ(context.backFolders(), (QStringList{path("c"), path("b"), path("a")})) << "not one that went away";
+
+    context.goBackBy(2);  // to b, past c and the one that is gone
+    EXPECT_EQ(context.directory(), path("b"));
+    EXPECT_EQ(context.backFolders(), QStringList{path("a")});
+
+    // Forward returns through what was passed, the nearest first.
+    context.goForward();
+    EXPECT_EQ(context.directory(), path("c"));
+    context.goForward();
+    EXPECT_EQ(context.directory(), path("d"));
+    EXPECT_FALSE(context.canGoForward());
+
+    // Asking for more than there is goes to the oldest.
+    context.goBackBy(100);
+    EXPECT_EQ(context.directory(), path("a"));
+    EXPECT_FALSE(context.canGoBack());
+}
+
+TEST(FolderLists, KeepsFavoritesAndRecentFoldersBetweenRuns) {
+    QSettings().remove(QStringLiteral("Folders"));
+    {
+        iv::FolderLists lists;
+        lists.addFavorite(QStringLiteral("/a"));
+        lists.addFavorite(QStringLiteral("/b"));
+        lists.addFavorite(QStringLiteral("/c"));
+        lists.addFavorite(QStringLiteral("/a"));
+        EXPECT_EQ(lists.favorites(), (QStringList{"/a", "/b", "/c"}));
+        lists.moveFavorite(2, 1);
+        EXPECT_EQ(lists.favorites(), (QStringList{"/a", "/c", "/b"}));
+        lists.moveFavorite(0, -1);
+        lists.moveFavorite(2, 3);
+        EXPECT_EQ(lists.favorites(), (QStringList{"/a", "/c", "/b"}));
+        lists.removeFavorite(QStringLiteral("/c"));
+        lists.removeFavorite(QStringLiteral("/b"));
+
+        lists.noteVisited(QStringLiteral("/x"));
+        lists.noteVisited(QStringLiteral("/y"));
+        lists.noteVisited(QStringLiteral("/x"));
+        EXPECT_EQ(lists.recent(), (QStringList{"/x", "/y"}));
+    }
+    {
+        iv::FolderLists lists;
+        EXPECT_EQ(lists.favorites(), QStringList{"/a"}) << "a single one is still a list";
+        EXPECT_EQ(lists.recent(), (QStringList{"/x", "/y"}));
+        for (int i = 0; i < 30; ++i) {
+            lists.noteVisited(QStringLiteral("/%1").arg(i));
+        }
+        EXPECT_EQ(lists.recent().size(), 12);
+        EXPECT_EQ(lists.recent().front(), QStringLiteral("/29"));
+    }
+    QSettings().remove(QStringLiteral("Folders"));
+}
+
+TEST(BrowserPage, StatusSaysWhatIsInTheFolder) {
+    BrowserPageFixture f;
+    QQuickItem* status = findNamed(f.view.rootObject(), QStringLiteral("browserStatus"));
+    ASSERT_NE(status, nullptr);
+    EXPECT_TRUE(status->property("text").toString().startsWith(QStringLiteral("1 directory | 4 files (")));
+    EXPECT_TRUE(status->property("text").toString().contains(QStringLiteral("| 1 selected (")));
+}
+
+TEST(BrowserPage, PreviewCollapsesAndDescribesItsImage) {
+    BrowserPageFixture f;
+    auto* preview = qobject_cast<ImageView*>(f.view.rootObject()->property("preview").value<QObject*>());
+    ASSERT_NE(preview, nullptr);
+    f.view.rootObject()->setProperty("active", true);
+    ASSERT_TRUE(waitUntil([&] { return preview->status() == ImageView::Status::Ready; }));
+    QQuickItem* summary = findNamed(f.view.rootObject(), QStringLiteral("previewSummary"));
+    ASSERT_NE(summary, nullptr);
+    const QString text = summary->property("text").toString();
+    EXPECT_TRUE(text.startsWith(QStringLiteral("64x64 0.00MP 24bit JPEG "))) << text.toStdString();
+    EXPECT_TRUE(QRegularExpression(QStringLiteral(" \\d+(B|kB) \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d$")).match(text).hasMatch()) << text.toStdString();
+    QQuickItem* camera = findNamed(f.view.rootObject(), QStringLiteral("previewCamera"));
+    ASSERT_NE(camera, nullptr);
+    EXPECT_FALSE(camera->isVisible()) << "this image has no EXIF";
+
+    // The two buttons on the line.
+    QQuickItem* actual = findNamed(f.view.rootObject(), QStringLiteral("previewActualSize"));
+    QQuickItem* fit = findNamed(f.view.rootObject(), QStringLiteral("previewFit"));
+    ASSERT_NE(actual, nullptr);
+    ASSERT_NE(fit, nullptr);
+    QMetaObject::invokeMethod(fit, "clicked");
+    EXPECT_GT(preview->zoom(), 1) << "64 pixels fill the panel";
+    QMetaObject::invokeMethod(actual, "clicked");
+    EXPECT_DOUBLE_EQ(preview->zoom(), 1);
+
+    // The title closes it, which leaves room for the tree and stops reading images.
+    QQuickItem* header = findNamed(f.view.rootObject(), QStringLiteral("previewHeader"));
+    ASSERT_NE(header, nullptr);
+    QQuickItem* panel = header->parentItem()->parentItem();
+    const qreal openHeight = panel->height();
+    f.clickAt(header->mapToScene(QPointF(header->width() / 2, header->height() / 2)), Qt::NoModifier);
+    EXPECT_TRUE(waitUntil([&] { return panel->height() < 40; })) << panel->height();
+    EXPECT_EQ(preview->source(), QString());
+    EXPECT_FALSE(summary->isVisible());
+
+    f.clickAt(header->mapToScene(QPointF(header->width() / 2, header->height() / 2)), Qt::NoModifier);
+    EXPECT_TRUE(waitUntil([&] { return panel->height() > 100; })) << panel->height();
+    EXPECT_NEAR(panel->height(), openHeight, 1);
+    EXPECT_EQ(preview->source(), f.context.currentPath());
+}
+
+TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
+    BrowserPageFixture f;
+    QSettings().remove(QStringLiteral("Folders"));
+    QQuickItem* bar = f.view.rootObject()->property("pathBar").value<QQuickItem*>();
+    ASSERT_NE(bar, nullptr);
+    const QString first = f.context.directory();
+    const QString inner = QDir(first).filePath(QStringLiteral("inner"));
+    const QString deeper = QDir(inner).filePath(QStringLiteral("deeper"));
+    f.context.openPath(inner);
+    f.context.openPath(deeper);
+
+    QQuickItem* back = findNamed(bar, QStringLiteral("backButton"));
+    ASSERT_NE(back, nullptr);
+    QObject* history = bar->findChild<QObject*>(QStringLiteral("historyMenu"));
+    ASSERT_NE(history, nullptr);
+    QMetaObject::invokeMethod(back, "secondaryActivated");
+    EXPECT_TRUE(waitUntil([&] { return history->property("visible").toBool(); }));
+    EXPECT_EQ(history->property("count").toInt(), 2);
+    QMetaObject::invokeMethod(history, "close");
+
+    QQuickItem* star = findNamed(bar, QStringLiteral("folderButton"));
+    ASSERT_NE(star, nullptr);
+    EXPECT_FALSE(star->property("lit").toBool());
+    QMetaObject::invokeMethod(star, "activated");
+    EXPECT_TRUE(star->property("menuOpen").toBool());
+    QStringList texts = rowTexts(star->property("menuRows").toList());
+    EXPECT_TRUE(texts.value(0).startsWith(QStringLiteral("Add ")));
+    EXPECT_EQ(texts.value(1), QStringLiteral("Recent"));
+    EXPECT_TRUE(texts.contains(QDir::toNativeSeparators(inner)));
+    EXPECT_FALSE(texts.contains(QDir::toNativeSeparators(deeper))) << "not where we already are";
+
+    QVariantList rows = star->property("menuRows").toList();
+    QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, rows.first()));
+    EXPECT_TRUE(star->property("lit").toBool());
+    QMetaObject::invokeMethod(star, "activated");
+    texts = rowTexts(star->property("menuRows").toList());
+    EXPECT_TRUE(texts.value(0).startsWith(QStringLiteral("Remove ")));
+    EXPECT_EQ(texts.value(1), QStringLiteral("Favorites"));
+    EXPECT_EQ(texts.value(2), QDir::toNativeSeparators(deeper));
+
+    // Choosing a recent folder goes there.
+    rows = star->property("menuRows").toList();
+    const auto toInner = std::ranges::find_if(rows, [&](const QVariant& row) { return row.toMap().value(QStringLiteral("path")).toString() == inner; });
+    ASSERT_NE(toInner, rows.end());
+    QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, *toInner));
+    EXPECT_EQ(f.context.directory(), inner);
+    EXPECT_FALSE(star->property("lit").toBool());
+    QSettings().remove(QStringLiteral("Folders"));
+}
+
+TEST(PathBar, AClickInItsListsDoesNotReachTheThumbnailsBelow) {
+    TreeFixture f;
+    QSettings().remove(QStringLiteral("Folders"));
+    QQuickItem* bar = f.view.rootObject()->property("pathBar").value<QQuickItem*>();
+    ASSERT_NE(bar, nullptr);
+    QQuickItem* star = findNamed(bar, QStringLiteral("folderButton"));
+    ASSERT_NE(star, nullptr);
+    QQuickItem* grid = f.find("QQuickGridView");
+    ASSERT_NE(grid, nullptr);
+    const QString selectedBefore = f.selected();
+
+    // The first row of the list, over the thumbnail of another file.
+    QMetaObject::invokeMethod(star, "activated");
+    ASSERT_TRUE(star->property("menuOpen").toBool());
+    f.settle();
+    const QPointF onRow = star->mapToScene(QPointF(200, star->height() + 13));
+    int below = -1;
+    QMetaObject::invokeMethod(grid, "indexAt", Q_RETURN_ARG(int, below), Q_ARG(qreal, grid->mapFromScene(onRow).x()), Q_ARG(qreal, grid->mapFromScene(onRow).y()));
+    ASSERT_GE(below, 1) << "over a file other than the current one";
+    f.clickAt(onRow, Qt::NoModifier);
+    f.settle();
+    EXPECT_FALSE(star->property("menuOpen").toBool());
+    EXPECT_TRUE(star->property("lit").toBool()) << "the click did what the row says";
+    EXPECT_EQ(f.selected(), selectedBefore);
+    QSettings().remove(QStringLiteral("Folders"));
+}
+
+namespace {
+
+// QPlatformDialogHelper::No, which is what Dialog.No is.
+int QQuickDialogNoButton() { return 0x00010000; }
+
+}  // namespace
+
+TEST(KeyNames, WritesShortcutsAsTheSystemDoes) {
+    EXPECT_EQ(iv::KeyNames::text(QStringLiteral("Ctrl+Shift+N")), QKeySequence(QStringLiteral("Ctrl+Shift+N")).toString(QKeySequence::NativeText));
+    EXPECT_EQ(iv::KeyNames::text(QStringLiteral("F5")), QStringLiteral("F5"));
+    EXPECT_EQ(iv::KeyNames::text(static_cast<int>(QKeySequence::Copy)), QKeySequence::keyBindings(QKeySequence::Copy).value(0).toString(QKeySequence::NativeText));
+    EXPECT_FALSE(iv::KeyNames::text(static_cast<int>(QKeySequence::Copy)).isEmpty());
+    EXPECT_EQ(iv::KeyNames::text(QVariant()), QString());
+    EXPECT_EQ(iv::KeyNames::text(QString()), QString());
+}
+
+TEST(AppMenuItem, ShowsTheShortcutOfItsAction) {
+    QQmlEngine engine;
+    QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+        for (const QQmlError& warning : warnings) {
+            ADD_FAILURE() << warning.toString().toStdString();
+        }
+    });
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 400; visible: true
+            property alias menu: menu
+            property alias plain: plain
+            property alias standard: standard
+            property alias none: none
+            property alias longest: longest
+            Action { id: renameAction; text: "&Rename"; shortcut: "F2" }
+            Action { id: longAction; text: "Delete Permanently Something Rather Long..."; shortcut: "Ctrl+Shift+Alt+Del" }
+            Action { id: copyAction; text: "&Copy"; shortcut: StandardKey.Copy }
+            Action { id: modeAction; text: "View" }
+            AppMenu {
+                id: menu
+                AppMenuItem { id: longest; action: longAction }
+                AppMenuItem { id: plain; action: renameAction }
+                AppMenuItem { id: standard; action: copyAction }
+                AppMenuItem { id: none; action: modeAction }
+            }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    QMetaObject::invokeMethod(root->property("menu").value<QObject*>(), "open");
+    const auto label = [&](const char* name) { return findNamed(root->property(name).value<QQuickItem*>(), QStringLiteral("shortcutText")); };
+    ASSERT_NE(label("plain"), nullptr);
+    EXPECT_EQ(label("plain")->property("text").toString(), QStringLiteral("F2"));
+    EXPECT_TRUE(label("plain")->isVisible());
+    EXPECT_LT(label("plain")->opacity(), 1);
+    EXPECT_FALSE(label("standard")->property("text").toString().isEmpty());
+    EXPECT_FALSE(label("none")->isVisible());
+    // The menu makes room for it beside the longest name.
+    auto* item = root->property("plain").value<QQuickItem*>();
+    EXPECT_GE(item->property("implicitWidth").toReal(), label("plain")->implicitWidth() + 32);
+    auto* menu = root->property("menu").value<QObject*>();
+    auto* longest = root->property("longest").value<QQuickItem*>();
+    EXPECT_GE(menu->property("width").toReal(), longest->implicitWidth());
+    EXPECT_GE(longest->width(), longest->implicitWidth()) << "nothing runs into the shortcut";
+}
+
+TEST(MessageBox, TakesTheHeightOfAllItsText) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 400; visible: true
+            property alias box: box
+            MessageBox { id: box; title: "A caption"; standardButtons: Dialog.Ok }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* box = root->property("box").value<QObject*>();
+    box->setProperty("text", QStringLiteral("one"));
+    const qreal oneLine = box->property("implicitContentHeight").toReal();
+    box->setProperty("text", QStringLiteral("one\n\nthree\nfour\nfive"));
+    QMetaObject::invokeMethod(box, "open");
+    EXPECT_TRUE(waitUntil([&] { return box->property("opened").toBool(); }));
+    auto* content = box->property("contentItem").value<QQuickItem*>();
+    EXPECT_TRUE(waitUntil([&] { return content->height() > std::max(oneLine, 32.0) + 30; }, 1000))
+        << "the names of files to delete are in there, but it is " << content->height();
+}
+
+TEST(MessageBox, KeysWorkAsInAStandardMessageBox) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 400; visible: true
+            property int accepts: 0
+            property int rejects: 0
+            property int outside: 0
+            property alias box: box
+            Shortcut { sequences: [StandardKey.Copy, "Return"]; onActivated: outside++ }
+            MessageBox {
+                id: box
+                kind: "warning"
+                title: "A caption"
+                text: "Some text."
+                standardButtons: Dialog.Yes | Dialog.No
+                onAccepted: accepts++
+                onRejected: rejects++
+            }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    ASSERT_NE(window, nullptr);
+    window->requestActivate();
+    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    auto* box = root->property("box").value<QObject*>();
+    const auto show = [&] {
+        QMetaObject::invokeMethod(box, "open");
+        EXPECT_TRUE(waitUntil([&] { return box->property("opened").toBool(); }));
+    };
+
+    show();
+    QGuiApplication::clipboard()->clear();
+    QTest::keyClick(window, Qt::Key_C, Qt::ControlModifier);
+    EXPECT_EQ(QGuiApplication::clipboard()->text(), QStringLiteral("A caption\n\nSome text."));
+    EXPECT_TRUE(box->property("visible").toBool()) << "copying leaves it open";
+
+    // Enter presses the button in focus, the first one unless the dialog says otherwise.
+    QTest::keyClick(window, Qt::Key_Return);
+    EXPECT_EQ(root->property("accepts").toInt(), 1);
+    EXPECT_TRUE(waitUntil([&] { return !box->property("visible").toBool(); }));
+
+    box->setProperty("focusedButton", QQuickDialogNoButton());
+    show();
+    QTest::keyClick(window, Qt::Key_Return);
+    EXPECT_EQ(root->property("rejects").toInt(), 1) << "a dangerous question can start at No";
+    EXPECT_TRUE(waitUntil([&] { return !box->property("visible").toBool(); }));
+
+    show();
+    QTest::keyClick(window, Qt::Key_Escape);
+    EXPECT_EQ(root->property("rejects").toInt(), 2);
+    EXPECT_EQ(root->property("outside").toInt(), 0) << "none of these reach the window's shortcuts";
+}
+
+namespace {
+
+// An image larger than the view, so that fitting it shrinks it.
+struct LoupeFixture : ViewFixture {
+    QTemporaryDir dir;
+
+    LoupeFixture() {
+        JpegOptions options;
+        options.width = 1600;
+        options.height = 1600;
+        writeJpeg(dir.filePath(QStringLiteral("large.jpg")), options);
+        EXPECT_TRUE(load(dir.filePath(QStringLiteral("large.jpg"))));
+    }
+
+    void mouse(QEvent::Type type, QPointF at, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, at, view->mapToGlobal(at), Qt::LeftButton, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(&window, &event);
+    }
+    void press(QPointF at) { mouse(QEvent::MouseButtonPress, at, Qt::LeftButton); }
+    void move(QPointF at) { mouse(QEvent::MouseMove, at, Qt::LeftButton); }
+    void release(QPointF at) { mouse(QEvent::MouseButtonRelease, at, Qt::NoButton); }
+
+    void wheel(int delta, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        const QPointF at(200, 200);
+        QWheelEvent event(at, view->mapToGlobal(at), QPoint(), QPoint(0, delta), Qt::NoButton, modifiers, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&window, &event);
+    }
+};
+
+}  // namespace
+
+TEST(ImageView, HoldingTheButtonShowsThatPlaceAtActualSize) {
+    LoupeFixture f;
+    ASSERT_DOUBLE_EQ(f.view->zoom(), 0.25);
+    EXPECT_EQ(f.view->cursor().shape(), Qt::BitmapCursor) << "a magnifying glass";
+
+    // Near the top left, which is a quarter of the way in on the image.
+    f.press(QPointF(100, 100));
+    EXPECT_DOUBLE_EQ(f.view->zoom(), 1);
+    QRectF area = f.view->visibleArea();
+    EXPECT_NEAR(area.x(), (400 - 100) / 1600.0, 0.001) << "image x 400 stays under the mouse at view x 100";
+    EXPECT_NEAR(area.y(), (400 - 100) / 1600.0, 0.001);
+    EXPECT_EQ(f.view->cursor().shape(), Qt::BitmapCursor);
+
+    // Moving looks around while it is held.
+    f.move(QPointF(80, 100));
+    area = f.view->visibleArea();
+    EXPECT_NEAR(area.x(), (400 - 80) / 1600.0, 0.001);
+    EXPECT_DOUBLE_EQ(f.view->zoom(), 1);
+
+    f.release(QPointF(80, 100));
+    EXPECT_DOUBLE_EQ(f.view->zoom(), 0.25);
+    EXPECT_EQ(f.view->visibleArea(), QRectF(0, 0, 1, 1));
+    f.view->setSize(QSizeF(200, 200));
+    EXPECT_DOUBLE_EQ(f.view->zoom(), 0.125) << "it fits the view again, not one zoom";
+}
+
+TEST(ImageView, CursorIsAHandWhereThereIsSomethingToPanTo) {
+    LoupeFixture f;
+    f.view->actualSize();
+    EXPECT_EQ(f.view->cursor().shape(), Qt::OpenHandCursor);
+    f.press(QPointF(200, 200));
+    EXPECT_DOUBLE_EQ(f.view->zoom(), 1) << "stays as it is";
+    EXPECT_EQ(f.view->cursor().shape(), Qt::ClosedHandCursor);
+    f.move(QPointF(150, 200));
+    EXPECT_EQ(f.view->cursor().shape(), Qt::ClosedHandCursor);
+    const QRectF panned = f.view->visibleArea();
+    f.release(QPointF(150, 200));
+    EXPECT_EQ(f.view->cursor().shape(), Qt::OpenHandCursor);
+    EXPECT_EQ(f.view->visibleArea(), panned) << "panning stays where it went";
+}
+
+TEST(ImageView, SmallImageShownWholeHasNoLoupeOrHand) {
+    ViewFixture f;
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("small.jpg")));
+    ASSERT_TRUE(f.load(dir.filePath(QStringLiteral("small.jpg"))));
+    ASSERT_DOUBLE_EQ(f.view->zoom(), 1);
+    EXPECT_EQ(f.view->cursor().shape(), Qt::ArrowCursor);
+}
+
+TEST(ImageView, AnotherImageArrivingWhileHeldKeepsItsOwnView) {
+    LoupeFixture f;
+    JpegOptions options;
+    options.width = 800;
+    options.height = 800;
+    writeJpeg(f.dir.filePath(QStringLiteral("other.jpg")), options);
+    f.press(QPointF(100, 100));
+    ASSERT_DOUBLE_EQ(f.view->zoom(), 1);
+    ASSERT_TRUE(f.load(f.dir.filePath(QStringLiteral("other.jpg"))));
+    const double zoom = f.view->zoom();
+    f.release(QPointF(100, 100));
+    EXPECT_DOUBLE_EQ(f.view->zoom(), zoom) << "the zoom of the first would not suit it";
+}
+
+TEST(ImageView, WheelCanAskForAnotherImageAndCtrlZooms) {
+    LoupeFixture f;
+    const double zoom = f.view->zoom();
+    f.wheel(120);
+    EXPECT_GT(f.view->zoom(), zoom) << "zooms unless told otherwise";
+
+    f.view->fitToView();
+    f.view->setWheelNavigates(true);
+    QSignalSpy requests(f.view, &ImageView::navigateRequested);
+    const double fitted = f.view->zoom();
+    f.wheel(-120);
+    ASSERT_EQ(requests.count(), 1);
+    EXPECT_EQ(requests.takeFirst().at(0).toInt(), 1) << "towards the user is the next";
+    f.wheel(120);
+    ASSERT_EQ(requests.count(), 1);
+    EXPECT_EQ(requests.takeFirst().at(0).toInt(), -1);
+    EXPECT_DOUBLE_EQ(f.view->zoom(), fitted);
+
+    // A touchpad's small steps add up to one, and turning back starts over.
+    f.wheel(-50);
+    f.wheel(-50);
+    EXPECT_EQ(requests.count(), 0);
+    f.wheel(-20);
+    EXPECT_EQ(requests.count(), 1);
+    requests.clear();
+    f.wheel(-100);
+    f.wheel(100);
+    EXPECT_EQ(requests.count(), 0);
+
+    f.wheel(120, Qt::ControlModifier);
+    EXPECT_GT(f.view->zoom(), fitted);
+    EXPECT_EQ(requests.count(), 0);
+}
+
+TEST(ViewerPage, WheelMovesThroughTheImages) {
+    QTemporaryDir dir;
+    for (const char* name : {"a.jpg", "b.jpg", "c.jpg"}) {
+        writeJpeg(dir.filePath(QString::fromLatin1(name)));
+    }
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(600, 400);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    ASSERT_NE(view.rootObject(), nullptr);
+    auto* image = view.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(image, nullptr);
+    // The info panel starts by sliding out of the way, and the image has no width until then.
+    ASSERT_TRUE(waitUntil([&] { return view.isExposed() && image->width() > 500; }));
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 3 && context.currentIndex() == 0; }));
+    const auto wheel = [&](int delta) {
+        const QPointF at(100, 100);
+        QWheelEvent event(at, view.mapToGlobal(at), QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&view, &event);
+    };
+    wheel(120);
+    EXPECT_EQ(context.currentIndex(), 0) << "stays at the first";
+    wheel(-120);
+    EXPECT_EQ(context.currentIndex(), 1);
+    wheel(-360);
+    EXPECT_EQ(context.currentIndex(), 2) << "stops at the last";
+    wheel(120);
+    EXPECT_EQ(context.currentIndex(), 1);
 }
 
 int main(int argc, char** argv) {

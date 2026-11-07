@@ -19,6 +19,7 @@
 #include <QVariantMap>
 
 #include <algorithm>
+#include <ranges>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -26,6 +27,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/image_details.h"
 #include "core/image_source.h"
 #include "core/thumbnail.h"
 #include "core/work_queue.h"
@@ -114,6 +116,7 @@ public:
     using QAbstractListModel::QAbstractListModel;
 
     const QString& name(int row) const { return m_entries.at(row).name; }
+    qint64 size(int row) const { return m_entries.at(row).size; }
 
     int find(const QString& name) const {
         for (int row = 0; row < rowCount(); ++row) {
@@ -308,6 +311,7 @@ struct BrowseContext::Impl {
     std::stop_source jobStop;
     QList<HistoryEntry> backStack;
     QList<HistoryEntry> forwardStack;
+    int subfolderCount = 0;
 
     std::size_t rowCount() const { return files.selected().size(); }
 
@@ -358,6 +362,7 @@ struct BrowseContext::Impl {
         files.reset(directory, {});
         currentIndex = -1;
         anchor = -1;
+        subfolderCount = 0;
         // A file shows immediately; the rest of the directory arrives when the scan finishes.
         currentName = isDirectory ? QString() : info.fileName();
         emit owner->directoryChanged();
@@ -368,15 +373,21 @@ struct BrowseContext::Impl {
         scan(owner);
     }
 
-    // Moves through the history: takes the nearest entry from one stack that still exists, and
-    // leaves where we are on the other.
-    void travel(BrowseContext* owner, QList<HistoryEntry>& from, QList<HistoryEntry>& to) {
+    // Moves through the history: takes the entry so many steps away on one stack, counting those
+    // that still exist, and leaves where we are and what it passed on the other.
+    void travel(BrowseContext* owner, QList<HistoryEntry>& from, QList<HistoryEntry>& to, int steps = 1) {
+        QList<HistoryEntry> passed;
         while (!from.isEmpty()) {
             const HistoryEntry entry = from.takeLast();
             if (!QFileInfo(entry.directory).isDir()) {
                 continue;
             }
+            if (--steps > 0 && !from.isEmpty()) {
+                passed.append(entry);
+                continue;
+            }
             to.append({directory, currentName});
+            to.append(passed);
             const QString file = QDir(entry.directory).filePath(entry.currentName);
             open(owner, !entry.currentName.isEmpty() && QFileInfo::exists(file) ? file : entry.directory);
             break;
@@ -390,9 +401,12 @@ struct BrowseContext::Impl {
         const std::uint64_t generation = ++scanGeneration;
         queue.submit(group, kScanPriority, [owner, this, generation, toSelect, dir = directory, key = sortKey, down = sortDescending](std::stop_token) {
             QList<FileEntry> entries = scanDirectory(dir, key, down);
-            QMetaObject::invokeMethod(owner, [owner, this, generation, toSelect, entries = std::move(entries)] {
+            const int subfolders = static_cast<int>(QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size());
+            QMetaObject::invokeMethod(owner, [owner, this, generation, toSelect, subfolders, entries = std::move(entries)] {
                 if (generation == scanGeneration) {
+                    subfolderCount = subfolders;
                     applyScan(owner, entries, toSelect);
+                    emit owner->summaryChanged();  // the folders can change on their own
                 }
             });
         });
@@ -503,6 +517,8 @@ BrowseContext::BrowseContext(QObject* parent) : QObject(parent), m_impl(std::mak
     connect(&m_impl->refreshTimer, &QTimer::timeout, this, [this] { refresh(); });
     connect(&m_impl->watcher, &QFileSystemWatcher::directoryChanged, &m_impl->refreshTimer, qOverload<>(&QTimer::start));
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &BrowseContext::clipboardChanged);
+    connect(this, &BrowseContext::filesChanged, this, &BrowseContext::summaryChanged);
+    connect(this, &BrowseContext::selectionChanged, this, &BrowseContext::summaryChanged);
 }
 
 BrowseContext::~BrowseContext() {
@@ -563,12 +579,52 @@ bool BrowseContext::canGoForward() const { return !m_impl->forwardStack.isEmpty(
 bool BrowseContext::canGoUp() const { return !m_impl->directory.isEmpty() && !QDir(m_impl->directory).isRoot(); }
 
 void BrowseContext::goBack() { m_impl->travel(this, m_impl->backStack, m_impl->forwardStack); }
+
+QStringList BrowseContext::backFolders() const {
+    QStringList folders;
+    for (const HistoryEntry& entry : std::views::reverse(m_impl->backStack)) {
+        if (QFileInfo(entry.directory).isDir()) {
+            folders << entry.directory;
+        }
+    }
+    return folders;
+}
+
+void BrowseContext::goBackBy(int steps) { m_impl->travel(this, m_impl->backStack, m_impl->forwardStack, steps); }
 void BrowseContext::goForward() { m_impl->travel(this, m_impl->forwardStack, m_impl->backStack); }
 
 void BrowseContext::goUp() {
     if (canGoUp()) {
         openPath(QFileInfo(m_impl->directory).absolutePath());
     }
+}
+
+QString BrowseContext::summary() const {
+    if (m_impl->directory.isEmpty()) {
+        return {};
+    }
+    const auto sizeText = [](qint64 bytes) { return QString::fromStdString(shortDataSize(static_cast<std::uint64_t>(bytes))); };
+    const FileListModel& files = m_impl->files;
+    qint64 total = 0;
+    qint64 selectedBytes = 0;
+    int selected = 0;
+    for (int row = 0; row < files.rowCount(); ++row) {
+        total += files.size(row);
+        if (files.selected()[static_cast<std::size_t>(row)] != 0) {
+            selectedBytes += files.size(row);
+            ++selected;
+        }
+    }
+    const int folders = m_impl->subfolderCount;
+    QString text = tr("%1 %2 | %3 %4 (%5)")
+                       .arg(folders)
+                       .arg(folders == 1 ? tr("directory") : tr("directories"))
+                       .arg(files.rowCount())
+                       .arg(files.rowCount() == 1 ? tr("file") : tr("files"), sizeText(total));
+    if (selected > 0) {
+        text += tr(" | %1 selected (%2)").arg(selected).arg(sizeText(selectedBytes));
+    }
+    return text;
 }
 
 QString BrowseContext::openTyped(const QString& text) {

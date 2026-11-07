@@ -30,6 +30,17 @@ void Viewport::setFitMode(FitMode mode) {
     clampOffset();
 }
 
+void Viewport::restore(const State& state) {
+    m_zoom = state.zoom;
+    m_offsetX = state.offsetX;
+    m_offsetY = state.offsetY;
+    setFitMode(state.fitMode);
+}
+
+bool Viewport::showsWholeImage() const {
+    return m_image.width * m_zoom <= m_viewWidth + 0.5 && m_image.height * m_zoom <= m_viewHeight + 0.5;
+}
+
 void Viewport::applyFit() {
     if (m_fitMode == FitMode::Manual || m_image.width <= 0 || m_image.height <= 0 || m_viewWidth <= 0 ||
         m_viewHeight <= 0) {

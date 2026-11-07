@@ -4,8 +4,8 @@ import QtQuick
 import QtQuick.Controls
 import ImageViewer
 
-// Where we are: back, forward and up, then the path as flat crumbs. The caret after a crumb lists
-// its subfolders. A click on the empty end, or Ctrl+L, turns the path into text to edit or paste.
+// Buttons to move around on the left, apart from the path in its frame. There the caret after a
+// crumb lists its subfolders, and a click on the empty end, or Ctrl+L, turns it into text to edit.
 Rectangle {
     id: bar
 
@@ -85,47 +85,19 @@ Rectangle {
         id: subfolders
     }
 
-    // A small triangle, pointing the way it leads.
-    component Caret: Canvas {
-        id: caret
-        property int rotationAngle: 0  // 0 points right
-        property color fill: bar.caretColor
-        implicitWidth: 10
-        implicitHeight: 10
-        rotation: rotationAngle
-        onFillChanged: requestPaint()
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.reset()
-            ctx.fillStyle = fill
-            ctx.beginPath()
-            ctx.moveTo(3, 1.5)
-            ctx.lineTo(7.5, 5)
-            ctx.lineTo(3, 8.5)
-            ctx.closePath()
-            ctx.fill()
-        }
+    // What back would pass through, to jump there at once. Most recent first.
+    function showBackHistory(anchorItem) {
+        const folders = context.backFolders()
+        if (folders.length === 0)
+            return
+        historyMenu.folders = folders
+        historyMenu.popup(anchorItem, 0, anchorItem.height)
     }
 
-    component NavigationButton: Rectangle {
-        id: navigation
-        property int direction: 0
-        property bool usable: true
-        signal activated()
-        width: 26
-        height: 26
-        radius: 3
-        color: navigationHover.hovered && usable ? bar.hoverColor : "transparent"
-        Caret {
-            anchors.centerIn: parent
-            scale: 1.3
-            rotationAngle: navigation.direction
-            fill: navigation.usable ? palette.windowText : Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.25)
-        }
-        HoverHandler { id: navigationHover }
-        TapHandler {
-            enabled: navigation.usable
-            onTapped: navigation.activated()
+    Connections {
+        target: bar.context
+        function onDirectoryChanged() {
+            FolderLists.noteVisited(bar.context.directory)
         }
     }
 
@@ -135,33 +107,49 @@ Rectangle {
         anchors.leftMargin: 4
         anchors.verticalCenter: parent.verticalCenter
         spacing: 1
-        NavigationButton {
-            direction: 180
+        BarButton {
+            id: backButton
+            icon: "back"
             usable: bar.context.canGoBack
+            tip: "Back (Alt+Left), right-click for history"
+            menuOpen: historyMenu.visible
             onActivated: bar.context.goBack()
-            ToolTip.visible: backTip.hovered
-            ToolTip.delay: 600
-            ToolTip.text: "Back (Alt+Left)"
-            HoverHandler { id: backTip }
+            onSecondaryActivated: bar.showBackHistory(backButton)
         }
-        NavigationButton {
-            direction: 0
+        BarButton {
+            icon: "forward"
             usable: bar.context.canGoForward
+            tip: "Forward (Alt+Right)"
             onActivated: bar.context.goForward()
-            ToolTip.visible: forwardTip.hovered
-            ToolTip.delay: 600
-            ToolTip.text: "Forward (Alt+Right)"
-            HoverHandler { id: forwardTip }
         }
-        NavigationButton {
-            direction: 270
+        BarButton {
+            icon: "up"
             usable: bar.context.canGoUp
+            tip: "Parent folder (Alt+Up)"
             onActivated: bar.context.goUp()
-            ToolTip.visible: upTip.hovered
-            ToolTip.delay: 600
-            ToolTip.text: "Parent folder (Alt+Up)"
-            HoverHandler { id: upTip }
         }
+        BarButton {
+            icon: "refresh"
+            usable: bar.context.directory !== ""
+            tip: "Scan the folder again (F5)"
+            onActivated: bar.context.refresh()
+        }
+        FolderButton {
+            objectName: "folderButton"
+            context: bar.context
+        }
+    }
+
+    // Sets the path apart from the buttons, which are not part of it.
+    Rectangle {
+        anchors.fill: pathArea
+        anchors.topMargin: 3
+        anchors.bottomMargin: 3
+        radius: 3
+        color: palette.base
+        border.width: 1
+        border.color: bar.hoverColor
+        visible: !bar.editing
     }
 
     Item {
@@ -261,6 +249,7 @@ Rectangle {
                             Caret {
                                 anchors.centerIn: parent
                                 rotationAngle: caretButton.isOpen ? 90 : 0
+                                fill: caretHover.hovered || caretButton.isOpen ? palette.windowText : bar.caretColor
                             }
                             HoverHandler { id: caretHover }
                             TapHandler {
@@ -314,19 +303,46 @@ Rectangle {
         }
     }
 
-    Menu {
+    AppMenu {
+        id: historyMenu
+        objectName: "historyMenu"
+        property var folders: []
+        parent: Overlay.overlay
+        width: 420
+        Instantiator {
+            model: historyMenu.folders
+            delegate: MenuItem {
+                id: historyItem
+                required property string modelData
+                required property int index
+                onTriggered: bar.context.goBackBy(index + 1)
+                // In the middle, as folders often differ only at the end of a long path.
+                contentItem: Label {
+                    leftPadding: 8
+                    text: bar.context.nativePath(historyItem.modelData)
+                    textFormat: Text.PlainText
+                    elide: Text.ElideMiddle
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+            onObjectAdded: (index, item) => historyMenu.insertItem(index, item)
+            onObjectRemoved: (index, item) => historyMenu.removeItem(item)
+        }
+    }
+
+    AppMenu {
         id: pathMenu
         property string path
         parent: Overlay.overlay
-        MenuItem {
+        AppMenuItem {
             text: "&Copy Path"
             onTriggered: bar.context.copyPathsToClipboard([pathMenu.path])
         }
-        MenuItem {
+        AppMenuItem {
             text: "&Paste and Go"
             onTriggered: bar.pasteAndGo()
         }
-        MenuItem {
+        AppMenuItem {
             text: "&Edit Path"
             onTriggered: bar.edit()
         }
@@ -393,7 +409,11 @@ Rectangle {
                     font.weight: row.modelData === menu.nextName ? Font.DemiBold : Font.Normal
                 }
                 HoverHandler { id: rowHover }
-                TapHandler { onTapped: bar.chooseSubfolder(row.modelData) }
+                // Not a TapHandler, which leaves the press to whatever is below the list too.
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: bar.chooseSubfolder(row.modelData)
+                }
             }
         }
 

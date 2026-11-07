@@ -5,8 +5,12 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QLocale>
+#include <QCursor>
 #include <QMatrix4x4>
+#include <QtMath>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPixmap>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QSGSimpleTextureNode>
@@ -64,6 +68,38 @@ struct TileKey {
 
 QVariantMap detailRow(const QString& section, const QString& label, const QString& value) {
     return {{QStringLiteral("section"), section}, {QStringLiteral("label"), label}, {QStringLiteral("value"), value}};
+}
+
+// A magnifying glass, as Qt has no such cursor. Light on dark, to show on any image.
+QCursor loupeCursor(qreal devicePixelRatio) {
+    constexpr int kSize = 24;
+    constexpr QPointF kCentre(10, 10);
+    QImage image(qCeil(kSize * devicePixelRatio), qCeil(kSize * devicePixelRatio), QImage::Format_ARGB32_Premultiplied);
+    image.setDevicePixelRatio(devicePixelRatio);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setBrush(Qt::NoBrush);
+    const auto draw = [&](const QColor& color, qreal width) {
+        painter.setPen(QPen(color, width, Qt::SolidLine, Qt::RoundCap));
+        painter.drawEllipse(kCentre, 7, 7);
+        painter.drawLine(QPointF(15.5, 15.5), QPointF(22, 22));
+    };
+    draw(Qt::black, 3.5);
+    draw(Qt::white, 1.75);
+    painter.setPen(QPen(Qt::white, 1.5));
+    painter.drawLine(kCentre - QPointF(3.5, 0), kCentre + QPointF(3.5, 0));
+    painter.drawLine(kCentre - QPointF(0, 3.5), kCentre + QPointF(0, 3.5));
+    painter.end();
+    return QCursor(QPixmap::fromImage(image), static_cast<int>(kCentre.x()), static_cast<int>(kCentre.y()));
+}
+
+// "12kB 2021-12-24 12:34:56". Touches the file system, so it runs on the worker.
+QString summarizeFile(const QString& path) {
+    const QFileInfo info(path);
+    QString size = QString::fromStdString(shortDataSize(static_cast<std::uint64_t>(info.size())));
+    size.remove(QLatin1Char(' '));
+    return size + QLatin1Char(' ') + info.lastModified().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 
 // Touches the file system, so it runs on the worker.
@@ -136,6 +172,22 @@ struct ImageView::Impl {
     QPointF lastDragPosition;
     QVariantList fileDetails;
     QVariantList details;
+    QString fileSummary;
+    QString summary;
+    QString cameraSummary;
+    bool wheelNavigates = false;
+    int wheelTurned = 0;  // towards a whole notch, as a touchpad sends small steps
+
+    // While the button is held on an image that fits, it shows at 100% around that place.
+    struct Loupe {
+        Viewport::State returnTo;
+        QString path;
+        int page = 0;
+    };
+    std::optional<Loupe> loupe;
+    bool pressed = false;
+    enum class CursorKind { Arrow, Loupe, OpenHand, ClosedHand };
+    CursorKind cursorKind = CursorKind::Arrow;
 
     bool resampling = false;
     ResampleGeometry resample;  // inactive unless it is in use
@@ -193,8 +245,51 @@ struct ImageView::Impl {
         emit q->resampleChanged();
     }
 
+    bool canUseLoupe() const {
+        return source && viewport.zoom() < 0.999 && viewport.showsWholeImage();
+    }
+
+    void updateCursor() {
+        CursorKind kind = CursorKind::Arrow;
+        if (loupe || canUseLoupe()) {
+            kind = CursorKind::Loupe;
+        } else if (source && !viewport.showsWholeImage()) {
+            kind = pressed ? CursorKind::ClosedHand : CursorKind::OpenHand;
+        }
+        if (kind == cursorKind) {
+            return;
+        }
+        cursorKind = kind;
+        switch (kind) {
+        case CursorKind::Arrow: q->unsetCursor(); break;
+        case CursorKind::Loupe: q->setCursor(loupeCursor(q->window() ? q->window()->devicePixelRatio() : 1.0)); break;
+        case CursorKind::OpenHand: q->setCursor(Qt::OpenHandCursor); break;
+        case CursorKind::ClosedHand: q->setCursor(Qt::ClosedHandCursor); break;
+        }
+    }
+
+    void startLoupe(QPointF position) {
+        const double dpr = devicePixelRatio();
+        loupe = Loupe{viewport.state(), path, page};
+        viewport.setFitMode(FitMode::Manual);
+        viewport.zoomBy(1 / viewport.zoom(), position.x() * dpr, position.y() * dpr);
+    }
+
+    void endPress() {
+        pressed = false;
+        if (loupe) {
+            // Another image may have come by key in the meantime, with a view of its own.
+            if (loupe->path == path && loupe->page == page) {
+                viewport.restore(loupe->returnTo);
+            }
+            loupe.reset();
+        }
+        viewChanged();
+    }
+
     void viewChanged() {
         updateResampling();
+        updateCursor();
         emit q->zoomChanged();
         if (source) {
             requestVisibleTiles();
@@ -298,6 +393,7 @@ struct ImageView::Impl {
         std::vector<std::pair<TileKey, ImageBuffer>> preview;
         DisplayRange autoRange;
         QVariantList fileDetails;  // only when a file was opened, not for another page
+        QString fileSummary;
     };
 
     static Result<Loaded> loadPreview(std::shared_ptr<ImageSource> source, int page, const std::stop_token& stop) {
@@ -344,6 +440,7 @@ struct ImageView::Impl {
                 loaded = source ? loadPreview(*source, 0, stop) : Result<Loaded>(std::unexpected(source.error()));
                 if (loaded) {
                     loaded->fileDetails = describeFile(newPath);
+                    loaded->fileSummary = summarizeFile(newPath);
                 }
             } catch (const std::bad_alloc&) {
                 loaded = std::unexpected("not enough memory to open image");
@@ -406,6 +503,7 @@ struct ImageView::Impl {
 
         if (!loaded->fileDetails.isEmpty()) {
             fileDetails = loaded->fileDetails;
+            fileSummary = loaded->fileSummary;
         }
         updateDetails();
         histogramValid = false;
@@ -419,7 +517,11 @@ struct ImageView::Impl {
 
     void updateDetails() {
         details = fileDetails;
+        summary.clear();
+        cameraSummary.clear();
         if (source) {
+            summary = QString::fromStdString(imageSummary(subimage())) + QLatin1Char(' ') + fileSummary;
+            cameraSummary = QString::fromStdString(iv::cameraSummary(subimage().exif));
             const auto pages = std::ssize(source->subimages());
             if (pages > 1) {
                 details.append(detailRow(QStringLiteral("File"), QStringLiteral("Page"), QStringLiteral("%1 of %2").arg(page + 1).arg(pages)));
@@ -519,6 +621,10 @@ struct ImageView::Impl {
         viewport.setImageSize({});
         fileDetails.clear();
         details.clear();
+        fileSummary.clear();
+        summary.clear();
+        cameraSummary.clear();
+        updateCursor();
         histogramValid = false;
         histogramPending = false;
         ++histogramRequest;
@@ -693,6 +799,16 @@ QRectF ImageView::visibleArea() const {
 }
 
 QVariantList ImageView::details() const { return m_impl->details; }
+QString ImageView::summary() const { return m_impl->summary; }
+QString ImageView::cameraSummary() const { return m_impl->cameraSummary; }
+bool ImageView::wheelNavigates() const { return m_impl->wheelNavigates; }
+
+void ImageView::setWheelNavigates(bool navigates) {
+    if (navigates != m_impl->wheelNavigates) {
+        m_impl->wheelNavigates = navigates;
+        emit wheelNavigatesChanged();
+    }
+}
 
 bool ImageView::histogramEnabled() const { return m_impl->histogramEnabled; }
 
@@ -816,6 +932,18 @@ void ImageView::itemChange(ItemChange change, const ItemChangeData& value) {
 }
 
 void ImageView::wheelEvent(QWheelEvent* event) {
+    if (m_impl->wheelNavigates && !event->modifiers().testFlag(Qt::ControlModifier)) {
+        const int delta = event->angleDelta().y();
+        int& turned = m_impl->wheelTurned;
+        turned = (turned < 0) == (delta < 0) ? turned + delta : delta;  // turning back starts over
+        const int notches = turned / 120;
+        turned -= notches * 120;
+        if (notches != 0) {
+            emit navigateRequested(-notches);  // turning it towards the user goes on to the next
+        }
+        event->accept();
+        return;
+    }
     const double dpr = m_impl->devicePixelRatio();
     const double notches = event->angleDelta().y() / 120.0;
     m_impl->viewport.zoomBy(std::pow(kZoomStep, notches), event->position().x() * dpr, event->position().y() * dpr);
@@ -825,6 +953,11 @@ void ImageView::wheelEvent(QWheelEvent* event) {
 
 void ImageView::mousePressEvent(QMouseEvent* event) {
     m_impl->lastDragPosition = event->position();
+    m_impl->pressed = true;
+    if (m_impl->canUseLoupe()) {
+        m_impl->startLoupe(event->position());
+    }
+    m_impl->viewChanged();
     event->accept();
 }
 
@@ -834,6 +967,17 @@ void ImageView::mouseMoveEvent(QMouseEvent* event) {
     m_impl->viewport.panBy(delta.x(), delta.y());
     m_impl->viewChanged();
     event->accept();
+}
+
+void ImageView::mouseReleaseEvent(QMouseEvent* event) {
+    m_impl->endPress();
+    event->accept();
+}
+
+void ImageView::mouseUngrabEvent() {
+    if (m_impl->pressed) {
+        m_impl->endPress();
+    }
 }
 
 void ImageView::mouseDoubleClickEvent(QMouseEvent* event) {

@@ -54,6 +54,12 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * They only indicate and take no mouse input. The image itself can be dragged, and a draggable
   strip at the right edge would conflict with the panel that appears there in full screen.
 
+Holding the left button on an image that is shown whole and reduced shows that place at 100%, and
+releasing returns to the view as it was: a fitted image fits the window as it is by then, and an
+image that has changed in the meantime keeps its own view. Otherwise the cursor is a hand if there
+is anything to pan to. An image enlarged or at 100% and shown whole has neither, as holding would
+change nothing useful. The first press of a double click does this too, for that moment.
+
 ## Display range
 * Pixels are converted to `Bgrx8` on the worker thread, with a low and high value per image.
 * Float images default to auto contrast (0.1% percentiles of the coarsest level), because
@@ -168,6 +174,10 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   the selection of the current panel.
 * Possibly a dual-panel file manager. File icons are OS dependent, so they belong in the
   optional system integration layer, along with KDE or Windows places.
+* The application's name is not decided, and "Image Viewer" is a placeholder. Once it is, use one
+  folder name for settings and cache, such as `~/.cache/image-viewer`, rather than the current
+  `ImageViewer/Image Viewer` (`src/app/main.cpp`), and move the existing settings file or accept
+  losing it.
 
 ## Browser
 * The selection belongs to `BrowseContext`, so each tab or panel has its own and tools read
@@ -206,6 +216,21 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * The path bar lists subfolders on a worker, so a slow network folder cannot stop the window.
   It lists them in a scrolling popup rather than a menu, which creates an item for every
   folder. History belongs to `BrowseContext`, and returns to the image that was current.
+
+* Going straight to a folder, as from the command line, makes `QFileSystemModel` know only the
+  chain leading to it, so the tree could not reach anything beside it. `readParentsOf` reads the
+  parents in full, in the background, and the folder is then centred as they fill in above it.
+* The buttons to move around stand apart from the path, with arrows unlike its carets, because
+  they looked like part of it. One star holds favourites and recent folders, kept by `FolderLists`.
+* In the large view the wheel moves between images and Ctrl+wheel zooms. The preview has no other
+  use for the wheel, so there it keeps zooming, which also works with Ctrl.
+
+* Dialogs are drawn inside the window, which the system does not decorate, so `AppDialog` brings
+  a frame, title bar and shadow. Messages share `MessageBox`: caption, text, an icon for info,
+  question, warning or error, and buttons, with Enter, Esc and Ctrl+C as in standard message boxes.
+* Qt Quick menus neither show shortcuts nor grow with their items, so `AppMenuItem` shows the
+  action's shortcut dimmed on the right, as `KeyNames` writes it for the system, and `AppMenu`
+  takes the width of its widest item.
 
 ## File operations
 * Trash uses `QFile::moveToTrash`: the Recycle Bin on Windows and the freedesktop Trash on

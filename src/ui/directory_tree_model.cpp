@@ -15,4 +15,12 @@ QModelIndex DirectoryTreeModel::indexForPath(const QString& path) const { return
 
 QString DirectoryTreeModel::pathForIndex(const QModelIndex& index) const { return filePath(index); }
 
+void DirectoryTreeModel::readParentsOf(const QString& path) {
+    for (QModelIndex parent = index(path).parent(); parent.isValid(); parent = parent.parent()) {
+        if (canFetchMore(parent)) {
+            fetchMore(parent);
+        }
+    }
+}
+
 }  // namespace iv

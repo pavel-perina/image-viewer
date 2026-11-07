@@ -31,6 +31,12 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(bool autoContrast READ autoContrast WRITE setAutoContrast NOTIFY pageChanged)
     // Rows of {section, label, value} describing the file and the current page.
     Q_PROPERTY(QVariantList details READ details NOTIFY detailsChanged)
+    // The same in a line: "400x300 0.12MP 24bit PNG 12kB 2021-12-24 12:34:56", and
+    // "1/60s f/4 ISO-500 EV -0.33", which is empty for an image without these.
+    Q_PROPERTY(QString summary READ summary NOTIFY detailsChanged)
+    Q_PROPERTY(QString cameraSummary READ cameraSummary NOTIFY detailsChanged)
+    // The wheel asks for another image with navigateRequested, and zooms only with Ctrl.
+    Q_PROPERTY(bool wheelNavigates READ wheelNavigates WRITE setWheelNavigates NOTIFY wheelNavigatesChanged)
     // Computing it costs a read of the image, so it only happens while this is enabled.
     Q_PROPERTY(bool histogramEnabled READ histogramEnabled WRITE setHistogramEnabled NOTIFY histogramChanged)
     // Opaque; meant for HistogramView.histogram. Empty until computed.
@@ -70,6 +76,10 @@ public:
     bool autoContrast() const;
     void setAutoContrast(bool enabled);
     QVariantList details() const;
+    QString summary() const;
+    QString cameraSummary() const;
+    bool wheelNavigates() const;
+    void setWheelNavigates(bool navigates);
     bool histogramEnabled() const;
     void setHistogramEnabled(bool enabled);
     QVariant histogram() const;
@@ -97,6 +107,8 @@ signals:
     void detailsChanged();
     void histogramChanged();
     void resampleChanged();
+    void wheelNavigatesChanged();
+    void navigateRequested(int steps);  // positive towards the next image
 
 protected:
     QSGNode* updatePaintNode(QSGNode* oldNode, UpdatePaintNodeData* data) override;
@@ -105,6 +117,8 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseUngrabEvent() override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:

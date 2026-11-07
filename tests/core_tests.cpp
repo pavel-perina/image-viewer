@@ -211,6 +211,37 @@ TEST(Viewport, ResizingKeepsFittingUntilTheUserZooms) {
     EXPECT_DOUBLE_EQ(vp.zoom(), 0.5);
 }
 
+TEST(Viewport, ReturnsToAStateItSaved) {
+    Viewport vp;
+    vp.setImageSize({2000, 1000});
+    vp.setViewSize(500, 500);
+    EXPECT_TRUE(vp.showsWholeImage());
+    const Viewport::State fitted = vp.state();
+
+    vp.setFitMode(FitMode::Manual);
+    vp.zoomBy(1 / vp.zoom(), 100, 250);
+    vp.panBy(-300, 0);
+    EXPECT_DOUBLE_EQ(vp.zoom(), 1);
+    EXPECT_FALSE(vp.showsWholeImage());
+    const Viewport::State zoomed = vp.state();
+
+    vp.restore(fitted);
+    EXPECT_EQ(vp.fitMode(), FitMode::ShrinkToFit);
+    EXPECT_DOUBLE_EQ(vp.zoom(), 0.25);
+    EXPECT_TRUE(vp.showsWholeImage());
+
+    // A fit mode fits the view as it is now, rather than as it was.
+    vp.setFitMode(FitMode::Manual);
+    vp.setViewSize(250, 250);
+    vp.restore(fitted);
+    EXPECT_DOUBLE_EQ(vp.zoom(), 0.125);
+
+    vp.setViewSize(500, 500);
+    vp.restore(zoomed);
+    EXPECT_EQ(vp.fitMode(), FitMode::Manual);
+    EXPECT_DOUBLE_EQ(vp.offsetX(), zoomed.offsetX);
+}
+
 TEST(Viewport, ZoomKeepsThePointUnderTheCursorInPlace) {
     Viewport vp;
     vp.setViewSize(100, 100);

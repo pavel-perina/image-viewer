@@ -26,6 +26,19 @@ public:
     void zoomBy(double factor, double viewX, double viewY);
     void panBy(double dx, double dy);
 
+    // Zoom and position to return to later. A fit mode fits the view as it is by then.
+    struct State {
+        FitMode fitMode = FitMode::ShrinkToFit;
+        double zoom = 1;
+        double offsetX = 0;
+        double offsetY = 0;
+    };
+    State state() const { return {m_fitMode, m_zoom, m_offsetX, m_offsetY}; }
+    void restore(const State& state);
+
+    // Nothing is left out of the view, so there is nowhere to pan to.
+    bool showsWholeImage() const;
+
     FitMode fitMode() const { return m_fitMode; }
     double zoom() const { return m_zoom; }
     double offsetX() const { return m_offsetX; }

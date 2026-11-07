@@ -179,6 +179,8 @@ TEST_P(ExifEndian, ReadsEveryField) {
     EXPECT_DOUBLE_EQ(*exif.focalLength35mm, 75);
     EXPECT_DOUBLE_EQ(*exif.exposureBias, -2.0 / 3);
     EXPECT_EQ(*exif.iso, 400);
+    EXPECT_EQ(*exif.meteringMode, 5);
+    EXPECT_EQ(*exif.whiteBalance, 1);
 }
 
 INSTANTIATE_TEST_SUITE_P(Both, ExifEndian, testing::Bool(),
@@ -229,6 +231,8 @@ TEST(Details, DescribesAJpegWithSubsamplingAndCamera) {
     EXPECT_EQ(valueOf(rows, "Exposure"), "1/250 s");
     EXPECT_EQ(valueOf(rows, "Aperture"), "f/2.8");
     EXPECT_EQ(valueOf(rows, "ISO"), "400");
+    EXPECT_EQ(valueOf(rows, "Metering"), "Pattern");
+    EXPECT_EQ(valueOf(rows, "White balance"), "Manual");
     EXPECT_EQ(valueOf(rows, "Exposure bias"), "-0.7 EV");
     EXPECT_EQ(valueOf(rows, "Taken"), "2024-05-01 12:30:00");
     std::filesystem::remove(path);
@@ -279,6 +283,57 @@ TEST(Details, DescribesTiffPagesSeparately) {
     EXPECT_EQ(valueOf(page2, "Compression"), "Zstandard, lossless");
     EXPECT_EQ(valueOf(page2, "Pyramid"), "");
     std::filesystem::remove(path);
+}
+
+TEST(Details, LeavesOutMeteringAndWhiteBalanceItCannotName) {
+    SubimageInfo info;
+    info.exif.meteringMode = 0;  // "unknown"
+    info.exif.whiteBalance = 7;
+    const auto rows = describeImage(info);
+    EXPECT_EQ(valueOf(rows, "Metering"), "");
+    EXPECT_EQ(valueOf(rows, "White balance"), "");
+}
+
+TEST(Summary, DescribesAnImageInALine) {
+    SubimageInfo info;
+    info.levels.push_back({Size{400, 300}, Size{400, 300}, false});
+    info.stored.container = "PNG";
+    info.stored.colorModel = "RGB";
+    EXPECT_EQ(imageSummary(info), "400x300 0.12MP 24bit PNG");
+
+    info.levels.front().size = {6000, 4000};
+    info.orientation = Orientation::Rotate90CW;
+    info.stored.colorModel = "Grayscale";
+    info.stored.bitsPerSample = 16;
+    EXPECT_EQ(imageSummary(info), "4000x6000 24.0MP 16bit PNG");
+
+    info.stored.colorModel = "RGB + alpha";
+    info.stored.bitsPerSample = 8;
+    EXPECT_EQ(imageSummary(info), "4000x6000 24.0MP 32bit PNG");
+}
+
+TEST(Summary, DescribesTheExposureInALine) {
+    ExifData exif;
+    EXPECT_EQ(cameraSummary(exif), "");
+    exif.exposureSeconds = 1.0 / 60;
+    exif.fNumber = 4;
+    exif.iso = 500;
+    exif.exposureBias = -1.0 / 3;
+    EXPECT_EQ(cameraSummary(exif), "1/60s f/4 ISO-500 EV -0.33");
+    exif.exposureBias = 0;
+    exif.fNumber.reset();
+    EXPECT_EQ(cameraSummary(exif), "1/60s ISO-500");
+}
+
+TEST(Summary, GivesSizesInDecimalUnits) {
+    EXPECT_EQ(shortDataSize(0), "0 B");
+    EXPECT_EQ(shortDataSize(999), "999 B");
+    EXPECT_EQ(shortDataSize(1000), "1 kB");
+    EXPECT_EQ(shortDataSize(780'000), "780 kB");
+    EXPECT_EQ(shortDataSize(999'499), "999 kB");
+    EXPECT_EQ(shortDataSize(999'500), "1.0 MB");
+    EXPECT_EQ(shortDataSize(500'000'000), "500.0 MB");
+    EXPECT_EQ(shortDataSize(2'500'000'000), "2.5 GB");
 }
 
 TEST(Details, ReadsCameraTagsAndExifDirectoryFromTiff) {

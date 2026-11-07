@@ -47,7 +47,16 @@ add_executable(iv_ui_tests
     ui_tests.cpp
 )
 target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick Qt6::Test)
+# The directory tree shows the system's temporary folder, where tests running at the same time make
+# their own, which moves the rows between finding one and clicking it. So these run alone.
+set(IV_TREE_TESTS "BrowserPage.Tree*:BrowserPage.ClickingAFolder*:BrowserPage.DoubleClickingAFolder*")
 gtest_discover_tests(iv_ui_tests
+    TEST_FILTER "-${IV_TREE_TESTS}"
     PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Fusion"
+    DISCOVERY_MODE PRE_TEST
+)
+gtest_discover_tests(iv_ui_tests
+    TEST_FILTER "${IV_TREE_TESTS}"
+    PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Fusion" RUN_SERIAL TRUE
     DISCOVERY_MODE PRE_TEST
 )

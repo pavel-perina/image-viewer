@@ -71,7 +71,12 @@ shaders is skipped there, so run it by hand on a display:
 | Alt+Up | Parent folder |
 | Click a caret in the path bar | List the subfolders of that folder |
 | Ctrl+L, click the empty end of the path bar | Edit or paste the path |
-| Mouse wheel, + and - | Zoom |
+| Right-click the back arrow | Choose from the folders visited |
+| Star in the path bar | Favorite and recent folders |
+| Enter, Esc, Ctrl+C in a message | Press the highlighted button, cancel, copy the message |
+| Mouse wheel | Previous or next image in the large view; zoom in the preview |
+| Ctrl+mouse wheel, + and - | Zoom |
+| Hold the left button on an image that fits | Show that place at 100% until released |
 | Drag | Pan |
 | Double-click | Toggle fit and 100% |
 | F | Fit to window, enlarging small images |

@@ -25,6 +25,8 @@ struct ExifData {
     std::optional<double> focalLength35mm;  // millimetres, the equivalent on 35mm film
     std::optional<double> exposureBias;     // EV
     std::optional<int> iso;
+    std::optional<int> meteringMode;  // as stored: 1 average, 3 spot, 5 pattern and so on
+    std::optional<int> whiteBalance;  // as stored: 0 auto, 1 manual
     bool adobeRgb = false;  // a camera set to Adobe RGB, which says so here instead of a profile
 };
 

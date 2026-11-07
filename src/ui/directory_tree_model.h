@@ -19,6 +19,9 @@ public:
 
     Q_INVOKABLE QModelIndex indexForPath(const QString& path) const;
     Q_INVOKABLE QString pathForIndex(const QModelIndex& index) const;
+    // Going straight to a folder gives its parents only the one child that leads there, so this
+    // reads them in full. The rows arrive in the background, with directoryLoaded.
+    Q_INVOKABLE void readParentsOf(const QString& path);
 };
 
 }  // namespace iv

@@ -48,6 +48,41 @@ std::string depthText(const StoredFormat& stored) {
     return std::format("{}-bit{}", stored.bitsPerSample, stored.signedSamples ? " signed" : "");
 }
 
+const char* meteringText(int mode) {
+    switch (mode) {
+    case 1: return "Average";
+    case 2: return "Center-weighted";
+    case 3: return "Spot";
+    case 4: return "Multi-spot";
+    case 5: return "Pattern";
+    case 6: return "Partial";
+    default: return "";
+    }
+}
+
+const char* whiteBalanceText(int mode) {
+    switch (mode) {
+    case 0: return "Auto";
+    case 1: return "Manual";
+    default: return "";
+    }
+}
+
+// All the samples of a pixel: 24 for 8-bit RGB. A palette has one index per pixel.
+int bitsPerPixel(const StoredFormat& stored) {
+    const std::string_view model = stored.colorModel;
+    int samples = 1;
+    if (model.starts_with("RGB") || model.starts_with("YCbCr") || model.starts_with("Lab")) {
+        samples = 3;
+    } else if (model.starts_with("CMYK") || model.starts_with("YCCK")) {
+        samples = 4;
+    }
+    if (model.contains("alpha")) {
+        ++samples;
+    }
+    return samples * stored.bitsPerSample;
+}
+
 std::string megapixelsText(Size size) {
     const double megapixels = static_cast<double>(size.width) * size.height / 1e6;
     return megapixels >= 1 ? std::format("{:.1f} MP", megapixels) : std::format("{:.2f} MP", megapixels);
@@ -126,7 +161,70 @@ std::vector<DetailRow> describeImage(const SubimageInfo& subimage) {
         const double bias = std::round(*exif.exposureBias * 10) / 10;
         add(camera, "Exposure bias", bias == 0 ? std::string("0 EV") : std::format("{:+g} EV", bias));
     }
+    if (exif.meteringMode) {
+        add(camera, "Metering", meteringText(*exif.meteringMode));
+    }
+    if (exif.whiteBalance) {
+        add(camera, "White balance", whiteBalanceText(*exif.whiteBalance));
+    }
     return rows;
+}
+
+std::string imageSummary(const SubimageInfo& subimage) {
+    const StoredFormat& stored = subimage.stored;
+    std::string text;
+    if (!subimage.levels.empty()) {
+        const Size size = displaySize(subimage.levels.front().size, subimage.orientation);
+        const double megapixels = static_cast<double>(size.width) * size.height / 1e6;
+        text = megapixels >= 1 ? std::format("{}x{} {:.1f}MP ", size.width, size.height, megapixels)
+                               : std::format("{}x{} {:.2f}MP ", size.width, size.height, megapixels);
+    }
+    text += std::format("{}bit{}", bitsPerPixel(stored), stored.floatSamples ? " float" : "");
+    if (!stored.container.empty()) {
+        text += " " + stored.container;
+    }
+    return text;
+}
+
+std::string cameraSummary(const ExifData& exif) {
+    std::string text;
+    const auto add = [&](const std::string& part) {
+        if (!part.empty()) {
+            text += (text.empty() ? "" : " ") + part;
+        }
+    };
+    if (exif.exposureSeconds && *exif.exposureSeconds > 0) {
+        std::string exposure = exposureText(*exif.exposureSeconds);
+        std::erase(exposure, ' ');
+        add(exposure);
+    }
+    if (exif.fNumber && *exif.fNumber > 0) {
+        add(std::format("f/{:g}", std::round(*exif.fNumber * 10) / 10));
+    }
+    if (exif.iso) {
+        add(std::format("ISO-{}", *exif.iso));
+    }
+    if (exif.exposureBias) {
+        const double bias = std::round(*exif.exposureBias * 100) / 100;
+        if (bias != 0) {
+            add(std::format("EV {:+g}", bias));
+        }
+    }
+    return text;
+}
+
+std::string shortDataSize(std::uint64_t bytes) {
+    if (bytes < 1000) {
+        return std::format("{} B", bytes);
+    }
+    if (bytes < 999'500) {
+        return std::format("{} kB", std::lround(static_cast<double>(bytes) / 1e3));
+    }
+    const double megabytes = static_cast<double>(bytes) / 1e6;
+    if (megabytes < 999.95) {
+        return std::format("{:.1f} MB", megabytes);
+    }
+    return std::format("{:.1f} GB", megabytes / 1e3);
 }
 
 }  // namespace iv

@@ -7,6 +7,10 @@ qt_add_library(iv_ui STATIC
     directory_tree_model.h
     file_operations.cpp
     file_operations.h
+    folder_lists.cpp
+    folder_lists.h
+    key_names.cpp
+    key_names.h
     histogram_handle.h
     histogram_view.cpp
     histogram_view.h
@@ -25,14 +29,22 @@ qt_add_qml_module(iv_ui
     VERSION 1.0
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewer
     QML_FILES
+        qml/AppDialog.qml
+        qml/AppMenu.qml
+        qml/AppMenuItem.qml
         qml/AppScrollBar.qml
+        qml/BarButton.qml
         qml/BrowserPage.qml
+        qml/Caret.qml
         qml/FileActions.qml
+        qml/FolderButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
         qml/InfoPanel.qml
         qml/Main.qml
+        qml/MessageBox.qml
         qml/PathBar.qml
+        qml/PreviewPanel.qml
         qml/ResampledView.qml
         qml/Theme.qml
         qml/ViewerPage.qml

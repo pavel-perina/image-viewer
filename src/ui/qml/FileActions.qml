@@ -180,26 +180,26 @@ Item {
         onTriggered: root.context.refresh()
     }
 
-    Menu {
+    AppMenu {
         id: fileMenu
         parent: Overlay.overlay
-        MenuItem { action: copyAction }
-        MenuItem { action: pasteAction }
-        MenuItem { action: copyPathAction }
+        AppMenuItem { action: copyAction }
+        AppMenuItem { action: pasteAction }
+        AppMenuItem { action: copyPathAction }
         MenuSeparator {}
-        MenuItem { action: renameAction }
-        MenuItem { action: trashAction }
-        MenuItem { action: deleteAction }
+        AppMenuItem { action: renameAction }
+        AppMenuItem { action: trashAction }
+        AppMenuItem { action: deleteAction }
         MenuSeparator {}
-        Menu {
+        AppMenu {
             id: copyToMenu
             title: "Copy To"
             enabled: root.idle && root.hasTargets
-            MenuItem { action: copyToAction; text: "Choose Folder..." }
+            AppMenuItem { action: copyToAction; text: "Choose Folder..." }
             MenuSeparator { visible: settings.recentFolders.length > 0 }
             Repeater {
                 model: settings.recentFolders
-                MenuItem {
+                AppMenuItem {
                     required property string modelData
                     text: modelData
                     onTriggered: {
@@ -209,15 +209,15 @@ Item {
                 }
             }
         }
-        Menu {
+        AppMenu {
             id: moveToMenu
             title: "Move To"
             enabled: root.idle && root.hasTargets
-            MenuItem { action: moveToAction; text: "Choose Folder..." }
+            AppMenuItem { action: moveToAction; text: "Choose Folder..." }
             MenuSeparator { visible: settings.recentFolders.length > 0 }
             Repeater {
                 model: settings.recentFolders
-                MenuItem {
+                AppMenuItem {
                     required property string modelData
                     text: modelData
                     onTriggered: {
@@ -228,15 +228,15 @@ Item {
             }
         }
         MenuSeparator {}
-        MenuItem { action: newFolderAction }
-        MenuItem { action: openFolderAction }
+        AppMenuItem { action: newFolderAction }
+        AppMenuItem { action: openFolderAction }
     }
 
-    Menu {
+    AppMenu {
         id: folderMenu
         property string path
         parent: Overlay.overlay
-        MenuItem {
+        AppMenuItem {
             text: "&New Folder..."
             enabled: root.idle
             onTriggered: {
@@ -244,7 +244,7 @@ Item {
                 root.askName("New Folder", "New Folder", (name) => root.context.createFolder(parent, name))
             }
         }
-        MenuItem {
+        AppMenuItem {
             text: "&Rename..."
             enabled: root.idle
             onTriggered: {
@@ -252,7 +252,7 @@ Item {
                 root.askName("Rename Folder", root.folderName(path), (name) => root.context.rename(path, name))
             }
         }
-        MenuItem {
+        AppMenuItem {
             text: "Move to &Trash..."
             enabled: root.idle
             onTriggered: {
@@ -269,13 +269,10 @@ Item {
         onAccepted: root.transferToChosen(root.context.pathFromUrl(selectedFolder))
     }
 
-    Dialog {
+    AppDialog {
         id: nameDialog
         property string initialText
         property var accept: null
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
         width: Math.min(480, parent.width - 32)
 
         function submit() {
@@ -326,17 +323,17 @@ Item {
         }
     }
 
-    Dialog {
+    MessageBox {
         id: conflictDialog
+        kind: "question"
         property var paths: []
         property string folder
         property bool moving: false
         property int conflicts: 0
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
         title: "Files Already Exist"
-        width: Math.min(640, parent.width - 32)
+        text: (paths.length === 1 ? "This file already exists in\n" : conflicts + " of " + paths.length + " files already exist in\n")
+              + folder + "\n\nReplacing sends the existing files to the trash."
+        onOpened: conflictCancel.forceActiveFocus()
 
         function choose(conflict) {
             close()
@@ -363,80 +360,47 @@ Item {
                 onClicked: conflictDialog.choose(BrowseContext.ReplaceExisting)
             }
             Button {
+                id: conflictCancel
                 text: "Cancel"
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: conflictDialog.close()
             }
         }
-
-        Label {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            wrapMode: Text.WrapAnywhere
-            text: (conflictDialog.paths.length === 1 ? "This file already exists in\n"
-                   : conflictDialog.conflicts + " of " + conflictDialog.paths.length + " files already exist in\n")
-                  + conflictDialog.folder + "\n\nReplacing sends the existing files to the trash."
-        }
     }
 
-    Dialog {
+    MessageBox {
         id: trashFolderDialog
         property string path
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
+        kind: "question"
         title: "Move Folder to Trash"
-        width: Math.min(640, parent.width - 32)
+        text: "Move this folder and everything in it to the trash?\n\n" + path
         standardButtons: Dialog.Yes | Dialog.No
         onAccepted: root.context.trashFolder(path)
-        Label {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            wrapMode: Text.WrapAnywhere
-            text: "Move this folder and everything in it to the trash?\n\n" + trashFolderDialog.path
-        }
     }
 
-    Dialog {
+    MessageBox {
         id: deleteDialog
+        kind: "warning"
         property var paths: []
         readonly property int shown: 5
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
         title: "Delete Permanently"
-        width: Math.min(640, parent.width - 32)
         standardButtons: Dialog.Yes | Dialog.No
-        onAboutToShow: standardButton(Dialog.No).forceActiveFocus()
+        focusedButton: Dialog.No
         onAccepted: root.context.deletePermanently(paths)
-        Label {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            wrapMode: Text.WrapAnywhere
-            text: {
-                const names = deleteDialog.paths.slice(0, deleteDialog.shown).map(path => root.folderName(path)).join("\n")
-                const more = deleteDialog.paths.length - deleteDialog.shown
-                return (deleteDialog.paths.length === 1 ? "Delete this file?" : "Delete these " + deleteDialog.paths.length + " files?")
-                       + " This cannot be undone, as the trash is not used.\n\n"
-                       + names + (more > 0 ? "\nand " + more + " more" : "")
-            }
+        text: {
+            const names = paths.slice(0, shown).map(path => root.folderName(path)).join("\n")
+            const more = paths.length - shown
+            return (paths.length === 1 ? "Delete this file?" : "Delete these " + paths.length + " files?")
+                   + " This cannot be undone, as the trash is not used.\n\n"
+                   + names + (more > 0 ? "\nand " + more + " more" : "")
         }
     }
 
-    Dialog {
+    MessageBox {
         id: problemDialog
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
+        kind: "error"
         title: "Some Operations Failed"
         standardButtons: Dialog.Ok
-        width: Math.min(640, parent.width - 32)
-        Label {
-            id: problemText
-            anchors.left: parent.left
-            anchors.right: parent.right
-            wrapMode: Text.Wrap
-        }
     }
 
     Connections {
@@ -448,7 +412,7 @@ Item {
             let text = problems.slice(0, limit).join("\n")
             if (problems.length > limit)
                 text += "\n\nand " + (problems.length - limit) + " more"
-            problemText.text = text
+            problemDialog.text = text
             problemDialog.open()
         }
     }
