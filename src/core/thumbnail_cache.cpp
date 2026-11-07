@@ -61,7 +61,8 @@ struct JpegOutput {
     ~JpegOutput() { std::free(data); }
 };
 
-std::vector<unsigned char> encodeJpeg(const ImageBuffer& image) {
+// Thumbnails are stored as JPEG only by builds without JPEG XL.
+[[maybe_unused]] std::vector<unsigned char> encodeJpeg(const ImageBuffer& image) {
     const auto output = std::make_unique<JpegOutput>();
     jpeg_compress_struct cinfo{};
     JpegError errors{};
