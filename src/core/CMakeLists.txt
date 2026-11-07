@@ -9,6 +9,10 @@ pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET GLOBAL lcms2)
 add_library(iv_core STATIC
     color.cpp
     color.h
+    crop.cpp
+    crop.h
+    document.cpp
+    document.h
     exif.cpp
     exif.h
     file_io.cpp

@@ -1,0 +1,69 @@
+#pragma once
+
+#include <cstddef>
+#include <memory>
+#include <span>
+#include <variant>
+#include <vector>
+
+#include "core/crop.h"
+#include "core/image_source.h"
+
+namespace iv {
+
+// Keeps a rectangle, in pixels of the upright image as the edits before it left it.
+struct CropEdit {
+    PixelRect rect;
+    bool operator==(const CropEdit&) const = default;
+};
+
+using Edit = std::variant<CropEdit>;
+
+// Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
+// be small enough to be saved whole.
+Result<void> canEdit(const SubimageInfo& subimage);
+
+// One subimage of an opened file and the edits made to it, with undo. Edits are kept as
+// operations with their values, applied to the upright full-size picture, which is decoded once
+// and kept. Use from one thread; the sources it hands out may be read from any.
+class Document {
+public:
+    // The subimage must be one that canEdit accepts.
+    Document(std::shared_ptr<ImageSource> base, int subimage);
+
+    const std::shared_ptr<ImageSource>& base() const { return m_base; }
+    int subimage() const { return m_subimage; }
+
+    // Adds an edit after the current one, dropping any that were undone.
+    void apply(Edit edit);
+    bool canUndo() const { return m_position > 0; }
+    bool canRedo() const { return m_position < m_edits.size(); }
+    void undo();
+    void redo();
+
+    // The edits in effect, oldest first.
+    std::span<const Edit> edits() const { return std::span(m_edits).first(m_position); }
+
+    // Whether it differs from what was last saved, or from the file if never saved.
+    bool modified() const { return m_position != m_savedPosition; }
+    void markSaved() { m_savedPosition = m_position; }
+
+    // The size of the picture with the edits in effect, upright.
+    Size size() const;
+
+    // The edited picture as a source of one upright subimage, with the metadata of the original.
+    // Without edits it is still upright. Each call gives a new source reflecting the edits now.
+    std::shared_ptr<ImageSource> source() const;
+
+private:
+    struct Upright;
+
+    std::shared_ptr<ImageSource> m_base;
+    int m_subimage;
+    std::shared_ptr<Upright> m_upright;
+    std::vector<Edit> m_edits;
+    std::size_t m_position = 0;
+    std::size_t m_savedPosition = 0;  // past the end when what was saved has been dropped
+};
+
+}  // namespace iv
