@@ -23,6 +23,7 @@ enum Tag : std::uint32_t {
     ExposureTime = 0x829A,
     FNumber = 0x829D,
     ExifIfd = 0x8769,
+    GpsIfd = 0x8825,
     Iso = 0x8827,
     DateTimeOriginal = 0x9003,
     ExposureBias = 0x9204,
@@ -34,6 +35,16 @@ enum Tag : std::uint32_t {
     FocalLength35mm = 0xA405,
     LensMake = 0xA433,
     LensModel = 0xA434,
+};
+
+// Tags of the GPS directory, which reuses small numbers.
+enum GpsTag : std::uint32_t {
+    GpsLatitudeRef = 1,
+    GpsLatitude = 2,
+    GpsLongitudeRef = 3,
+    GpsLongitude = 4,
+    GpsAltitudeRef = 5,
+    GpsAltitude = 6,
 };
 
 class TiffReader {
@@ -88,12 +99,13 @@ public:
         return cleanExifText({reinterpret_cast<const char*>(bytes.data()), bytes.size()});
     }
 
-    std::optional<double> rational(std::size_t entry) const {
+    // The index-th value of a rational entry.
+    std::optional<double> rational(std::size_t entry, std::size_t index = 0) const {
         const std::uint32_t type = read16(entry + 2);
-        if ((type != Rational && type != SRational) || value(entry).size() < 8) {
+        if ((type != Rational && type != SRational) || value(entry).size() < (index + 1) * 8) {
             return std::nullopt;
         }
-        const std::size_t at = static_cast<std::size_t>(value(entry).data() - m_data.data());
+        const std::size_t at = static_cast<std::size_t>(value(entry).data() - m_data.data()) + index * 8;
         const std::uint32_t numerator = read32(at);
         const std::uint32_t denominator = read32(at + 4);
         if (denominator == 0) {
@@ -107,11 +119,22 @@ public:
 
     std::optional<std::uint32_t> integer(std::size_t entry) const {
         const std::uint32_t type = read16(entry + 2);
-        if ((type != Short && type != Long) || value(entry).empty()) {
+        if ((type != Byte && type != Short && type != Long) || value(entry).empty()) {
             return std::nullopt;
         }
         const std::size_t at = static_cast<std::size_t>(value(entry).data() - m_data.data());
-        return type == Short ? read16(at) : read32(at);
+        return type == Byte ? m_data[at] : type == Short ? read16(at) : read32(at);
+    }
+
+    // Degrees, minutes and seconds as three rationals, in degrees.
+    std::optional<double> degrees(std::size_t entry) const {
+        const auto d = rational(entry, 0);
+        const auto m = rational(entry, 1);
+        const auto s = rational(entry, 2);
+        if (!d || !m || !s) {
+            return std::nullopt;
+        }
+        return *d + *m / 60 + *s / 3600;
     }
 
     // Calls visit with the position of each entry of the directory at the given offset.
@@ -134,6 +157,36 @@ private:
     std::span<const std::uint8_t> m_data;
     bool m_littleEndian;
 };
+
+// Reads the position, leaving it out unless latitude and longitude are both whole and in range.
+void readGps(const TiffReader& reader, std::size_t ifd, ExifData& exif) {
+    std::string latitudeRef;
+    std::string longitudeRef;
+    std::optional<double> latitude;
+    std::optional<double> longitude;
+    std::optional<double> altitude;
+    std::uint32_t altitudeRef = 0;
+    reader.forEachEntry(ifd, [&](std::size_t entry) {
+        switch (reader.read16(entry)) {
+        case GpsLatitudeRef:  latitudeRef = reader.text(entry); break;
+        case GpsLatitude:     latitude = reader.degrees(entry); break;
+        case GpsLongitudeRef: longitudeRef = reader.text(entry); break;
+        case GpsLongitude:    longitude = reader.degrees(entry); break;
+        case GpsAltitudeRef:  altitudeRef = reader.integer(entry).value_or(0); break;
+        case GpsAltitude:     altitude = reader.rational(entry); break;
+        default: break;
+        }
+    });
+    if (!latitude || !longitude || *latitude > 90 || *longitude > 180 ||
+        (latitudeRef != "N" && latitudeRef != "S") || (longitudeRef != "E" && longitudeRef != "W")) {
+        return;
+    }
+    exif.latitude = latitudeRef == "S" ? -*latitude : *latitude;
+    exif.longitude = longitudeRef == "W" ? -*longitude : *longitude;
+    if (altitude) {
+        exif.altitude = altitudeRef == 1 ? -*altitude : *altitude;
+    }
+}
 
 }  // namespace
 
@@ -192,12 +245,14 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
 
     std::string dateTime;
     std::size_t exifIfd = 0;
+    std::size_t gpsIfd = 0;
     reader.forEachEntry(reader.read32(4), [&](std::size_t entry) {
         switch (reader.read16(entry)) {
         case Make:     exif.make = reader.text(entry); break;
         case Model:    exif.model = reader.text(entry); break;
         case DateTime: dateTime = reader.text(entry); break;
         case ExifIfd:  exifIfd = reader.integer(entry).value_or(0); break;
+        case GpsIfd:   gpsIfd = reader.integer(entry).value_or(0); break;
         case OrientationTag:
             if (const auto value = reader.integer(entry); value && *value >= 1 && *value <= 8) {
                 exif.orientation = static_cast<Orientation>(*value);
@@ -254,6 +309,9 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
                 exif.adobeRgb = true;
             }
         });
+    }
+    if (gpsIfd != 0) {
+        readGps(reader, gpsIfd, exif);
     }
     exif.dateTaken = normalizeExifDate(dateOriginal);
     if (exif.dateTaken.empty()) {

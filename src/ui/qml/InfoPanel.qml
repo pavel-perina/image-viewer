@@ -98,10 +98,28 @@ Rectangle {
                             color: "#a0a0a0"
                         }
                         Label {
+                            id: valueLabel
+                            readonly property string link: row.modelData.link ?? ""
+
                             Layout.fillWidth: true
                             text: row.modelData.value
-                            color: "#e0e0e0"
+                            color: link ? "#8ab4f8" : "#e0e0e0"
+                            font.underline: linkArea.containsMouse
                             wrapMode: Text.WrapAnywhere
+
+                            MouseArea {
+                                id: linkArea
+                                objectName: "detailLink"
+                                width: Math.min(parent.width, valueLabel.contentWidth)
+                                height: parent.height
+                                enabled: valueLabel.link !== ""
+                                hoverEnabled: true
+                                cursorShape: valueLabel.link ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: Qt.openUrlExternally(valueLabel.link)
+                            }
+                            ToolTip.visible: linkArea.containsMouse
+                            ToolTip.delay: 600
+                            ToolTip.text: "Open in OpenStreetMap, Mapy.com, Google Maps and other maps"
                         }
                     }
                 }

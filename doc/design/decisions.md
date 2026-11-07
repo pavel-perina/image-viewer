@@ -79,6 +79,12 @@ change nothing useful. The first press of a double click does this too, for that
 * `SubimageInfo` carries how a page is stored and its EXIF, because both can differ per page.
   `describeImage` turns them into text in core, so it needs no Qt and is easy to test.
 * EXIF comes from our own small reader for JPEG and from libtiff for TIFF.
+* The GPS position, from our reader only, so not yet for TIFF, shows under Location as
+  degrees with five decimals, about a metre. It is kept only when latitude, longitude and
+  their hemispheres are all present and in range. The coordinates open GeoHack, the page
+  Wikipedia uses for coordinates, which lists OpenStreetMap, Mapy.com, Google Maps,
+  topographic and national maps to choose from, instead of the viewer picking one service.
+  Opening a link sends the position to that site, and only on a click.
 
 ## Rendering
 * Public Qt Quick scene graph API only (`QSGSimpleTextureNode`), so it runs on every RHI
@@ -278,7 +284,10 @@ change nothing useful. The first press of a double click does this too, for that
 * An edge that has to move must end on a whole block, 8 or 16 pixels. Many cameras do not
   give such sizes (4592x3448 has 8 extra rows), so trimming, up to 15 pixels, is offered in
   the menu and the confirmation. Without it such a file is reported and left as it was.
-* Markers are copied, with the EXIF pixel dimensions updated. The EXIF thumbnail is unlinked,
+* Markers are copied, with the EXIF pixel dimensions updated. `tiff:Orientation` in XMP is
+  reset to 1 in place, by finding it in the text, so no XML parser is needed and the packet
+  keeps its size; a packet binding the TIFF namespace to another prefix is left alone, as are
+  the pixel dimensions XMP may repeat. The EXIF thumbnail is unlinked,
   as it would show the old orientation. The MPF index and anything after the end of the image,
   such as the previews some cameras append, are dropped, as their offsets no longer hold.
 * Files are replaced through a temporary file and a rename, keeping permissions. The
@@ -315,6 +324,11 @@ change nothing useful. The first press of a double click does this too, for that
   the pixel dimensions set and the thumbnail unlinked, as the pixels are written as given.
   Not to TIFF yet, where it needs its own directory. Nothing yet reads the raw EXIF bytes of an
   opened file for Save As to pass on; readers only parse it.
+* XMP is written as given, with `tiff:Orientation` reset the same way as in the lossless
+  JPEG tools: APP1 in JPEG, an uncompressed iTXt chunk in PNG, tag 700 in TIFF, the XMP chunk
+  in WebP and an `xml ` box in JPEG XL; AVIF through libavif. A JPEG packet longer than one
+  marker (about 64 kB) is left out, as it would need extended XMP. Like EXIF, nothing reads it
+  from opened files yet. IPTC is not written.
 * Files go through a temporary file and a rename, and an existing file is replaced only when
   asked.
 

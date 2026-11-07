@@ -32,6 +32,7 @@
 #endif
 
 #include "core/exif.h"
+#include "core/xmp.h"
 #include "core/file_io.h"
 
 namespace iv {
@@ -153,6 +154,13 @@ std::vector<std::uint8_t> exifFor(const WriteMetadata& metadata, int width, int 
     return tiff;
 }
 
+// The XMP packet to write, its orientation reset for upright pixels.
+std::vector<std::uint8_t> xmpFor(const WriteMetadata& metadata) {
+    std::vector<std::uint8_t> xmp = metadata.xmp;
+    resetXmpOrientation(xmp);
+    return xmp;
+}
+
 // Whether gray pixels may be written as gray: not if an RGB profile has to go with them.
 bool grayAllowedWith(const WriteMetadata& metadata) {
     return metadata.iccProfile.empty() || profileSpace(metadata.iccProfile) == "GRAY";
@@ -193,7 +201,7 @@ public:
 
     const char* error() const { return m_errors.message; }
 
-    bool compress(const Packed& pixels, const JpegWriteOptions& options, const std::vector<std::uint8_t>& app1,
+    bool compress(const Packed& pixels, const JpegWriteOptions& options, std::span<const std::vector<std::uint8_t>> app1,
                   const std::vector<std::uint8_t>& icc) {
         if (setjmp(m_errors.jump)) {
             return false;
@@ -217,8 +225,10 @@ public:
             m_cinfo.optimize_coding = TRUE;
         }
         jpeg_start_compress(&m_cinfo, TRUE);
-        if (!app1.empty()) {
-            jpeg_write_marker(&m_cinfo, JPEG_APP0 + 1, app1.data(), static_cast<unsigned int>(app1.size()));
+        for (const std::vector<std::uint8_t>& block : app1) {
+            if (!block.empty()) {
+                jpeg_write_marker(&m_cinfo, JPEG_APP0 + 1, block.data(), static_cast<unsigned int>(block.size()));
+            }
         }
         if (!icc.empty()) {
             jpeg_write_icc_profile(&m_cinfo, icc.data(), static_cast<unsigned int>(icc.size()));
@@ -244,10 +254,16 @@ private:
 Result<std::vector<std::uint8_t>> encodeJpeg(const ImageBuffer& image, const WriteMetadata& metadata,
                                              const JpegWriteOptions& options) {
     const Packed pixels = pack(image, Depth::Eight, grayAllowedWith(metadata));
-    std::vector<std::uint8_t> app1;
+    // A marker holds at most 65533 bytes. What does not fit is left out; a longer XMP packet
+    // would need the extended XMP split over several markers.
+    std::vector<std::uint8_t> app1[2];
     if (const auto tiff = exifFor(metadata, pixels.width, pixels.height); !tiff.empty() && tiff.size() + 6 <= 65533) {
-        app1 = {'E', 'x', 'i', 'f', 0, 0};
-        app1.insert(app1.end(), tiff.begin(), tiff.end());
+        app1[0] = {'E', 'x', 'i', 'f', 0, 0};
+        app1[0].insert(app1[0].end(), tiff.begin(), tiff.end());
+    }
+    if (const auto xmp = xmpFor(metadata); !xmp.empty() && xmp.size() + kXmpJpegPrefix.size() <= 65533) {
+        app1[1].assign(kXmpJpegPrefix.begin(), kXmpJpegPrefix.end());
+        app1[1].insert(app1[1].end(), xmp.begin(), xmp.end());
     }
     JpegCompressor compressor;
     if (!compressor.compress(pixels, options, app1, metadata.iccProfile)) {
@@ -280,7 +296,7 @@ void onPngWarning(png_structp, png_const_charp) {}
 
 // libpng reports errors with longjmp, so this keeps only trivially destructible locals.
 bool writePng(PngWriter& writer, const Packed& pixels, const PngWriteOptions& options, const std::vector<std::uint8_t>& icc,
-              const std::vector<std::uint8_t>& exif) {
+              const std::vector<std::uint8_t>& exif, std::vector<char>& xmp) {
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, &writer, onPngError, onPngWarning);
     if (!png) {
         writer.error = "out of memory";
@@ -306,6 +322,17 @@ bool writePng(PngWriter& writer, const Packed& pixels, const PngWriteOptions& op
     if (!exif.empty()) {
         png_set_eXIf_1(png, info, static_cast<png_uint_32>(exif.size()), const_cast<png_bytep>(exif.data()));
     }
+    if (!xmp.empty()) {
+        // An uncompressed iTXt chunk with this keyword, as the XMP specification asks.
+        png_text text{};
+        text.compression = PNG_ITXT_COMPRESSION_NONE;
+        text.key = const_cast<png_charp>("XML:com.adobe.xmp");
+        text.text = xmp.data();
+        text.itxt_length = xmp.size() - 1;  // without the NUL ending it
+        text.lang = const_cast<png_charp>("");
+        text.lang_key = const_cast<png_charp>("");
+        png_set_text(png, info, &text, 1);
+    }
     png_write_info(png, info);
     if (pixels.bits == 16) {
         png_set_swap(png);  // PNG is big-endian; a no-op where the machine is too
@@ -322,7 +349,12 @@ Result<std::vector<std::uint8_t>> encodePng(const ImageBuffer& image, const Writ
                                             const PngWriteOptions& options) {
     const Packed pixels = pack(image, Depth::Sixteen, grayAllowedWith(metadata));
     PngWriter writer;
-    if (!writePng(writer, pixels, options, metadata.iccProfile, exifFor(metadata, pixels.width, pixels.height))) {
+    std::vector<char> xmp;
+    if (const auto packet = xmpFor(metadata); !packet.empty()) {
+        xmp.assign(packet.begin(), packet.end());
+        xmp.push_back('\0');
+    }
+    if (!writePng(writer, pixels, options, metadata.iccProfile, exifFor(metadata, pixels.width, pixels.height), xmp)) {
         return std::unexpected("cannot write PNG: " + writer.error);
     }
     return std::move(writer.bytes);
@@ -417,6 +449,9 @@ Result<std::vector<std::uint8_t>> encodeTiff(const ImageBuffer& image, const Wri
         TIFFSetField(tiff, TIFFTAG_ICCPROFILE, static_cast<std::uint32_t>(metadata.iccProfile.size()),
                      metadata.iccProfile.data());
     }
+    if (const auto xmp = xmpFor(metadata); !xmp.empty()) {
+        TIFFSetField(tiff, TIFFTAG_XMLPACKET, static_cast<std::uint32_t>(xmp.size()), xmp.data());
+    }
     bool ok = true;
     for (int y = 0; y < pixels.height && ok; ++y) {
         ok = TIFFWriteScanline(tiff, const_cast<std::uint8_t*>(pixels.row(y)), static_cast<std::uint32_t>(y), 0) >= 0;
@@ -466,8 +501,9 @@ Result<std::vector<std::uint8_t>> encodeWebp(const ImageBuffer& image, const Wri
     WebPMemoryWriterClear(&writer);
 
     const std::vector<std::uint8_t> exif = exifFor(metadata, pixels.width, pixels.height);
+    const std::vector<std::uint8_t> xmp = xmpFor(metadata);
     const bool profile = !metadata.iccProfile.empty() && profileSpace(metadata.iccProfile) == "RGB ";
-    if (!profile && exif.empty()) {
+    if (!profile && exif.empty() && xmp.empty()) {
         return bytes;
     }
     // The metadata goes into chunks around the image, which the mux arranges.
@@ -481,6 +517,10 @@ Result<std::vector<std::uint8_t>> encodeWebp(const ImageBuffer& image, const Wri
     if (ok && !exif.empty()) {
         const WebPData chunk{exif.data(), exif.size()};
         ok = WebPMuxSetChunk(mux, "EXIF", &chunk, 0) == WEBP_MUX_OK;
+    }
+    if (ok && !xmp.empty()) {
+        const WebPData chunk{xmp.data(), xmp.size()};
+        ok = WebPMuxSetChunk(mux, "XMP ", &chunk, 0) == WEBP_MUX_OK;
     }
     WebPData assembled{nullptr, 0};
     ok = ok && WebPMuxAssemble(mux, &assembled) == WEBP_MUX_OK;
@@ -529,6 +569,11 @@ Result<std::vector<std::uint8_t>> encodeAvif(const ImageBuffer& image, const Wri
     if (const auto exif = exifFor(metadata, pixels.width, pixels.height); error.empty() && !exif.empty()) {
         if (avifImageSetMetadataExif(avif, exif.data(), exif.size()) != AVIF_RESULT_OK) {
             error = "cannot add EXIF";
+        }
+    }
+    if (const auto xmp = xmpFor(metadata); error.empty() && !xmp.empty()) {
+        if (avifImageSetMetadataXMP(avif, xmp.data(), xmp.size()) != AVIF_RESULT_OK) {
+            error = "cannot add XMP";
         }
     }
 
@@ -607,13 +652,22 @@ Result<std::vector<std::uint8_t>> encodeJxl(const ImageBuffer& image, const Writ
         JxlEncoderSetColorEncoding(encoder.get(), &color);
     }
 
-    if (const auto exif = exifFor(metadata, pixels.width, pixels.height); !exif.empty()) {
-        // The box starts with the offset of the TIFF header within it.
-        std::vector<std::uint8_t> box(4, 0);
-        box.insert(box.end(), exif.begin(), exif.end());
-        if (JxlEncoderUseBoxes(encoder.get()) != JXL_ENC_SUCCESS ||
-            JxlEncoderAddBox(encoder.get(), "Exif", box.data(), box.size(), JXL_FALSE) != JXL_ENC_SUCCESS) {
-            return std::unexpected("cannot add EXIF to JPEG XL");
+    const auto exif = exifFor(metadata, pixels.width, pixels.height);
+    const auto xmp = xmpFor(metadata);
+    if (!exif.empty() || !xmp.empty()) {
+        if (JxlEncoderUseBoxes(encoder.get()) != JXL_ENC_SUCCESS) {
+            return std::unexpected("cannot add metadata to JPEG XL");
+        }
+        if (!exif.empty()) {
+            // The box starts with the offset of the TIFF header within it.
+            std::vector<std::uint8_t> box(4, 0);
+            box.insert(box.end(), exif.begin(), exif.end());
+            if (JxlEncoderAddBox(encoder.get(), "Exif", box.data(), box.size(), JXL_FALSE) != JXL_ENC_SUCCESS) {
+                return std::unexpected("cannot add EXIF to JPEG XL");
+            }
+        }
+        if (!xmp.empty() && JxlEncoderAddBox(encoder.get(), "xml ", xmp.data(), xmp.size(), JXL_FALSE) != JXL_ENC_SUCCESS) {
+            return std::unexpected("cannot add XMP to JPEG XL");
         }
         JxlEncoderCloseBoxes(encoder.get());
     }

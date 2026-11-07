@@ -35,6 +35,7 @@
 #include <functional>
 #include <memory>
 
+#include "test_exif.h"
 #include "test_jpeg.h"
 #include "test_tiff.h"
 #include "core/color.h"
@@ -770,6 +771,27 @@ TEST(ImageView, DetailsFollowTheFileAndPage) {
     fixture.view->setSource(dir.filePath(QStringLiteral("missing.tif")));
     ASSERT_TRUE(waitUntil([&] { return fixture.view->status() == ImageView::Status::Error; }));
     EXPECT_TRUE(fixture.view->details().isEmpty());
+}
+
+TEST(ImageView, TheLocationLinksToAMap) {
+    QTemporaryDir dir;
+    iv::test::JpegOptions options;
+    options.exif = iv::test::exampleExifBlock(true);
+    const QString path = dir.filePath(QStringLiteral("located.jpg"));
+    iv::test::writeFile(QFileInfo(path).filesystemFilePath(), encodeJpeg(options));
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(path));
+    QVariantMap coordinates;
+    for (const QVariant& row : fixture.view->details()) {
+        if (row.toMap().value(QStringLiteral("label")) == QStringLiteral("Coordinates")) {
+            coordinates = row.toMap();
+        }
+    }
+    EXPECT_EQ(coordinates.value(QStringLiteral("value")).toString(), QStringLiteral("49.19183° N, 16.60500° E"));
+    EXPECT_EQ(coordinates.value(QStringLiteral("link")).toString(),
+              QStringLiteral("https://geohack.toolforge.org/geohack.php?params=49.191833_N_16.605000_E"));
+    EXPECT_FALSE(detail(*fixture.view, QStringLiteral("Altitude")).isEmpty());
 }
 
 TEST(ImageView, ComputesHistogramOnlyWhenEnabledAndFollowsThePage) {

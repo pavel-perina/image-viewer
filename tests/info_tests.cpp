@@ -181,6 +181,9 @@ TEST_P(ExifEndian, ReadsEveryField) {
     EXPECT_EQ(*exif.iso, 400);
     EXPECT_EQ(*exif.meteringMode, 5);
     EXPECT_EQ(*exif.whiteBalance, 1);
+    EXPECT_NEAR(*exif.latitude, 49 + 11 / 60.0 + 30.6 / 3600, 1e-9);
+    EXPECT_NEAR(*exif.longitude, 16 + 36 / 60.0 + 18 / 3600.0, 1e-9);
+    EXPECT_DOUBLE_EQ(*exif.altitude, 234.5);
 }
 
 INSTANTIATE_TEST_SUITE_P(Both, ExifEndian, testing::Bool(),
@@ -235,7 +238,30 @@ TEST(Details, DescribesAJpegWithSubsamplingAndCamera) {
     EXPECT_EQ(valueOf(rows, "White balance"), "Manual");
     EXPECT_EQ(valueOf(rows, "Exposure bias"), "-0.7 EV");
     EXPECT_EQ(valueOf(rows, "Taken"), "2024-05-01 12:30:00");
+    EXPECT_EQ(valueOf(rows, "Coordinates"), "49.19183\xC2\xB0 N, 16.60500\xC2\xB0 E");
+    EXPECT_EQ(valueOf(rows, "Altitude"), "235 m");
+    const auto coordinates = std::ranges::find(rows, std::string("Coordinates"), &DetailRow::label);
+    ASSERT_NE(coordinates, rows.end());
+    EXPECT_EQ(coordinates->section, "Location");
+    EXPECT_EQ(coordinates->link, "https://geohack.toolforge.org/geohack.php?params=49.191833_N_16.605000_E");
     std::filesystem::remove(path);
+}
+
+TEST(Details, LinksTheLocationToAMap) {
+    EXPECT_EQ(mapLink(49.1918333, 16.605), "https://geohack.toolforge.org/geohack.php?params=49.191833_N_16.605000_E");
+    EXPECT_EQ(mapLink(-33.8568, -70.25), "https://geohack.toolforge.org/geohack.php?params=33.856800_S_70.250000_W");
+}
+
+TEST(Details, ShowsTheSouthAndWestAndBelowSeaLevel) {
+    SubimageInfo info;
+    info.exif.latitude = -33.85681;
+    info.exif.longitude = -151.21514;
+    info.exif.altitude = -12.4;
+    const auto rows = describeImage(info);
+    EXPECT_EQ(valueOf(rows, "Coordinates"), "33.85681\xC2\xB0 S, 151.21514\xC2\xB0 W");
+    EXPECT_EQ(valueOf(rows, "Altitude"), "-12 m");
+    info.exif.longitude.reset();
+    EXPECT_EQ(valueOf(describeImage(info), "Coordinates"), "");
 }
 
 TEST(Details, NamesChromaSubsampling) {

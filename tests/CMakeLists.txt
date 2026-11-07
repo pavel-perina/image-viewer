@@ -11,6 +11,7 @@ add_executable(iv_core_tests
     info_tests.cpp
     jpeg_transform_tests.cpp
     writer_tests.cpp
+    xmp_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp
@@ -42,6 +43,8 @@ gtest_discover_tests(iv_core_tests)
 
 find_package(Qt6 REQUIRED COMPONENTS Test)
 add_executable(iv_ui_tests
+    test_exif.cpp
+    test_exif.h
     test_jpeg.cpp
     test_jpeg.h
     test_tiff.cpp

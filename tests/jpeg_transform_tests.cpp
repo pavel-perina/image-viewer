@@ -235,6 +235,18 @@ TEST(JpegTransform, KeepsTheColorProfile) {
     EXPECT_EQ(test::decodeJpeg(*result).iccProfile, profile);
 }
 
+TEST(JpegTransform, ResetsTheOrientationInXmp) {
+    const std::string xmp = R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
+                            R"(<rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/" tiff:Orientation="6" tiff:Make="X"/>)"
+                            R"(</rdf:RDF></x:xmpmeta>)";
+    const auto jpeg = test::encodeJpeg({.orientation = 6, .xmp = xmp, .pixel = pattern});
+    const auto result = transformJpeg(jpeg, JpegEdit::RotateClockwise);
+    ASSERT_TRUE(result) << result.error();
+    std::string expected = xmp;
+    expected.replace(expected.find("\"6\""), 3, "\"1\"");
+    EXPECT_EQ(test::decodeJpeg(*result).xmp, expected);
+}
+
 TEST(JpegTransform, RefusesWhatIsNotAJpeg) {
     const std::vector<std::uint8_t> bytes(100, 7);
     EXPECT_FALSE(transformJpeg(bytes, JpegEdit::Rotate180));

@@ -89,7 +89,8 @@ shaders is skipped there, so run it by hand on a display:
 | I | Show or hide the info panel, when not at full screen |
 | Mouse at the right screen edge | At full screen, show the info panel until the mouse leaves it |
 
-The info panel shows a histogram and details about the file, the image and the camera. Its
-animation can be turned off in the View menu.
+The info panel shows a histogram and details about the file, the image and the camera. Where
+the camera recorded a GPS position, clicking the coordinates opens a page that lists maps to
+see it in, such as OpenStreetMap and Mapy.com. Its animation can be turned off in the View menu.
 
 The toolbar has Auto Contrast for images with more than 8 bits per sample.

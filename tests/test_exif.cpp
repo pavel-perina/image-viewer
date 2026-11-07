@@ -78,7 +78,7 @@ std::vector<std::uint8_t> exampleExifBlock(bool littleEndian) {
     const auto date = Writer::text("2024:05:01 12:30:00");
     const auto lens = Writer::text("EF 50mm f/1.4");
 
-    constexpr std::uint16_t kAscii = 2, kShort = 3, kLong = 4, kRational = 5, kSRational = 10;
+    constexpr std::uint16_t kByte = 1, kAscii = 2, kShort = 3, kLong = 4, kRational = 5, kSRational = 10;
     std::vector<std::uint8_t> exifIfd;
     // The directory is placed at a known offset, so first build it to learn the sizes.
     const auto buildExif = [&](std::size_t at) {
@@ -98,8 +98,29 @@ std::vector<std::uint8_t> exampleExifBlock(bool littleEndian) {
         return out;
     };
 
-    // The main directory comes first, then the EXIF directory after its values.
-    const auto buildMain = [&](std::uint32_t exifOffset) {
+    // 49°11'30.6" N, 16°36'18" E, 234.5 m above sea level.
+    const auto degrees = [&](std::uint32_t d, std::uint32_t m, std::uint32_t tenthsOfSeconds) {
+        auto out = w.rational(d, 1);
+        for (const auto& part : {w.rational(m, 1), w.rational(tenthsOfSeconds, 10)}) {
+            out.insert(out.end(), part.begin(), part.end());
+        }
+        return out;
+    };
+    const auto buildGps = [&](std::size_t at) {
+        std::vector<std::uint8_t> out(at, 0);
+        w.directory(out, {
+                             {1, kAscii, 2, Writer::text("N")},
+                             {2, kRational, 3, degrees(49, 11, 306)},
+                             {3, kAscii, 2, Writer::text("E")},
+                             {4, kRational, 3, degrees(16, 36, 180)},
+                             {5, kByte, 1, {0}},
+                             {6, kRational, 1, w.rational(2345, 10)},
+                         });
+        return out;
+    };
+
+    // The main directory comes first, then the EXIF and GPS directories after its values.
+    const auto buildMain = [&](std::uint32_t exifOffset, std::uint32_t gpsOffset) {
         std::vector<std::uint8_t> out;
         out.push_back(littleEndian ? 'I' : 'M');
         out.push_back(littleEndian ? 'I' : 'M');
@@ -112,14 +133,18 @@ std::vector<std::uint8_t> exampleExifBlock(bool littleEndian) {
                              {0x0110, kAscii, static_cast<std::uint32_t>(model.size()), model},
                              {0x0112, kShort, 1, w.u16(6)},
                              {0x8769, kLong, 1, w.u32(exifOffset)},
+                             {0x8825, kLong, 1, w.u32(gpsOffset)},
                          });
         return out;
     };
 
-    const std::size_t exifAt = buildMain(0).size();
-    std::vector<std::uint8_t> tiff = buildMain(static_cast<std::uint32_t>(exifAt));
+    const std::size_t exifAt = buildMain(0, 0).size();
     const std::vector<std::uint8_t> withExif = buildExif(exifAt);
+    const std::size_t gpsAt = withExif.size();
+    std::vector<std::uint8_t> tiff = buildMain(static_cast<std::uint32_t>(exifAt), static_cast<std::uint32_t>(gpsAt));
     tiff.insert(tiff.end(), withExif.begin() + static_cast<std::ptrdiff_t>(exifAt), withExif.end());
+    const std::vector<std::uint8_t> withGps = buildGps(gpsAt);
+    tiff.insert(tiff.end(), withGps.begin() + static_cast<std::ptrdiff_t>(gpsAt), withGps.end());
 
     std::vector<std::uint8_t> block{'E', 'x', 'i', 'f', 0, 0};
     block.insert(block.end(), tiff.begin(), tiff.end());

@@ -107,9 +107,9 @@ std::string chromaSubsamplingName(int lumaH, int lumaV, int chromaH, int chromaV
 
 std::vector<DetailRow> describeImage(const SubimageInfo& subimage) {
     std::vector<DetailRow> rows;
-    const auto add = [&](const char* section, const char* label, std::string value) {
+    const auto add = [&](const char* section, const char* label, std::string value, std::string link = {}) {
         if (!value.empty()) {
-            rows.push_back({section, label, std::move(value)});
+            rows.push_back({section, label, std::move(value), std::move(link)});
         }
     };
 
@@ -167,7 +167,23 @@ std::vector<DetailRow> describeImage(const SubimageInfo& subimage) {
     if (exif.whiteBalance) {
         add(camera, "White balance", whiteBalanceText(*exif.whiteBalance));
     }
+    if (exif.latitude && exif.longitude) {
+        const char* const location = "Location";
+        // Five decimals are about a metre, finer than a camera's GPS.
+        add(location, "Coordinates",
+            std::format("{:.5f}\xC2\xB0 {}, {:.5f}\xC2\xB0 {}", std::abs(*exif.latitude), *exif.latitude < 0 ? 'S' : 'N',
+                        std::abs(*exif.longitude), *exif.longitude < 0 ? 'W' : 'E'),
+            mapLink(*exif.latitude, *exif.longitude));
+        if (exif.altitude) {
+            add(location, "Altitude", std::format("{} m", std::lround(*exif.altitude)));
+        }
+    }
     return rows;
+}
+
+std::string mapLink(double latitude, double longitude) {
+    return std::format("https://geohack.toolforge.org/geohack.php?params={:.6f}_{}_{:.6f}_{}", std::abs(latitude),
+                       latitude < 0 ? 'S' : 'N', std::abs(longitude), longitude < 0 ? 'W' : 'E');
 }
 
 std::string imageSummary(const SubimageInfo& subimage) {

@@ -13,9 +13,15 @@ struct DetailRow {
     std::string section;
     std::string label;
     std::string value;
+    std::string link;  // a web address the value opens, if any
 };
 
 std::vector<DetailRow> describeImage(const SubimageInfo& subimage);
+
+// A web page for a position in degrees, south and west negative. GeoHack, which Wikipedia uses
+// for its coordinates, lists many map services for it to choose from, such as OpenStreetMap,
+// Mapy.com, Google Maps and topographic maps.
+std::string mapLink(double latitude, double longitude);
 
 // One compact line of each, for where there is no room for the rows above: "400x300 0.12MP 24bit
 // PNG", and "1/60s f/4 ISO-500 EV -0.33", which is empty without any of these.

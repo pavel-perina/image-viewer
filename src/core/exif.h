@@ -28,6 +28,10 @@ struct ExifData {
     std::optional<int> meteringMode;  // as stored: 1 average, 3 spot, 5 pattern and so on
     std::optional<int> whiteBalance;  // as stored: 0 auto, 1 manual
     bool adobeRgb = false;  // a camera set to Adobe RGB, which says so here instead of a profile
+    // Where it was taken, in degrees with south and west negative, if both are known.
+    std::optional<double> latitude;
+    std::optional<double> longitude;
+    std::optional<double> altitude;  // metres above sea level, negative below
 };
 
 // Reads a TIFF structure holding EXIF, with or without the "Exif\0\0" that precedes it in a

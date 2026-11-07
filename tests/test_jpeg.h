@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace iv::test {
@@ -17,6 +18,7 @@ struct JpegOptions {
     int orientation = 0;  // EXIF value; 0 writes no EXIF block
     std::vector<std::uint8_t> exif;  // a complete APP1 payload, instead of orientation
     std::vector<std::uint8_t> iccProfile;
+    std::string xmp;  // a packet, written after the XMP prefix in its own APP1 block
     bool progressive = false;
     std::function<Rgb(int x, int y)> pixel = [](int, int) { return Rgb{128, 128, 128}; };
 };
@@ -29,6 +31,7 @@ struct DecodedJpeg {
     std::vector<Rgb> pixels;          // row by row, as stored, whatever the EXIF orientation
     std::vector<std::uint8_t> exif;   // the APP1 payload starting with "Exif", if any
     std::vector<std::uint8_t> iccProfile;
+    std::string xmp;                  // the packet, without the prefix
     bool progressive = false;
 
     Rgb at(int x, int y) const { return pixels[static_cast<std::size_t>(y) * width + x]; }

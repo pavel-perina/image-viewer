@@ -62,6 +62,8 @@ struct WriteMetadata {
     // A TIFF structure holding EXIF, with or without the "Exif\0\0" a JPEG puts before it. The
     // pixels are written as given, so the orientation is reset to 1 and the dimensions set.
     std::vector<std::uint8_t> exif;
+    // An XMP packet, written as it is apart from its orientation, which is reset to 1.
+    std::vector<std::uint8_t> xmp;
 };
 
 // Encodes the image in the format the options choose. Each format keeps as much as it can hold:

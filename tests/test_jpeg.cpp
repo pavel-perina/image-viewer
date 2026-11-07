@@ -10,6 +10,8 @@
 
 #include <jpeglib.h>
 
+#include "core/xmp.h"
+
 namespace iv::test {
 
 std::vector<std::uint8_t> encodeJpeg(const JpegOptions& options) {
@@ -42,6 +44,11 @@ std::vector<std::uint8_t> encodeJpeg(const JpegOptions& options) {
         const JOCTET exif[] = {'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0,
                                1, 0, 0x12, 0x01, 3, 0, 1, 0, 0, 0, value, 0, 0, 0, 0, 0, 0, 0};
         jpeg_write_marker(&cinfo, JPEG_APP0 + 1, exif, sizeof(exif));
+    }
+    if (!options.xmp.empty()) {
+        std::string block(kXmpJpegPrefix);
+        block += options.xmp;
+        jpeg_write_marker(&cinfo, JPEG_APP0 + 1, reinterpret_cast<const JOCTET*>(block.data()), static_cast<unsigned int>(block.size()));
     }
     if (!options.iccProfile.empty()) {
         jpeg_write_icc_profile(&cinfo, options.iccProfile.data(),
@@ -82,6 +89,10 @@ DecodedJpeg decodeJpeg(const std::vector<std::uint8_t>& bytes) {
         for (jpeg_saved_marker_ptr marker = cinfo.marker_list; marker; marker = marker->next) {
             if (marker->marker == JPEG_APP0 + 1 && marker->data_length >= 6 && std::memcmp(marker->data, "Exif\0", 6) == 0) {
                 decoded.exif.assign(marker->data, marker->data + marker->data_length);
+            }
+            if (marker->marker == JPEG_APP0 + 1 && marker->data_length >= kXmpJpegPrefix.size() &&
+                std::memcmp(marker->data, kXmpJpegPrefix.data(), kXmpJpegPrefix.size()) == 0) {
+                decoded.xmp.assign(reinterpret_cast<const char*>(marker->data) + kXmpJpegPrefix.size(), marker->data_length - kXmpJpegPrefix.size());
             }
         }
         JOCTET* icc = nullptr;

@@ -527,8 +527,12 @@ struct ImageView::Impl {
                 details.append(detailRow(QStringLiteral("File"), QStringLiteral("Page"), QStringLiteral("%1 of %2").arg(page + 1).arg(pages)));
             }
             for (const DetailRow& row : describeImage(subimage())) {
-                details.append(detailRow(QString::fromStdString(row.section), QString::fromStdString(row.label),
-                                         QString::fromStdString(row.value)));
+                QVariantMap map = detailRow(QString::fromStdString(row.section), QString::fromStdString(row.label),
+                                            QString::fromStdString(row.value));
+                if (!row.link.empty()) {
+                    map.insert(QStringLiteral("link"), QString::fromStdString(row.link));
+                }
+                details.append(map);
             }
         }
         emit q->detailsChanged();

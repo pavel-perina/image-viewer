@@ -13,6 +13,7 @@
 #include <jpeglib.h>
 
 #include "core/exif.h"
+#include "core/xmp.h"
 #include "core/file_io.h"
 
 namespace iv {
@@ -161,6 +162,15 @@ public:
         for (jpeg_saved_marker_ptr marker = m_src.marker_list; marker; marker = marker->next) {
             if (marker->marker == JPEG_APP0 + 1 && startsWith(marker, kExifPrefix)) {
                 return {marker->data + kExifPrefix.size(), marker->data_length - kExifPrefix.size()};
+            }
+        }
+        return {};
+    }
+
+    std::span<std::uint8_t> xmp() const {
+        for (jpeg_saved_marker_ptr marker = m_src.marker_list; marker; marker = marker->next) {
+            if (marker->marker == JPEG_APP0 + 1 && startsWith(marker, kXmpJpegPrefix)) {
+                return {marker->data + kXmpJpegPrefix.size(), marker->data_length - kXmpJpegPrefix.size()};
             }
         }
         return {};
@@ -362,6 +372,7 @@ Result<std::vector<std::uint8_t>> transformJpeg(std::span<const std::uint8_t> jp
     if (!exif.empty()) {
         resetExifForPixels(exif, width, height);
     }
+    resetXmpOrientation(transformer.xmp());
     if (!transformer.transform(turn, width, height)) {
         return std::unexpected("cannot transform: " + transformer.error());
     }

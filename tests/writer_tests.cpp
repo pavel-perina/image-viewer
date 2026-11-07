@@ -219,7 +219,9 @@ TEST_F(Writer, EveryFormatGivesBackTheImage) {
 
 TEST_F(Writer, KeepsTheColourProfileAndTheExif) {
     const ImageBuffer image = makeImage({64, 48}, PixelFormat::Bgrx8, smooth);
-    const WriteMetadata metadata{rgbProfile(), test::exampleExifBlock(true)};
+    WriteMetadata metadata;
+    metadata.iccProfile = rgbProfile();
+    metadata.exif = test::exampleExifBlock(true);
     const WriteOptions all[] = {JpegWriteOptions{}, PngWriteOptions{}, TiffWriteOptions{}, WebpWriteOptions{},
                                 AvifWriteOptions{}, JxlWriteOptions{}, JxlWriteOptions{.lossless = true}};
     for (const WriteOptions& options : all) {
@@ -246,9 +248,36 @@ TEST_F(Writer, KeepsTheColourProfileAndTheExif) {
     }
 }
 
+TEST_F(Writer, KeepsTheXmpWithItsOrientationReset) {
+    const ImageBuffer image = makeImage({64, 48}, PixelFormat::Bgrx8, smooth);
+    const std::string packet = R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
+                               R"(<rdf:Description xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:xmp="http://ns.adobe.com/xap/1.0/")"
+                               R"( tiff:Orientation="6" xmp:Rating="4"/></rdf:RDF></x:xmpmeta>)";
+    WriteMetadata metadata;
+    metadata.xmp.assign(packet.begin(), packet.end());
+    std::string expected = packet;
+    expected.replace(expected.find("\"6\""), 3, "\"1\"");
+
+    const WriteOptions all[] = {JpegWriteOptions{}, PngWriteOptions{}, TiffWriteOptions{}, WebpWriteOptions{},
+                                AvifWriteOptions{}, JxlWriteOptions{}};
+    for (const WriteOptions& options : all) {
+        SCOPED_TRACE(std::string(extensionFor(options)));
+        if (!canWrite(options)) {
+            continue;
+        }
+        const auto bytes = encodeImage(image, metadata, options);
+        ASSERT_TRUE(bytes) << bytes.error();
+        // Every format stores the packet uncompressed, so it shows in the file as it is.
+        const std::string_view file(reinterpret_cast<const char*>(bytes->data()), bytes->size());
+        EXPECT_NE(file.find(expected), std::string_view::npos);
+    }
+}
+
 TEST_F(Writer, GrayPixelsAreWrittenAsGray) {
     const ImageBuffer gray = makeImage({64, 48}, PixelFormat::Bgrx8, [](int x, int, int) { return x / 63.0; });
     const WriteOptions grayable[] = {JpegWriteOptions{}, PngWriteOptions{}, JxlWriteOptions{.lossless = true}};
+    WriteMetadata withRgbProfile;
+    withRgbProfile.iccProfile = rgbProfile();
     for (const WriteOptions& options : grayable) {
         SCOPED_TRACE(std::string(extensionFor(options)));
         if (!canWrite(options)) {
@@ -256,7 +285,7 @@ TEST_F(Writer, GrayPixelsAreWrittenAsGray) {
         }
         EXPECT_EQ(roundTrip(gray, options).info.stored.colorModel, "Grayscale");
         // An RGB profile has to go with RGB pixels.
-        EXPECT_NE(roundTrip(gray, options, {rgbProfile(), {}}).info.stored.colorModel, "Grayscale");
+        EXPECT_NE(roundTrip(gray, options, withRgbProfile).info.stored.colorModel, "Grayscale");
     }
     EXPECT_EQ(roundTrip(gray, TiffWriteOptions{}).info.stored.colorModel, "Grayscale");
 }
