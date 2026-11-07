@@ -16,6 +16,7 @@ location can be removed.
 
 Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools), libjpeg-turbo, libtiff, SQLite, LittleCMS 2
 and, for the tests, GoogleTest. libpng, libwebp, libavif and libjxl are optional, and each adds its format.
+Google Benchmark is optional and adds `iv_benchmarks` (see `doc/design/performance-notes.md`).
 
 openSUSE:
 
@@ -30,6 +31,10 @@ Build and test:
 Run:
 
     build/src/app/imageviewer [file-or-directory]
+
+Benchmarks, when built (`benchmark-devel` on openSUSE), optionally with a real photo:
+
+    IV_BENCHMARK_IMAGE=photo.jpg build/benchmarks/iv_benchmarks
 
 ## Graphics backend
 

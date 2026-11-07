@@ -18,6 +18,13 @@ option(IV_BUILD_TESTS "Build the test suite" ON)
 # Added before Qt is set up, so that core cannot pick up any Qt settings.
 add_subdirectory(src/core)
 
+# Measurements behind performance decisions, built only where Google Benchmark is installed.
+# Before Qt, like core, as they use core alone.
+find_package(benchmark QUIET)
+if(benchmark_FOUND)
+    add_subdirectory(benchmarks)
+endif()
+
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
 qt_standard_project_setup(REQUIRES 6.8)
 

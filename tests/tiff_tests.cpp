@@ -591,6 +591,76 @@ TEST(Halve, KeepsTheOtherFormatsAndTheirRange) {
     EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(halfShorts.row(1)), 65535);
 }
 
+TEST(Halve, BandsSideBySideGiveWhatOneAtATimeGives) {
+    // Large enough to be split between threads; small bands of rows are not.
+    std::mt19937 random(7);
+    for (const PixelFormat format : {PixelFormat::Bgrx8, PixelFormat::Gray16, PixelFormat::Rgba16, PixelFormat::Gray32F, PixelFormat::Rgba32F}) {
+        SCOPED_TRACE(static_cast<int>(format));
+        const ImageBuffer image = ImageBuffer::create({2001, 1203}, format);
+        const std::size_t rowBytes = static_cast<std::size_t>(image.width()) * bytesPerPixel(format);
+        for (int y = 0; y < image.height(); ++y) {
+            auto* row = reinterpret_cast<std::uint8_t*>(image.row(y));
+            if (format == PixelFormat::Gray32F || format == PixelFormat::Rgba32F) {
+                auto* values = reinterpret_cast<float*>(row);
+                for (std::size_t i = 0; i < rowBytes / 4; ++i) {
+                    values[i] = static_cast<float>(random() % 1000) / 999.0F;
+                }
+            } else {
+                for (std::size_t i = 0; i < rowBytes; ++i) {
+                    row[i] = static_cast<std::uint8_t>(random());
+                }
+            }
+        }
+        const ImageBuffer together = halve(image);
+        const ImageBuffer oneByOne = ImageBuffer::create(together.size(), format);
+        for (int first = 0; first < oneByOne.height(); first += 50) {
+            halveRows(image, 0, image.height(), oneByOne, first, std::min(first + 50, oneByOne.height()));
+        }
+        const std::size_t halfRowBytes = static_cast<std::size_t>(together.width()) * bytesPerPixel(format);
+        for (int y = 0; y < together.height(); ++y) {
+            ASSERT_EQ(std::memcmp(together.row(y), oneByOne.row(y), halfRowBytes), 0) << "row " << y;
+        }
+    }
+}
+
+TEST(Halve, EightBitsComeOutWithinOneStepOfTheExactResult) {
+    const auto toLinear = [](int v) {
+        const double c = v / 255.0;
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    const auto toSrgb = [](double c) {
+        return std::lround(255 * (c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(c, 1 / 2.4) - 0.055));
+    };
+    std::mt19937 random(11);
+    const ImageBuffer image = ImageBuffer::create({64, 64}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 64; ++y) {
+        for (int i = 0; i < 256; ++i) {
+            reinterpret_cast<std::uint8_t*>(image.row(y))[i] = static_cast<std::uint8_t>(random());
+        }
+    }
+    const ImageBuffer half = halve(image);
+    constexpr int kWeights[] = {1, 3, 3, 1};
+    int exact = 0;
+    for (int ty = 0; ty < 32; ++ty) {
+        for (int tx = 0; tx < 32; ++tx) {
+            for (int c = 0; c < 3; ++c) {
+                double sum = 0;
+                for (int j = 0; j < 4; ++j) {
+                    for (int i = 0; i < 4; ++i) {
+                        const int sy = std::clamp(2 * ty - 1 + j, 0, 63);
+                        const int sx = std::clamp(2 * tx - 1 + i, 0, 63);
+                        sum += kWeights[j] * kWeights[i] * toLinear(reinterpret_cast<const std::uint8_t*>(image.row(sy))[sx * 4 + c]);
+                    }
+                }
+                const int got = reinterpret_cast<const std::uint8_t*>(half.row(ty))[tx * 4 + c];
+                ASSERT_LE(std::abs(got - toSrgb(sum / 64)), 1);
+                exact += got == toSrgb(sum / 64);
+            }
+        }
+    }
+    EXPECT_GE(exact, 32 * 32 * 3 * 99 / 100);
+}
+
 TEST(Resize, KeepsEveryFlatValueExactly) {
     for (int value = 0; value < 256; ++value) {
         const ImageBuffer flat = ImageBuffer::create({40, 30}, PixelFormat::Bgrx8);

@@ -129,4 +129,55 @@ way libjpeg's scaled decode is. The viewer does not use progressive decoding yet
 
 Make the levels consistent across formats: speed up the halving first, measure again, then
 choose between a full decode for JPEG (correct, slower to open) and halving in gamma space for
-8-bit images (familiar, free).
+8-bit images (familiar, free). The halving is now faster; see below.
+
+## Faster halving (2026-11-07)
+
+Done as planned: steps 1 and 2 above, no explicit SIMD.
+
+* 8-bit images go through integers. Each sample becomes 16-bit linear light through a 256-entry
+  table, the 1-3-3-1 weights are summed in 32-bit integers, and the average is encoded through a
+  table with an entry for each of the 65536 linear values. The other formats keep the float path.
+* `halveRows` splits the target rows into bands on up to 8 threads, from 512K output pixels up.
+  Bands only read the source, so the result is byte for byte the same as one band at a time,
+  which a test checks for every format.
+* The finer encoding table makes 8-bit results more accurate, not only faster. Against the same
+  halving computed in doubles, on 2.7 million samples of a noisy 25 MP image: the float path
+  with its 4096-step table was one level off in 52,490 samples, the integer path in 3,625. 1.6%
+  of samples differ from the old output, all by one level. 16-bit and float output is unchanged.
+
+Same machine and image size as above, the first halving of a 25 MP image, median of 7. The
+machine warms up during long runs, so the same build measured 23 to 36 ms for 8-bit in one
+afternoon; compare within one run.
+
+| Format | Before | Integers, one core | Integers and threads |
+|---|---|---|---|
+| 8-bit | 192 ms | 99 ms | 23-36 ms |
+| 16-bit | 121 ms | 125 ms | 32-51 ms |
+| float | 135 ms | | 68-113 ms |
+
+Float now reads 400 MB and writes 100 MB per halving, so it is bound by memory bandwidth.
+
+`iv_benchmarks` (Google Benchmark, built only when it is installed) measures these on a
+synthetic image of smooth noise over four scales plus grain, generated once per process.
+`IV_BENCHMARK_IMAGE=path` adds a real file: its full decode, the full decode with two halvings,
+and its 1/4 level as the viewer reads it now. A source keeps what it decodes, so each iteration
+opens the file again.
+
+### JPEG levels, measured again
+
+A synthetic 25 MP JPEG, 4:2:0, quality 92, 10 MB:
+
+| Way to the 1/4 level | Time |
+|---|---|
+| Today: libjpeg's scaled decode (open + 1/4) | 149 ms |
+| Full decode | 230 ms |
+| Full decode + halving twice | 258 ms |
+
+Halving was 237 of the 450 ms that the consistent path cost; it is now about 30-45 ms. A full
+decode for JPEG would cost about +110 ms against the 1/4 decode alone, plus about 100 MB while
+levels are made. Today the viewer also decodes a 1/8 preview first (about 106 ms on the camera
+JPEG above) so that something shows early. Replacing both with the full decode takes about as
+long in total but shows nothing until it is done; keeping the preview and then decoding fully
+costs about +110 ms before the sharp image at fit. libjpeg decodes on one thread, which is now
+most of the time.

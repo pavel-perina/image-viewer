@@ -5,7 +5,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <limits>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -366,6 +368,97 @@ void halveTyped(const ImageBuffer& strip, int stripY, int fullHeight, const Imag
     }
 }
 
+// 8-bit images are halved in integers, which compilers vectorize on their own: each sample
+// becomes linear light in 16 bits through a table, the 1 3 3 1 weights are summed in 32 bits (64
+// times 65535 fits), and the average goes back through a table with an entry for every 16-bit
+// value, finer than the float path's.
+const std::array<std::uint16_t, 256>& srgbToLinear16Table() {
+    static const std::array<std::uint16_t, 256> table = [] {
+        std::array<std::uint16_t, 256> values{};
+        for (int i = 0; i < 256; ++i) {
+            values[static_cast<std::size_t>(i)] =
+                static_cast<std::uint16_t>(std::lround(srgbToLinearTable()[static_cast<std::size_t>(i)] * 65535.0));
+        }
+        return values;
+    }();
+    return table;
+}
+
+const std::vector<std::uint8_t>& linear16ToSrgbTable() {
+    static const std::vector<std::uint8_t> table = [] {
+        std::vector<std::uint8_t> values(65536);
+        for (int i = 0; i < 65536; ++i) {
+            const double c = i / 65535.0;
+            const double encoded = c <= 0.0031308 ? c * 12.92 : 1.055 * std::pow(c, 1 / 2.4) - 0.055;
+            values[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(std::lround(encoded * 255));
+        }
+        return values;
+    }();
+    return table;
+}
+
+void halveBgrx8(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
+    const int width = strip.width();
+    const auto rowLength = static_cast<std::size_t>(width) * 4;
+    const auto& toLinear = srgbToLinear16Table();
+    const std::uint8_t* toSrgb = linear16ToSrgbTable().data();
+
+    std::array<std::vector<std::uint16_t>, 4> decoded;
+    std::array<int, 4> decodedRow{-1, -1, -1, -1};
+    const auto rowAt = [&](int y) -> const std::uint16_t* {
+        const int sourceY = std::clamp(y, 0, fullHeight - 1);
+        const auto slot = static_cast<std::size_t>(sourceY & 3);
+        if (decodedRow[slot] != sourceY) {
+            decoded[slot].resize(rowLength);
+            const auto* in = reinterpret_cast<const std::uint8_t*>(strip.row(sourceY - stripY));
+            std::uint16_t* out = decoded[slot].data();
+            for (std::size_t i = 0; i < rowLength; i += 4) {
+                out[i] = toLinear[in[i]];
+                out[i + 1] = toLinear[in[i + 1]];
+                out[i + 2] = toLinear[in[i + 2]];
+                out[i + 3] = static_cast<std::uint16_t>(in[i + 3] * 257);  // not light
+            }
+            decodedRow[slot] = sourceY;
+        }
+        return decoded[slot].data();
+    };
+
+    std::vector<std::uint32_t> mixed(rowLength);
+    for (int y = firstRow; y < endRow; ++y) {
+        const std::uint16_t* r0 = rowAt(2 * y - 1);
+        const std::uint16_t* r1 = rowAt(2 * y);
+        const std::uint16_t* r2 = rowAt(2 * y + 1);
+        const std::uint16_t* r3 = rowAt(2 * y + 2);
+        std::uint32_t* m = mixed.data();
+        for (std::size_t i = 0; i < rowLength; ++i) {
+            m[i] = std::uint32_t{r0[i]} + 3 * (std::uint32_t{r1[i]} + r2[i]) + r3[i];
+        }
+        auto* out = reinterpret_cast<std::uint8_t*>(target.row(y));
+        for (int x = 0; x < target.width(); ++x) {
+            const int centre = 2 * x;
+            const std::uint32_t* a = m + static_cast<std::size_t>(std::max(centre - 1, 0)) * 4;
+            const std::uint32_t* b = m + static_cast<std::size_t>(centre) * 4;
+            const std::uint32_t* c = m + static_cast<std::size_t>(std::min(centre + 1, width - 1)) * 4;
+            const std::uint32_t* d = m + static_cast<std::size_t>(std::min(centre + 2, width - 1)) * 4;
+            for (int k = 0; k < 3; ++k) {
+                out[k] = toSrgb[(a[k] + 3 * (b[k] + c[k]) + d[k] + 32) >> 6];
+            }
+            out[3] = static_cast<std::uint8_t>((((a[3] + 3 * (b[3] + c[3]) + d[3] + 32) >> 6) + 128) / 257);
+            out += 4;
+        }
+    }
+}
+
+void halveBand(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
+    switch (strip.format()) {
+    case PixelFormat::Bgrx8:   halveBgrx8(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Gray16:  halveTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Rgba16:  halveTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Gray32F: halveTyped<float, 1, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Rgba32F: halveTyped<float, 4, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    }
+}
+
 double mks2013(double x) {
     x = std::abs(x);
     if (x <= 0.5) {
@@ -538,12 +631,37 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
 Size halvedSize(Size size) { return {std::max(1, (size.width + 1) / 2), std::max(1, (size.height + 1) / 2)}; }
 
 void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
-    switch (strip.format()) {
-    case PixelFormat::Bgrx8:   halveTyped<std::uint8_t, 4, DisplaySamples>(strip, stripY, fullHeight, target, firstRow, endRow); break;
-    case PixelFormat::Gray16:  halveTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
-    case PixelFormat::Rgba16:  halveTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
-    case PixelFormat::Gray32F: halveTyped<float, 1, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
-    case PixelFormat::Rgba32F: halveTyped<float, 4, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    // Bands of target rows read the source only, so they run side by side. Below about a
+    // megapixel of output, starting threads costs more than it saves.
+    constexpr std::uint64_t kPixelsPerThread = 256 * 1024;
+    const int rows = endRow - firstRow;
+    const std::uint64_t pixels = static_cast<std::uint64_t>(std::max(rows, 0)) * static_cast<std::uint64_t>(target.width());
+    const auto wanted = static_cast<int>(std::min<std::uint64_t>(pixels / kPixelsPerThread, 8));
+    const int bands = std::clamp(std::min(wanted, static_cast<int>(std::thread::hardware_concurrency())), 1, std::max(rows, 1));
+    if (bands <= 1) {
+        halveBand(strip, stripY, fullHeight, target, firstRow, endRow);
+        return;
+    }
+    std::vector<std::exception_ptr> errors(static_cast<std::size_t>(bands));
+    {
+        std::vector<std::jthread> workers;
+        workers.reserve(static_cast<std::size_t>(bands - 1));
+        const auto band = [&](int index) {
+            try {
+                halveBand(strip, stripY, fullHeight, target, firstRow + rows * index / bands, firstRow + rows * (index + 1) / bands);
+            } catch (...) {
+                errors[static_cast<std::size_t>(index)] = std::current_exception();
+            }
+        };
+        for (int i = 1; i < bands; ++i) {
+            workers.emplace_back(band, i);
+        }
+        band(0);
+    }
+    for (const std::exception_ptr& error : errors) {
+        if (error) {
+            std::rethrow_exception(error);
+        }
     }
 }
 
