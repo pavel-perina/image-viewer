@@ -3,8 +3,11 @@ qt_add_library(iv_ui STATIC
     browse_context.h
     color_settings.cpp
     color_settings.h
+    crop_overlay.cpp
+    crop_overlay.h
     directory_tree_model.cpp
     directory_tree_model.h
+    edited_image.h
     file_operations.cpp
     file_operations.h
     folder_lists.cpp
@@ -38,6 +41,7 @@ qt_add_qml_module(iv_ui
         qml/BarButton.qml
         qml/BrowserPage.qml
         qml/Caret.qml
+        qml/CropPanel.qml
         qml/FileActions.qml
         qml/FolderButton.qml
         qml/ImageScrollBars.qml

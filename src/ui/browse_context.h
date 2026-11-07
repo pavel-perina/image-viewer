@@ -139,7 +139,9 @@ public:
     Q_INVOKABLE QStringList saveFilters() const;
     // Writes a page of an image to a file in the format of its extension; the options are
     // those saveImageAs takes. The new file becomes the current one.
-    Q_INVOKABLE void saveAs(const QString& source, int page, const QString& target, const QVariantMap& options);
+    // The page of the source file, or the edited image from ImageView::editedImage if valid.
+    Q_INVOKABLE void saveAs(const QString& source, int page, const QString& target, const QVariantMap& options,
+                            const QVariant& edited = {});
     bool canConvertToJxl() const;
     Q_INVOKABLE void cancelJob();  // stops before the next file
 
@@ -173,6 +175,8 @@ signals:
     void operationFinished(const QStringList& problems);
     // These files have new contents, so whatever shows them should load them again.
     void filesEdited(const QStringList& paths);
+    // An edited image from saveAs was written.
+    void editedImageSaved(const QVariant& edited);
 
 private:
     struct Impl;

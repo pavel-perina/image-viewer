@@ -408,7 +408,7 @@ QString saveFormatFor(const QString& path) {
 }
 
 FileJobResult saveImageAs(const QString& source, int page, const QString& target, const QVariantMap& options,
-                          std::stop_token stop) {
+                          std::stop_token stop, std::shared_ptr<ImageSource> edited) {
     FileJobResult result;
     const QString name = QFileInfo(target).fileName();
     const auto writeOptions = writeOptionsFor(target, options);
@@ -416,7 +416,10 @@ FileJobResult saveImageAs(const QString& source, int page, const QString& target
         result.problems << QObject::tr("%1: this format cannot be written").arg(name);
         return result;
     }
-    auto opened = openImageSource(QFileInfo(source).filesystemFilePath());
+    auto opened = edited ? Result<std::shared_ptr<ImageSource>>(edited) : openImageSource(QFileInfo(source).filesystemFilePath());
+    if (edited) {
+        page = 0;
+    }
     if (!opened) {
         result.problems << QObject::tr("%1: %2").arg(QFileInfo(source).fileName(), QString::fromStdString(opened.error()));
         return result;

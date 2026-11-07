@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "core/color.h"
+#include "core/document.h"
 #include "core/histogram.h"
 #include "core/image_details.h"
 #include "core/image_ops.h"
@@ -40,6 +41,7 @@
 #include "core/viewport.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
+#include "ui/edited_image.h"
 #include "ui/histogram_handle.h"
 #include "ui/qimage_bridge.h"
 
@@ -157,11 +159,18 @@ struct ImageView::Impl {
     QString error;
     std::uint64_t latestRequest = 0;
 
-    // The displayed document. It stays until a newly requested one is ready to show.
+    // The file and its page, which the edits, if any, apply to.
+    std::shared_ptr<ImageSource> fileSource;
+    int filePage = 0;
+    std::optional<Document> edit;
+    std::shared_ptr<ImageSource> editSource;  // the edited page as it is now, shown or about to be
+
+    // The displayed document: the page of the file, or the edited page. It stays until a newly
+    // requested one is ready to show.
     std::uint64_t document = 0;
     std::shared_ptr<ImageSource> source;
     // Everything below describes the displayed document, and is set anew for each one.
-    int page = 0;
+    int page = 0;  // of source, which is always 0 for an edited page
     bool autoContrast = false;
     DisplayRange autoDisplayRange;
     DisplayRange displayRange;
@@ -399,6 +408,7 @@ struct ImageView::Impl {
         DisplayRange autoRange;
         QVariantList fileDetails;  // only when a file was opened, not for another page
         QString fileSummary;
+        enum class Kind { File, Page, Edit } kind = Kind::File;
     };
 
     static Result<Loaded> loadPreview(std::shared_ptr<ImageSource> source, int page, const std::stop_token& stop) {
@@ -469,20 +479,38 @@ struct ImageView::Impl {
     }
 
     void showPage(int newPage) {
-        if (!source || newPage == page || newPage < 0 || newPage >= std::ssize(source->subimages())) {
+        if (!fileSource || newPage == filePage || newPage < 0 || newPage >= std::ssize(fileSource->subimages())) {
             return;
         }
+        loadFilePage(newPage);
+    }
+
+    // Edits to the page shown are dropped.
+    void loadFilePage(int newPage) {
+        load(fileSource, newPage, Loaded::Kind::Page);
+    }
+
+    void showEdit() {
+        editSource = edit->source();
+        load(editSource, 0, Loaded::Kind::Edit);
+        emit q->editChanged();  // undo and redo are up to date before the picture
+    }
+
+    void load(std::shared_ptr<ImageSource> from, int newPage, Loaded::Kind kind) {
         const std::uint64_t request = ++latestRequest;
         queue.cancelGroup(group);
         inFlight.clear();
         histogramPending = false;
         setStatus(Status::Loading);
-        queue.submit(group, kOpenPriority, [this, source = source, newPage, request](std::stop_token stop) {
+        queue.submit(group, kOpenPriority, [this, from = std::move(from), newPage, kind, request](std::stop_token stop) {
             Result<Loaded> loaded = std::unexpected("cancelled");
             try {
-                loaded = loadPreview(source, newPage, stop);
+                loaded = loadPreview(from, newPage, stop);
+                if (loaded) {
+                    loaded->kind = kind;
+                }
             } catch (const std::bad_alloc&) {
-                loaded = std::unexpected("not enough memory to open page");
+                loaded = std::unexpected("not enough memory to show the image");
             }
             QMetaObject::invokeMethod(q, [this, request, loaded = std::move(loaded)] {
                 onLoaded(request, loaded);
@@ -502,6 +530,22 @@ struct ImageView::Impl {
 
         source = loaded->source;
         page = loaded->page;
+        switch (loaded->kind) {
+        case Loaded::Kind::File:
+            fileSource = source;
+            filePage = page;
+            edit.reset();
+            editSource.reset();  // it keeps the decoded picture
+            break;
+        case Loaded::Kind::Page:
+            filePage = page;
+            edit.reset();
+            editSource.reset();  // it keeps the decoded picture
+            break;
+        case Loaded::Kind::Edit:
+            break;
+        }
+        emit q->editChanged();
         preview = loaded->preview;
         previewIsRough = loaded->previewIsRough;
         autoDisplayRange = loaded->autoRange;
@@ -540,9 +584,9 @@ struct ImageView::Impl {
         if (source) {
             summary = QString::fromStdString(imageSummary(subimage())) + QLatin1Char(' ') + fileSummary;
             cameraSummary = QString::fromStdString(iv::cameraSummary(subimage().exif));
-            const auto pages = std::ssize(source->subimages());
+            const auto pages = std::ssize(fileSource->subimages());
             if (pages > 1) {
-                details.append(detailRow(QStringLiteral("File"), QStringLiteral("Page"), QStringLiteral("%1 of %2").arg(page + 1).arg(pages)));
+                details.append(detailRow(QStringLiteral("File"), QStringLiteral("Page"), QStringLiteral("%1 of %2").arg(filePage + 1).arg(pages)));
             }
             for (const DetailRow& row : describeImage(subimage())) {
                 QVariantMap map = detailRow(QString::fromStdString(row.section), QString::fromStdString(row.label),
@@ -617,7 +661,9 @@ struct ImageView::Impl {
     }
 
     void colorSettingsChanged() {
-        if (status == Status::Loading) {
+        if (status == Status::Loading && edit) {
+            showEdit();
+        } else if (status == Status::Loading) {
             open(path);  // what is being loaded would be cancelled along with the tiles
         } else if (source) {
             redisplay();
@@ -635,6 +681,11 @@ struct ImageView::Impl {
 
     void closeDocument() {
         ++document;
+        fileSource.reset();
+        filePage = 0;
+        edit.reset();
+        editSource.reset();
+        emit q->editChanged();
         source.reset();
         colorTransform.reset();
         page = 0;
@@ -816,9 +867,9 @@ int ImageView::imageHeight() const {
     return m_impl->source ? displaySize(m_impl->fullSize, m_impl->subimage().orientation).height : 0;
 }
 
-int ImageView::page() const { return m_impl->page; }
+int ImageView::page() const { return m_impl->filePage; }
 void ImageView::setPage(int page) { m_impl->showPage(page); }
-int ImageView::pageCount() const { return m_impl->source ? static_cast<int>(m_impl->source->subimages().size()) : 0; }
+int ImageView::pageCount() const { return m_impl->fileSource ? static_cast<int>(m_impl->fileSource->subimages().size()) : 0; }
 
 bool ImageView::contrastAdjustable() const {
     return m_impl->source && m_impl->subimage().format != PixelFormat::Bgrx8;
@@ -895,6 +946,92 @@ QRectF ImageView::resampleImageRect() const {
 double ImageView::resampleRatio() const { return m_impl->resample.ratio; }
 double ImageView::resampleSpacing() const { return m_impl->resample.spacing; }
 double ImageView::resampleDevicePixelRatio() const { return m_impl->devicePixelRatio(); }
+
+bool ImageView::editable() const {
+    return m_impl->fileSource && notEditableReason().isEmpty();
+}
+
+QString ImageView::notEditableReason() const {
+    const Impl& d = *m_impl;
+    if (!d.fileSource) {
+        return {};
+    }
+    const auto allowed = canEdit(d.fileSource->subimages()[static_cast<std::size_t>(d.filePage)]);
+    return allowed ? QString() : QString::fromStdString(allowed.error());
+}
+
+bool ImageView::modified() const { return m_impl->edit && m_impl->edit->modified(); }
+bool ImageView::canUndo() const { return m_impl->edit && m_impl->edit->canUndo(); }
+bool ImageView::canRedo() const { return m_impl->edit && m_impl->edit->canRedo(); }
+
+void ImageView::panBy(double dx, double dy) {
+    const double dpr = m_impl->devicePixelRatio();
+    m_impl->viewport.panBy(dx * dpr, dy * dpr);
+    m_impl->viewChanged();
+}
+
+QPointF ImageView::imageToItem(QPointF point) const {
+    const auto& vp = m_impl->viewport;
+    const double dpr = m_impl->devicePixelRatio();
+    return {(point.x() * vp.zoom() + vp.offsetX()) / dpr, (point.y() * vp.zoom() + vp.offsetY()) / dpr};
+}
+
+QPointF ImageView::itemToImage(QPointF point) const {
+    const auto& vp = m_impl->viewport;
+    const double dpr = m_impl->devicePixelRatio();
+    return {(point.x() * dpr - vp.offsetX()) / vp.zoom(), (point.y() * dpr - vp.offsetY()) / vp.zoom()};
+}
+
+void ImageView::crop(const QRect& rect) {
+    Impl& d = *m_impl;
+    if (!editable() || d.status != Status::Ready || rect.isEmpty()) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    const Size size = d.edit->size();
+    const PixelRect pixels{rect.x(), rect.y(), rect.width(), rect.height()};
+    if (pixels.x < 0 || pixels.y < 0 || pixels.right() > size.width || pixels.bottom() > size.height ||
+        pixels == PixelRect{0, 0, size.width, size.height}) {
+        return;
+    }
+    d.edit->apply(CropEdit{pixels});
+    d.showEdit();
+}
+
+void ImageView::undo() {
+    if (canUndo()) {
+        m_impl->edit->undo();
+        m_impl->showEdit();
+    }
+}
+
+void ImageView::redo() {
+    if (canRedo()) {
+        m_impl->edit->redo();
+        m_impl->showEdit();
+    }
+}
+
+void ImageView::discardEdits() {
+    if (m_impl->edit) {
+        m_impl->loadFilePage(m_impl->filePage);
+    }
+}
+
+QVariant ImageView::editedImage() const {
+    const Impl& d = *m_impl;
+    return d.edit && !d.edit->edits().empty() ? QVariant::fromValue(d.editSource) : QVariant();
+}
+
+void ImageView::markSaved(const QVariant& image) {
+    Impl& d = *m_impl;
+    if (d.edit && image.value<std::shared_ptr<ImageSource>>() == d.editSource) {
+        d.edit->markSaved();
+        emit editChanged();
+    }
+}
 
 void ImageView::zoomIn() {
     auto& vp = m_impl->viewport;

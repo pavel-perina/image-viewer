@@ -2,6 +2,7 @@
 
 #include <QPointF>
 #include <QQuickItem>
+#include <QRect>
 #include <QRectF>
 #include <QSize>
 #include <QString>
@@ -53,6 +54,12 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(double resampleRatio READ resampleRatio NOTIFY resampleChanged)
     Q_PROPERTY(double resampleSpacing READ resampleSpacing NOTIFY resampleChanged)
     Q_PROPERTY(double resampleDevicePixelRatio READ resampleDevicePixelRatio NOTIFY resampleChanged)
+    // Editing the page shown: whether it can be, and the state of its edits.
+    Q_PROPERTY(bool editable READ editable NOTIFY editChanged)
+    Q_PROPERTY(QString notEditableReason READ notEditableReason NOTIFY editChanged)
+    Q_PROPERTY(bool modified READ modified NOTIFY editChanged)
+    Q_PROPERTY(bool canUndo READ canUndo NOTIFY editChanged)
+    Q_PROPERTY(bool canRedo READ canRedo NOTIFY editChanged)
 
 public:
     enum class Status { Null, Loading, Ready, Error };
@@ -93,6 +100,11 @@ public:
     double resampleRatio() const;
     double resampleSpacing() const;
     double resampleDevicePixelRatio() const;
+    bool editable() const;
+    QString notEditableReason() const;
+    bool modified() const;
+    bool canUndo() const;
+    bool canRedo() const;
 
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
@@ -100,6 +112,22 @@ public:
     Q_INVOKABLE void actualSize();
     // Loads the file again, after it changed on disk.
     Q_INVOKABLE void reload();
+    Q_INVOKABLE void panBy(double dx, double dy);  // in item coordinates
+
+    // Between pixel coordinates of the image as shown, upright and edited, and item coordinates.
+    Q_INVOKABLE QPointF imageToItem(QPointF point) const;
+    Q_INVOKABLE QPointF itemToImage(QPointF point) const;
+
+    // Keeps a rectangle of the image as shown.
+    Q_INVOKABLE void crop(const QRect& rect);
+    Q_INVOKABLE void undo();
+    Q_INVOKABLE void redo();
+    // Back to the page as it is in the file.
+    Q_INVOKABLE void discardEdits();
+    // The edited page, to be saved; empty without edits. Saving it is reported with markSaved.
+    Q_INVOKABLE QVariant editedImage() const;
+    // Unless it has been edited further since the image was taken.
+    Q_INVOKABLE void markSaved(const QVariant& image);
 
 signals:
     void sourceChanged();
@@ -110,6 +138,7 @@ signals:
     void histogramChanged();
     void resampleChanged();
     void wheelNavigatesChanged();
+    void editChanged();
     void navigateRequested(int steps);  // positive towards the next image
 
 protected:

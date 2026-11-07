@@ -15,11 +15,38 @@ ApplicationWindow {
     readonly property ImageView activeView: viewing ? viewerPage.view : browserPage.preview
     // Text fields do not claim keys such as Return and Up, so these shortcuts would take them.
     readonly property bool typing: browserPage.pathBar.editing
+    readonly property bool cropping: viewerPage.cropping
+    readonly property bool edited: window.viewing && viewerPage.view.modified
+    // What was to happen when the unsaved changes were asked about, until they are saved.
+    property var pendingLeave: null
 
     width: 1280
     height: 800
     visible: true
-    title: context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer"
+    title: (window.edited ? "*" : "") + (context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer")
+
+    // Leaving an edited image asks first: save, discard or stay.
+    function leaveImage(proceed) {
+        if (!window.edited) {
+            proceed()
+            return
+        }
+        window.pendingLeave = proceed
+        unsavedDialog.text = "Save the changes to " + context.currentName + " before leaving it?"
+        unsavedDialog.open()
+    }
+
+    // The window closes only once nothing is left unsaved.
+    property bool closingConfirmed: false
+    onClosing: (close) => {
+        if (window.edited && !window.closingConfirmed) {
+            close.accepted = false
+            window.leaveImage(() => {
+                window.closingConfirmed = true
+                window.close()
+            })
+        }
+    }
 
     // Created here rather than in C++, so a tab can later own one context and its pages.
     BrowseContext {
@@ -32,6 +59,40 @@ ApplicationWindow {
         context: context
         viewing: window.viewing
         page: window.activeView.source === context.currentPath ? window.activeView.page : 0
+        editView: window.viewing ? viewerPage.view : null
+        guard: window.leaveImage
+        onSaveCancelled: window.pendingLeave = null
+    }
+
+    Connections {
+        target: context
+        function onEditedImageSaved(edited) {
+            viewerPage.view.markSaved(edited)
+            if (window.pendingLeave && !viewerPage.view.modified) {
+                const proceed = window.pendingLeave
+                window.pendingLeave = null
+                proceed()
+            }
+        }
+    }
+
+    MessageBox {
+        id: unsavedDialog
+        objectName: "unsavedDialog"
+        kind: "question"
+        title: "Unsaved Changes"
+        standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
+        focusedButton: Dialog.Save
+        onAccepted: fileActions.saveAs()
+        onDiscarded: {
+            close()
+            const proceed = window.pendingLeave
+            window.pendingLeave = null
+            viewerPage.view.discardEdits()
+            if (proceed)
+                proceed()
+        }
+        onRejected: window.pendingLeave = null
     }
 
     Settings {
@@ -61,33 +122,60 @@ ApplicationWindow {
     }
 
     function leaveCurrentMode() {
-        if (window.visibility === Window.FullScreen)
+        if (window.cropping)
+            viewerPage.cancelCrop()
+        else if (window.visibility === Window.FullScreen)
             window.visibility = Window.Windowed
         else
-            window.viewing = false
+            window.leaveImage(() => window.viewing = false)
     }
 
+    // Moves to another image, which leaves the edited one.
+    function next() { window.leaveImage(() => context.next()) }
+    function previous() { window.leaveImage(() => context.previous()) }
+
     Action { id: openAction; text: "&Open..."; shortcut: StandardKey.Open; onTriggered: openDialog.open() }
-    Action { id: quitAction; text: "&Quit"; shortcut: StandardKey.Quit; onTriggered: Qt.quit() }
+    Action { id: quitAction; text: "&Quit"; shortcut: StandardKey.Quit; onTriggered: window.close() }
     Action {
         id: modeAction
         text: window.viewing ? "Browser" : "View"
-        enabled: window.viewing || context.currentPath !== ""
-        onTriggered: window.viewing = !window.viewing
+        enabled: (window.viewing || context.currentPath !== "") && !window.cropping
+        onTriggered: window.viewing ? window.leaveImage(() => window.viewing = false) : window.viewing = true
     }
-    Action { id: previousAction; text: "Previous"; enabled: context.hasPrevious; onTriggered: context.previous() }
-    Action { id: nextAction; text: "Next"; enabled: context.hasNext; onTriggered: context.next() }
+    Action { id: previousAction; text: "Previous"; enabled: context.hasPrevious && !window.cropping; onTriggered: window.previous() }
+    Action { id: nextAction; text: "Next"; enabled: context.hasNext && !window.cropping; onTriggered: window.next() }
     Action {
         id: previousPageAction
         text: "Prev Page"
-        enabled: window.activeView.page > 0
-        onTriggered: window.activeView.page = window.activeView.page - 1
+        enabled: window.activeView.page > 0 && !window.cropping
+        onTriggered: window.leaveImage(() => window.activeView.page = window.activeView.page - 1)
     }
     Action {
         id: nextPageAction
         text: "Next Page"
-        enabled: window.activeView.page + 1 < window.activeView.pageCount
-        onTriggered: window.activeView.page = window.activeView.page + 1
+        enabled: window.activeView.page + 1 < window.activeView.pageCount && !window.cropping
+        onTriggered: window.leaveImage(() => window.activeView.page = window.activeView.page + 1)
+    }
+    Action {
+        id: cropAction
+        text: "&Crop..."
+        shortcut: "X"
+        enabled: window.viewing && !window.cropping && viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
+        onTriggered: viewerPage.startCrop()
+    }
+    Action {
+        id: undoAction
+        text: "&Undo"
+        shortcut: StandardKey.Undo
+        enabled: window.viewing && !window.cropping && viewerPage.view.canUndo
+        onTriggered: viewerPage.view.undo()
+    }
+    Action {
+        id: redoAction
+        text: "&Redo"
+        shortcut: StandardKey.Redo
+        enabled: window.viewing && !window.cropping && viewerPage.view.canRedo
+        onTriggered: viewerPage.view.redo()
     }
     Action {
         id: autoContrastAction
@@ -135,12 +223,14 @@ ApplicationWindow {
     Action { id: actualSizeAction; text: "1:1"; shortcut: "1"; onTriggered: window.activeView.actualSize() }
     Action { id: fullScreenAction; text: "Full Screen"; shortcut: "F11"; onTriggered: window.toggleFullScreen() }
 
-    Shortcut { sequences: ["Right", "Space"]; enabled: !window.typing; onActivated: context.next() }
-    Shortcut { sequences: ["Left", "Backspace"]; enabled: !window.typing; onActivated: context.previous() }
-    Shortcut { sequence: "PgDown"; enabled: !window.typing; onActivated: window.viewing ? context.next() : browserPage.movePage(1) }
-    Shortcut { sequence: "PgUp"; enabled: !window.typing; onActivated: window.viewing ? context.previous() : browserPage.movePage(-1) }
+    // Space pans while cropping, with the left button.
+    Shortcut { sequences: ["Right", "Space"]; enabled: !window.typing && !window.cropping; onActivated: window.next() }
+    Shortcut { sequences: ["Left", "Backspace"]; enabled: !window.typing && !window.cropping; onActivated: window.previous() }
+    Shortcut { sequence: "PgDown"; enabled: !window.typing && !window.cropping; onActivated: window.viewing ? window.next() : browserPage.movePage(1) }
+    Shortcut { sequence: "PgUp"; enabled: !window.typing && !window.cropping; onActivated: window.viewing ? window.previous() : browserPage.movePage(-1) }
     Shortcut { sequence: "Shift+PgDown"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(1) }
     Shortcut { sequence: "Shift+PgUp"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(-1) }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Up"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(-1) }
@@ -187,6 +277,11 @@ ApplicationWindow {
         }
         AppMenu {
             title: "&Edit"
+            AppMenuItem { action: undoAction }
+            AppMenuItem { action: redoAction }
+            MenuSeparator {}
+            AppMenuItem { action: cropAction }
+            MenuSeparator {}
             AppMenuItem { action: fileActions.copyAction }
             AppMenuItem { action: fileActions.pasteAction }
             AppMenuItem { action: fileActions.copyPathAction }
@@ -272,6 +367,8 @@ ApplicationWindow {
             ToolButton { action: actualSizeAction }
             ToolButton { action: autoContrastAction; visible: window.activeView.contrastAdjustable }
             ToolButton { action: infoAction; visible: window.viewing }
+            ToolSeparator { visible: window.viewing }
+            ToolButton { action: cropAction; visible: window.viewing }
             Item { Layout.fillWidth: true }
         }
     }
@@ -349,6 +446,7 @@ ApplicationWindow {
             context: context
             active: window.viewing
             fullScreen: window.visibility === Window.FullScreen
+            guard: window.leaveImage
             onFileMenuRequested: fileActions.fileMenu.popup()
         }
     }
@@ -377,7 +475,10 @@ ApplicationWindow {
         id: openDialog
         title: "Open Image"
         nameFilters: ["Images (*.jpg *.jpeg *.jpe *.jfif *.tif *.tiff *.png *.webp *.avif *.jxl)", "All files (*)"]
-        onAccepted: context.openUrl(selectedFile)
+        onAccepted: {
+            const file = selectedFile
+            window.leaveImage(() => context.openUrl(file))
+        }
     }
 
     // Asks first with what there is, as clearing makes every folder slow to show once more.

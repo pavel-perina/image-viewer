@@ -16,6 +16,12 @@ Item {
     property bool showProgress: false
     // The page shown of the target, for Save As.
     property int page: 0
+    // The view whose edits Save As saves, if any.
+    property ImageView editView: null
+    // Runs what would change or remove the file on show, once its edits are saved or given up.
+    property var guard: (proceed) => proceed()
+
+    signal saveCancelled()
 
     // The large view shows one image, whatever was selected before entering it.
     readonly property var targetPaths: viewing ? (context.currentPath ? [context.currentPath] : []) : context.selectedPaths
@@ -99,6 +105,10 @@ Item {
 
     // Asks first unless told not to, as the files change in place.
     function editJpegs(action, operation) {
+        guard(() => editJpegsNow(action, operation))
+    }
+
+    function editJpegsNow(action, operation) {
         const paths = targetPaths
         if (!settings.askBeforeEditing) {
             context.editJpegs(paths, operation, settings.trimEdges)
@@ -119,21 +129,24 @@ Item {
         const base = dot > 0 ? name.substring(0, dot) : name
         saveDialog.source = path
         saveDialog.page = page
+        saveDialog.edited = editView ? editView.editedImage() : undefined
         saveDialog.currentFolder = context.urlFromPath(path.substring(0, slash))
         saveDialog.selectedFile = context.urlFromPath(path.substring(0, slash + 1)
                                                       + (context.saveFormat(path) ? name : base + ".png"))
         saveDialog.open()
     }
 
-    function chooseSaveOptions(source, page, target) {
+    function chooseSaveOptions(source, page, target, edited) {
         const format = context.saveFormat(target)
         if (!format) {
             problemDialog.text = root.folderName(target) + ": choose a name ending in .jpg, .png, .tif, .webp, .avif or .jxl"
             problemDialog.open()
+            saveCancelled()
             return
         }
         saveOptionsDialog.source = source
         saveOptionsDialog.page = page
+        saveOptionsDialog.edited = edited
         saveOptionsDialog.target = target
         saveOptionsDialog.format = format
         saveOptionsDialog.open()
@@ -166,7 +179,7 @@ Item {
         enabled: root.idle && root.targetPaths.length === 1
         onTriggered: {
             const path = root.targetPaths[0]
-            root.askName("Rename", root.folderName(path), (name) => root.context.rename(path, name))
+            root.guard(() => root.askName("Rename", root.folderName(path), (name) => root.context.rename(path, name)))
         }
     }
     Action {
@@ -174,7 +187,10 @@ Item {
         text: "Move to &Trash"
         shortcut: "Del"
         enabled: root.idle && root.hasTargets
-        onTriggered: root.context.trash(root.targetPaths)
+        onTriggered: {
+            const paths = root.targetPaths
+            root.guard(() => root.context.trash(paths))
+        }
     }
     Action {
         id: deleteAction
@@ -183,8 +199,11 @@ Item {
         enabled: root.idle && root.hasTargets
         onTriggered: {
             // Kept from now on, so the selection cannot change what the answer applies to.
-            deleteDialog.paths = root.targetPaths
-            deleteDialog.open()
+            const paths = root.targetPaths
+            root.guard(() => {
+                deleteDialog.paths = paths
+                deleteDialog.open()
+            })
         }
     }
     Action {
@@ -197,7 +216,7 @@ Item {
         id: moveToAction
         text: "&Move To..."
         enabled: root.idle && root.hasTargets
-        onTriggered: root.chooseFolder(true)
+        onTriggered: root.guard(() => root.chooseFolder(true))
     }
     Action {
         id: newFolderAction
@@ -298,8 +317,11 @@ Item {
         text: "Convert to JPEG &XL..."
         enabled: root.idle && root.jpegTargets && root.context.canConvertToJxl
         onTriggered: {
-            jxlDialog.paths = root.targetPaths
-            jxlDialog.open()
+            const paths = root.targetPaths
+            root.guard(() => {
+                jxlDialog.paths = paths
+                jxlDialog.open()
+            })
         }
     }
 
@@ -355,8 +377,11 @@ Item {
                     required property string modelData
                     text: modelData
                     onTriggered: {
-                        root.rememberFolder(modelData)
-                        root.transfer(root.targetPaths, modelData, true)
+                        const folder = modelData
+                        root.guard(() => {
+                            root.rememberFolder(folder)
+                            root.transfer(root.targetPaths, folder, true)
+                        })
                     }
                 }
             }
@@ -401,17 +426,29 @@ Item {
         objectName: "saveDialog"
         property string source
         property int page: 0
+        property var edited
         title: "Save As"
         fileMode: FileDialog.SaveFile
         nameFilters: root.context.saveFilters()
         // A name typed without an extension gets the chosen format's.
         defaultSuffix: selectedNameFilter.extensions.length > 0 ? selectedNameFilter.extensions[0] : ""
-        onAccepted: root.chooseSaveOptions(source, page, root.context.pathFromUrl(selectedFile))
+        onAccepted: {
+            root.chooseSaveOptions(source, page, root.context.pathFromUrl(selectedFile), edited)
+            edited = undefined
+        }
+        onRejected: {
+            edited = undefined
+            root.saveCancelled()
+        }
     }
 
     SaveOptionsDialog {
         id: saveOptionsDialog
         context: root.context
+        onRejected: {
+            edited = undefined
+            root.saveCancelled()
+        }
     }
 
     FolderDialog {

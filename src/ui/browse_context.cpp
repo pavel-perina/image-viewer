@@ -33,6 +33,7 @@
 #include "core/thumbnail.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
+#include "ui/edited_image.h"
 #include "ui/file_operations.h"
 #include "ui/qimage_bridge.h"
 #include "ui/thumbnail_provider.h"
@@ -952,15 +953,20 @@ QStringList BrowseContext::saveFilters() const {
     return filters;
 }
 
-void BrowseContext::saveAs(const QString& source, int page, const QString& target, const QVariantMap& options) {
+void BrowseContext::saveAs(const QString& source, int page, const QString& target, const QVariantMap& options,
+                           const QVariant& edited) {
     if (source.isEmpty() || target.isEmpty()) {
         return;
     }
+    auto image = edited.value<std::shared_ptr<ImageSource>>();
     m_impl->startJob(this, tr("Saving"), 1,
-                     [source, page, target, options](std::stop_token stop, const JobProgress&) {
-                         return saveImageAs(source, page, target, options, stop);
+                     [source, page, target, options, image](std::stop_token stop, const JobProgress&) {
+                         return saveImageAs(source, page, target, options, stop, image);
                      },
-                     [this](const FileJobResult& result) {
+                     [this, edited](const FileJobResult& result) {
+                         if (edited.isValid() && !result.created.isEmpty()) {
+                             emit editedImageSaved(edited);
+                         }
                          QStringList toSelect;
                          for (const QString& path : result.created) {
                              if (QFileInfo(path).dir() == QDir(m_impl->directory)) {

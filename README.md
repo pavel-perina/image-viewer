@@ -12,6 +12,10 @@ File > Save As (Ctrl+Shift+S) writes the image shown as JPEG, PNG, TIFF, WebP, A
 with options per format. Camera data (EXIF and XMP) and the colour profile are kept, and the
 location can be removed.
 
+Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a fixed ratio, with
+undo and redo (Ctrl+Z, Ctrl+Shift+Z). The result is saved with Save As; leaving an edited image
+asks first.
+
 ## Build
 
 Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools), libjpeg-turbo, libtiff, SQLite, LittleCMS 2

@@ -5,6 +5,7 @@
 #include <QVariantMap>
 
 #include <functional>
+#include <memory>
 #include <stop_token>
 
 class QDateTime;
@@ -13,6 +14,7 @@ class QImage;
 namespace iv {
 
 enum class JpegEdit;
+class ImageSource;
 
 // What to do when a file with the same name is already in the target folder.
 enum class ConflictPolicy {
@@ -76,9 +78,10 @@ QString saveFormatFor(const QString& path);
 // there. The options come as the save dialog gives them: quality (1-100), chroma ("4:4:4",
 // "4:2:2" or "4:2:0"), progressive, lossless, effort (0-9, the format's own range), compression
 // for TIFF ("none", "lzw", "deflate") or the level for PNG (0-9), keepMetadata and
-// removeLocation. What is missing takes the writer's default.
+// removeLocation. What is missing takes the writer's default. An edited page, if given, is
+// saved instead of the page of the source file.
 FileJobResult saveImageAs(const QString& source, int page, const QString& target, const QVariantMap& options,
-                          std::stop_token stop);
+                          std::stop_token stop, std::shared_ptr<ImageSource> edited = nullptr);
 
 // Saves as a new file named after the time, such as 2026-12-24_125959.png, adding _1 and so on
 // if that name is taken.

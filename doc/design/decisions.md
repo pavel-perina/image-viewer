@@ -369,7 +369,49 @@ change nothing useful. The first press of a double click does this too, for that
 * Cut is not implemented. Files cut in another application are copied on paste, leaving the
   originals in place.
 
-## Editing (planned, not built)
+## Editing
+Built so far: the edit list with undo, crop, and the question before leaving an edited image.
+Saving goes through Save As; the rest of this section is still the plan.
+
+* `Document` in core holds one page of an opened file and its edits. The page is decoded once
+  at full size and turned upright, and edits apply to that, in coordinates of the upright
+  picture. A crop is a view of it, so it costs no copy. Each change hands the view a new source
+  of one upright page, with the original's metadata saying it is upright, so the view, the
+  histogram and Save As work unchanged.
+* Until saving over the original exists, editing is allowed wherever Save As is: images small
+  enough to be saved whole. What a palette or alpha image loses is what Save As loses anyway.
+* The view keeps the edits of the page shown. Moving to another image, page or folder, back to
+  the browser, quitting, and the file operations that change the file on show (rename, trash,
+  delete, move, the lossless JPEG tools) ask first: Save (as), Discard or Cancel. Saving to the
+  same name replaces the file, after the file dialog's own question, and the view reloads it.
+* After a crop the view fits the image again, as the old zoom and position mean little for the
+  new picture.
+
+### Crop
+* A mode of the large view rather than a window of its own, so zoom, panning and full screen
+  stay as they are. Its panel takes the place of the info panel, and at full screen it comes
+  and goes with the mouse at the right edge in the same way, over the image.
+* The rectangle is in whole pixels of the upright image, and dragging puts edges on the nearest
+  pixel boundary, so at a high zoom they sit exactly between pixels, as screenshots need. The
+  fields set the same numbers.
+* Ratios: free, the image's own, 1:1, 5:4, 4:3, 3:2, 16:10, 16:9, A4, Letter and a custom one,
+  each in landscape or portrait. Whole pixels rarely allow an exact ratio, so the side that is
+  dragged follows the mouse and the other is rounded to the nearest pixel. Changing the ratio
+  fits the largest rectangle of it inside the current one.
+* With a ratio, an edge sets the size and keeps the rectangle centred across it; a corner keeps
+  the opposite corner. Dragging past the opposite edge turns the rectangle over. A handle keeps
+  the offset at which it was grabbed. Dragging on the image outside the rectangle draws a new
+  one, once the mouse has moved a few pixels, so a click changes nothing. A press outside the
+  image takes the edge or corner on that side, as aiming just past an edge is common.
+* The wheel zooms. The right or middle button, or the left one with Space held, pans, as the
+  left button belongs to the rectangle; not every mouse has a middle button. Enter applies, Esc cancels. Enter in a field takes its value and
+  gives the keys back to the image, so a second Enter applies.
+* Handles stay a fixed size on screen and are computed per shape from a few stored values,
+  rather than solving constraints, which is also how measuring tools would work.
+* Free rotation is to come as a separate edit before crop, with an automatic crop to the largest
+  rectangle of the ratio inside the turned picture.
+
+### Still planned
 * A document is a base image, an edit list, an optional file path and an unsaved flag.
 * The edit list is the first thing to build for editing, before any individual tool.
 * Edits are stored as operations with parameters, not pixel copies. Undo and redo move a
@@ -458,6 +500,10 @@ change nothing useful. The first press of a double click does this too, for that
 * XML in XMP and OME-TIFF can use pugixml (MIT), which needs no Qt.
 
 ## Known limitations
+* An edited image can only be saved with Save As, not over the original in one step. Choosing
+  the same name in Save As replaces it.
+* Crop is the only edit so far. Rotating and flipping exist only as the lossless JPEG tools,
+  which change files rather than the image being edited.
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
   they changed.

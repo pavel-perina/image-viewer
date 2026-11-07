@@ -3383,7 +3383,7 @@ TEST(SaveAs, TheOptionsDialogStartsTheSave) {
     ASSERT_NE(dialog, nullptr);
     const QString target = dir.filePath(QStringLiteral("b.jpg"));
     QMetaObject::invokeMethod(actions, "chooseSaveOptions", Q_ARG(QVariant, dir.filePath(QStringLiteral("a.jpg"))),
-                              Q_ARG(QVariant, 0), Q_ARG(QVariant, target));
+                              Q_ARG(QVariant, 0), Q_ARG(QVariant, target), Q_ARG(QVariant, QVariant()));
     ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
     EXPECT_EQ(dialog->property("title").toString(), QStringLiteral("Save As JPEG"));
     auto* content = dialog->property("contentItem").value<QQuickItem*>();
@@ -3398,6 +3398,223 @@ TEST(SaveAs, TheOptionsDialogStartsTheSave) {
     QMetaObject::invokeMethod(dialog, "accept");
     ASSERT_TRUE(waitUntil([&] { return !context->busy() && context->currentName() == QStringLiteral("b.jpg"); }));
     EXPECT_TRUE(QFileInfo::exists(target));
+}
+
+namespace {
+
+// Stored 64 x 32 and turned a quarter by EXIF, so upright it is 32 x 64.
+QString writeTurnedJpeg(const QTemporaryDir& dir, const QString& name = QStringLiteral("turned.jpg")) {
+    const QString path = dir.filePath(name);
+    writeJpeg(path, {.width = 64, .height = 32, .orientation = 6});
+    return path;
+}
+
+bool settled(ImageView* view) {
+    return waitUntil([&] { return view->status() == ImageView::Status::Ready; });
+}
+
+}  // namespace
+
+TEST(Editing, CropUndoRedoAndDiscardChangeWhatIsShown) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTurnedJpeg(dir)));
+    EXPECT_TRUE(f.view->editable());
+    EXPECT_FALSE(f.view->modified());
+    EXPECT_EQ(f.view->imageWidth(), 32);
+    EXPECT_EQ(f.view->imageHeight(), 64);
+
+    // Upright pixels, as shown.
+    f.view->crop(QRect(0, 8, 32, 40));
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), 32);
+    EXPECT_EQ(f.view->imageHeight(), 40);
+    EXPECT_TRUE(f.view->modified());
+    EXPECT_TRUE(f.view->canUndo());
+    EXPECT_FALSE(f.view->editedImage().isNull());
+
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageHeight(), 64);
+    EXPECT_FALSE(f.view->modified());
+    EXPECT_TRUE(f.view->canRedo());
+    EXPECT_TRUE(f.view->editedImage().isNull());
+
+    f.view->redo();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageHeight(), 40);
+
+    f.view->discardEdits();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageHeight(), 64);
+    EXPECT_FALSE(f.view->modified());
+    EXPECT_FALSE(f.view->canUndo());
+}
+
+TEST(Editing, CropsOutsideTheImageOrOfAllOfItAreIgnored) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTurnedJpeg(dir)));
+    f.view->crop(QRect(0, 0, 32, 64));
+    f.view->crop(QRect(10, 10, 30, 10));
+    QCoreApplication::processEvents();
+    EXPECT_FALSE(f.view->modified());
+    EXPECT_EQ(f.view->status(), ImageView::Status::Ready);
+}
+
+TEST(Editing, SaveAsWritesTheEditedImageAndMarksItSaved) {
+    QTemporaryDir dir;
+    const QString path = writeTurnedJpeg(dir);
+    ViewFixture f;
+    ASSERT_TRUE(f.load(path));
+    f.view->crop(QRect(4, 4, 20, 30));
+    ASSERT_TRUE(settled(f.view));
+    const QVariant edited = f.view->editedImage();
+    ASSERT_TRUE(edited.isValid());
+
+    BrowseContext context;
+    QSignalSpy saved(&context, &BrowseContext::editedImageSaved);
+    const QString target = dir.filePath(QStringLiteral("cropped.jpg"));
+    context.saveAs(path, 0, target, {}, edited);
+    ASSERT_TRUE(waitUntil([&] { return saved.count() == 1; }));
+    // Upright, so the 20 x 30 rectangle is stored as it is shown.
+    EXPECT_EQ(jpegSize(target), QSize(20, 30));
+
+    // Edited further meanwhile, it stays unsaved.
+    f.view->crop(QRect(0, 0, 10, 10));
+    ASSERT_TRUE(settled(f.view));
+    f.view->markSaved(saved.front().front());
+    EXPECT_TRUE(f.view->modified());
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    f.view->markSaved(saved.front().front());
+    EXPECT_TRUE(f.view->modified()) << "a handle from before is not the image now";
+    f.view->markSaved(f.view->editedImage());
+    EXPECT_FALSE(f.view->modified());
+}
+
+TEST(Editing, TheCropOverlayDragsToWholePixelsAndCropApplies) {
+    QTemporaryDir dir;
+    writeTurnedJpeg(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(700, 500);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 64; }));
+
+    QMetaObject::invokeMethod(page, "startCrop");
+    EXPECT_TRUE(page->property("cropping").toBool());
+    auto* overlay = page->findChild<QQuickItem*>(QStringLiteral("cropOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(0, 0, 32, 64));
+    // The panel slides in and the image refits to the room left.
+    ASSERT_TRUE(waitUntil([&] {
+        const QPointF corner = image->imageToItem(QPointF(32, 64));
+        return image->width() < 500 && corner.x() < image->width();
+    }));
+    waitUntil([] { return false; }, 300);
+
+    // Drags the bottom right corner to the image position (20.6, 30.4); the edges go to the
+    // nearest pixel boundaries.
+    const QPointF from = overlay->mapToScene(image->imageToItem(QPointF(32, 64)));
+    const QPointF to = overlay->mapToScene(image->imageToItem(QPointF(20.6, 30.4)));
+    QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, from.toPoint());
+    QTest::mouseMove(&view, ((from + to) / 2).toPoint());
+    QTest::mouseMove(&view, to.toPoint());
+    QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+    EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(0, 0, 21, 30));
+
+    QMetaObject::invokeMethod(page, "applyCrop");
+    EXPECT_FALSE(page->property("cropping").toBool());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 30; }));
+    EXPECT_EQ(image->imageWidth(), 21);
+    EXPECT_TRUE(image->modified());
+}
+
+TEST(Editing, APressOutsideTheImageTakesAnEdgeAndAClickDrawsNothing) {
+    QTemporaryDir dir;
+    writeTurnedJpeg(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(700, 500);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 64; }));
+    QMetaObject::invokeMethod(page, "startCrop");
+    auto* overlay = page->findChild<QQuickItem*>(QStringLiteral("cropOverlay"));
+    ASSERT_TRUE(waitUntil([&] { return image->width() < 500; }));
+    waitUntil([] { return false; }, 300);
+    overlay->setProperty("cropRect", QRect(8, 16, 16, 32));
+    const auto at = [&](double x, double y) { return overlay->mapToScene(image->imageToItem(QPointF(x, y))).toPoint(); };
+
+    // A click on the image beside the rectangle leaves it alone.
+    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, at(2, 4));
+    EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(8, 16, 16, 32));
+
+    // Well left of the image and above it: the top left corner, wherever it was grabbed.
+    const QPoint outside = at(0, 0) - QPoint(20, 20);
+    QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, outside);
+    QTest::mouseMove(&view, outside + (at(4, 8) - at(8, 16)) / 2);
+    QTest::mouseMove(&view, outside + (at(4, 8) - at(8, 16)));
+    QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, outside + (at(4, 8) - at(8, 16)));
+    EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(4, 8, 20, 40));
+}
+
+TEST(Main, LeavingAnEditedImageAsksFirst) {
+    QTemporaryDir dir;
+    writeTurnedJpeg(dir, QStringLiteral("a.jpg"));
+    writeTurnedJpeg(dir, QStringLiteral("b.jpg"));
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.filePath(QStringLiteral("a.jpg"))}});
+    engine.loadFromModule("ImageViewer", "Main");
+    ASSERT_EQ(engine.rootObjects().size(), 1);
+    QObject* window = engine.rootObjects().front();
+    auto* context = window->findChild<BrowseContext*>();
+    ASSERT_NE(context, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 2; }));
+    auto* image = window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->source().endsWith(QStringLiteral("a.jpg")); }));
+    auto* dialog = window->findChild<QObject*>(QStringLiteral("unsavedDialog"));
+    ASSERT_NE(dialog, nullptr);
+
+    // Without changes it just goes.
+    QMetaObject::invokeMethod(window, "next");
+    EXPECT_EQ(context->currentIndex(), 1);
+    EXPECT_FALSE(dialog->property("opened").toBool());
+    QMetaObject::invokeMethod(window, "previous");
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->source().endsWith(QStringLiteral("a.jpg")); }));
+
+    image->crop(QRect(0, 0, 16, 16));
+    ASSERT_TRUE(waitUntil([&] { return image->modified() && image->status() == ImageView::Status::Ready; }));
+    EXPECT_TRUE(window->property("title").toString().startsWith(QLatin1Char('*')));
+
+    QMetaObject::invokeMethod(window, "next");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_EQ(context->currentIndex(), 0) << "stays until answered";
+    QMetaObject::invokeMethod(dialog, "reject");
+    ASSERT_TRUE(waitUntil([&] { return !dialog->property("visible").toBool(); }));
+    EXPECT_EQ(context->currentIndex(), 0);
+    EXPECT_TRUE(image->modified());
+
+    QMetaObject::invokeMethod(window, "next");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(dialog, "discarded");
+    EXPECT_EQ(context->currentIndex(), 1);
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->source().endsWith(QStringLiteral("b.jpg")); }));
+    EXPECT_FALSE(image->modified());
 }
 
 int main(int argc, char** argv) {

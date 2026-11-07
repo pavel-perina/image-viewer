@@ -15,6 +15,7 @@ AppDialog {
     required property BrowseContext context
     property string source
     property int page: 0
+    property var edited  // ImageView.editedImage, saved instead of the page of the file if set
     property string target
     property string format  // as BrowseContext.saveFormat gives it
 
@@ -129,7 +130,8 @@ AppDialog {
     onAboutToShow: load()
     onAccepted: {
         remember()
-        context.saveAs(source, page, target, options())
+        context.saveAs(source, page, target, options(), edited)
+        edited = undefined  // the edited picture, at full size, is not kept here
     }
 
     component ValueSlider: RowLayout {
