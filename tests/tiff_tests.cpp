@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -804,6 +805,56 @@ TEST(ThumbnailCache, ADamagedEntryIsNotFound) {
 
     cache->store(cacheKey(), picture);
     EXPECT_TRUE(cache->find(cacheKey()));
+}
+
+TEST(ThumbnailCache, IsSharedByCopiesOfTheProgramRunningAtOnce) {
+    TempDir dir;
+    const auto first = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    const auto second = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(second);
+    first->store(cacheKey("/one.png"), flatImage({16, 16}, 10));
+    second->store(cacheKey("/two.png"), flatImage({16, 16}, 20));
+    EXPECT_TRUE(second->find(cacheKey("/one.png")));
+    EXPECT_TRUE(first->find(cacheKey("/two.png")));
+}
+
+TEST(ThumbnailCache, LeavesALockedFileToTheCopyHoldingIt) {
+    TempDir dir;
+    const auto running = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(running);
+    running->store(cacheKey(), flatImage({16, 16}, 10));
+
+    // Another copy in the middle of a long write, as far as opening can tell.
+    sqlite3* holder = nullptr;
+    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &holder), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(holder, "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr), SQLITE_OK);
+    EXPECT_FALSE(ThumbnailCache::open(dir.file("c.db"), 1 << 20)) << "no cache this time";
+    sqlite3_exec(holder, "COMMIT", nullptr, nullptr, nullptr);
+    sqlite3_close(holder);
+
+    EXPECT_TRUE(running->find(cacheKey())) << "and the file was not taken from under it";
+    running->store(cacheKey("/b.png"), flatImage({16, 16}, 10));
+    const auto later = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(later);
+    EXPECT_TRUE(later->find(cacheKey()));
+    EXPECT_TRUE(later->find(cacheKey("/b.png")));
+}
+
+TEST(ThumbnailCache, LeavesANewerVersionToTheProgramThatMadeIt) {
+    TempDir dir;
+    ASSERT_TRUE(ThumbnailCache::open(dir.file("c.db"), 1 << 20));
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db, "PRAGMA user_version=999", nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(db);
+
+    EXPECT_FALSE(ThumbnailCache::open(dir.file("c.db"), 1 << 20));
+    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &db), SQLITE_OK);
+    int version = 0;
+    sqlite3_exec(db, "PRAGMA user_version", [](void* out, int, char** values, char**) { *static_cast<int*>(out) = std::atoi(values[0]); return 0; }, &version, nullptr);
+    sqlite3_close(db);
+    EXPECT_EQ(version, 999);
 }
 
 TEST(ThumbnailCache, ReturnsNullWhereItCannotBeCreated) {

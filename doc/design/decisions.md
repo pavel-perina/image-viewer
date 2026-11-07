@@ -199,6 +199,8 @@ change nothing useful. The first press of a double click does this too, for that
   JPEG at quality 92 with about 40% less RMS error, measured on two small images, and still decodes
   at over 1000 per second. A build without
   JPEG XL uses that JPEG, without chroma subsampling, and treats entries it cannot read as missing.
+  Copies of the program running at once share it, as SQLite allows. Only a file that is damaged or
+  of an older version is replaced; a locked one, or a newer version, means no cache for that run.
   A file's time and size say whether its thumbnail is still valid, and the size and colour
   settings are part of the key, as colour conversion is already in the pixels.
 * A thumbnail stays until it is pushed out, even if its file was deleted, and it holds a small

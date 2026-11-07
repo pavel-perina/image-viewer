@@ -274,25 +274,41 @@ Statement prepare(sqlite3* db, const char* sql) {
 void closeDatabase(sqlite3* db) { sqlite3_close(db); }
 using Database = std::unique_ptr<sqlite3, decltype(&closeDatabase)>;
 
-// Null if this is not a usable cache of the current version.
-Database openDatabase(const std::filesystem::path& file) {
+struct Opened {
+    Database db{nullptr, closeDatabase};
+    // Not a cache this program can use: damaged, not a database, or another version. Other
+    // failures, such as another running copy holding a lock, must not lose that copy's file.
+    bool replaceable = false;
+};
+
+bool isDamage(int code) {
+    const int primary = code & 0xff;
+    return primary == SQLITE_NOTADB || primary == SQLITE_CORRUPT;
+}
+
+Opened openDatabase(const std::filesystem::path& file) {
     sqlite3* raw = nullptr;
     const int opened = sqlite3_open_v2(utf8(file).c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, nullptr);
     Database db(raw, closeDatabase);
     if (opened != SQLITE_OK) {
-        return {nullptr, closeDatabase};
+        return {.replaceable = isDamage(opened)};
     }
     sqlite3_busy_timeout(db.get(), 2000);  // another running copy of the program
     int version = -1;
     {
         const Statement query = prepare(db.get(), "PRAGMA user_version");
-        if (!query || sqlite3_step(query.get()) != SQLITE_ROW) {
-            return {nullptr, closeDatabase};  // for instance not a database at all
+        const int step = query ? sqlite3_step(query.get()) : sqlite3_errcode(db.get());
+        if (step != SQLITE_ROW) {
+            return {.replaceable = isDamage(step)};
         }
         version = sqlite3_column_int(query.get(), 0);
     }
+    // A newer version is left to the copy of the program that made it.
+    if (version > kSchemaVersion) {
+        return {};
+    }
     if (version != 0 && version != kSchemaVersion) {
-        return {nullptr, closeDatabase};
+        return {.replaceable = true};
     }
     // Losing the last thumbnails in a power cut does not matter, and waiting for the disk would.
     const std::string setup = std::string(
@@ -305,10 +321,10 @@ Database openDatabase(const std::filesystem::path& file) {
         "  PRIMARY KEY(path, edge, color));"
         "CREATE INDEX IF NOT EXISTS by_use ON thumbnails(last_used);"
         "PRAGMA user_version=") + std::to_string(kSchemaVersion) + ";";
-    if (sqlite3_exec(db.get(), setup.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
-        return {nullptr, closeDatabase};
+    if (const int result = sqlite3_exec(db.get(), setup.c_str(), nullptr, nullptr, nullptr); result != SQLITE_OK) {
+        return {.replaceable = isDamage(result)};
     }
-    return db;
+    return {.db = std::move(db)};
 }
 
 std::string colorKey(const ColorTarget& target) {
@@ -372,17 +388,18 @@ ThumbnailCache::ThumbnailCache(std::unique_ptr<Impl> impl) : m_impl(std::move(im
 ThumbnailCache::~ThumbnailCache() = default;
 
 std::unique_ptr<ThumbnailCache> ThumbnailCache::open(const std::filesystem::path& file, std::uint64_t maxBytes) {
-    Database db = openDatabase(file);
-    if (!db) {
+    Opened opened = openDatabase(file);
+    if (!opened.db && opened.replaceable) {
         // It holds nothing that cannot be made again, so a bad file is replaced.
         std::error_code ignored;
         std::filesystem::remove(file, ignored);
         std::filesystem::remove(std::filesystem::path(file) += "-wal", ignored);
         std::filesystem::remove(std::filesystem::path(file) += "-shm", ignored);
-        db = openDatabase(file);
-        if (!db) {
-            return nullptr;
-        }
+        opened = openDatabase(file);
+    }
+    Database db = std::move(opened.db);
+    if (!db) {
+        return nullptr;  // thumbnails are then made each time, as without a cache
     }
     auto impl = std::make_unique<Impl>();
     impl->db = std::move(db);
