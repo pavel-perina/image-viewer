@@ -3303,6 +3303,103 @@ TEST(LosslessJpeg, WarnsWhenTheOriginalsGoToTheTrash) {
     QMetaObject::invokeMethod(dialog, "reject");
 }
 
+TEST(SaveAs, OffersOnlyWhatCanBeWritten) {
+    BrowseContext context;
+    EXPECT_TRUE(context.saveFilters().contains(QStringLiteral("PNG (*.png)")));
+    EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b.JPG")), QStringLiteral("jpeg"));
+    EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b.tiff")), QStringLiteral("tiff"));
+    EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b.bmp")), QString());
+    EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b")), QString());
+}
+
+TEST(SaveAs, WritesTheFormatAndMakesTheResultCurrent) {
+    FileOpsFixture f(1);
+    QSignalSpy edited(&f.context, &BrowseContext::filesEdited);
+    f.context.saveAs(f.path(QStringLiteral("a.jpg")), 0, f.path(QStringLiteral("a.png")), {});
+    f.settle([&] { return f.context.fileCount() == 2; });
+    EXPECT_TRUE(f.problems.isEmpty()) << f.problems.join(u'|').toStdString();
+    EXPECT_EQ(f.context.selectedPaths(), QStringList{f.path(QStringLiteral("a.png"))});
+    EXPECT_EQ(f.context.currentName(), QStringLiteral("a.png"));
+    ASSERT_EQ(edited.count(), 1);
+    const auto opened = iv::openImageSource(QFileInfo(f.path(QStringLiteral("a.png"))).filesystemFilePath());
+    ASSERT_TRUE(opened);
+    EXPECT_EQ((*opened)->subimages().front().stored.container, "PNG");
+
+    f.context.saveAs(f.path(QStringLiteral("a.jpg")), 0, f.path(QStringLiteral("a.bmp")), {});
+    f.settle([&] { return !f.problems.isEmpty(); });
+    ASSERT_EQ(f.problems.size(), 1);
+    EXPECT_TRUE(f.problems.front().startsWith(QStringLiteral("a.bmp: "))) << f.problems.front().toStdString();
+}
+
+TEST(SaveAs, TheOptionsReachTheWriter) {
+    FileOpsFixture f(1);
+    writeJpeg(f.path(QStringLiteral("a.jpg")), {.width = 64, .height = 64, .pixel = [](int x, int y) {
+                  return iv::test::Rgb{static_cast<std::uint8_t>(x * 4), static_cast<std::uint8_t>((x ^ y) * 4), static_cast<std::uint8_t>(y * 4)};
+              }});
+    const auto save = [&](const QString& name, const QVariantMap& options) {
+        f.context.saveAs(f.path(QStringLiteral("a.jpg")), 0, f.path(name), options);
+        f.settle([&] { return QFileInfo::exists(f.path(name)); });
+        EXPECT_TRUE(f.problems.isEmpty()) << f.problems.join(u'|').toStdString();
+    };
+    save(QStringLiteral("low.jpg"), {{QStringLiteral("quality"), 20}, {QStringLiteral("progressive"), false}});
+    save(QStringLiteral("high.jpg"), {{QStringLiteral("quality"), 98}, {QStringLiteral("chroma"), QStringLiteral("4:4:4")}});
+    EXPECT_LT(FileOpsFixture::size(f.path(QStringLiteral("low.jpg"))), FileOpsFixture::size(f.path(QStringLiteral("high.jpg"))));
+    const auto read = [&](const QString& name) {
+        QFile file(f.path(name));
+        EXPECT_TRUE(file.open(QIODevice::ReadOnly));
+        const QByteArray bytes = file.readAll();
+        return iv::test::decodeJpeg({bytes.begin(), bytes.end()});
+    };
+    EXPECT_FALSE(read(QStringLiteral("low.jpg")).progressive);
+    EXPECT_TRUE(read(QStringLiteral("high.jpg")).progressive);
+}
+
+TEST(SaveAs, TheOptionsDialogStartsTheSave) {
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 800; height: 600; visible: true
+            property alias context: context
+            property alias actions: actions
+            BrowseContext { id: context }
+            FileActions { id: actions; context: context; viewing: false }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* context = root->property("context").value<BrowseContext*>();
+    auto* actions = root->property("actions").value<QObject*>();
+    context->openPath(dir.filePath(QStringLiteral("a.jpg")));
+    ASSERT_TRUE(waitUntil([&] { return context->selectedCount() == 1; }));
+    EXPECT_TRUE(actions->property("saveAsAction").value<QObject*>()->property("enabled").toBool());
+
+    auto* dialog = actions->findChild<QObject*>(QStringLiteral("saveOptionsDialog"));
+    ASSERT_NE(dialog, nullptr);
+    const QString target = dir.filePath(QStringLiteral("b.jpg"));
+    QMetaObject::invokeMethod(actions, "chooseSaveOptions", Q_ARG(QVariant, dir.filePath(QStringLiteral("a.jpg"))),
+                              Q_ARG(QVariant, 0), Q_ARG(QVariant, target));
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_EQ(dialog->property("title").toString(), QStringLiteral("Save As JPEG"));
+    auto* content = dialog->property("contentItem").value<QQuickItem*>();
+    QQuickItem* note = findNamed(content, QStringLiteral("recompressNote"));
+    ASSERT_NE(note, nullptr);
+    EXPECT_TRUE(note->isVisible()) << "a JPEG saved as JPEG loses quality";
+    QQuickItem* quality = findNamed(content, QStringLiteral("qualitySlider"));
+    ASSERT_NE(quality, nullptr);
+    EXPECT_EQ(quality->property("value").toInt(), 90);
+    EXPECT_TRUE(findNamed(content, QStringLiteral("keepMetadataCheck"))->property("checked").toBool());
+
+    QMetaObject::invokeMethod(dialog, "accept");
+    ASSERT_TRUE(waitUntil([&] { return !context->busy() && context->currentName() == QStringLiteral("b.jpg"); }));
+    EXPECT_TRUE(QFileInfo::exists(target));
+}
+
 int main(int argc, char** argv) {
     // Tests run side by side, and must neither see each other's settings nor touch the user's.
     // The same goes for the trash: Qt uses the one in the home folder for files on the same

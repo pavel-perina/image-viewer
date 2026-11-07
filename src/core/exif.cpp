@@ -226,6 +226,16 @@ std::string normalizeExifDate(std::string_view date) {
     return out;
 }
 
+std::span<const std::uint8_t> exifTiffStructure(std::span<const std::uint8_t> block) {
+    if (block.size() >= 6 && std::equal(block.begin(), block.begin() + 6, "Exif\0\0")) {
+        block = block.subspan(6);
+    }
+    if (block.size() < 8 || !((block[0] == 'I' && block[1] == 'I') || (block[0] == 'M' && block[1] == 'M'))) {
+        return {};
+    }
+    return block;
+}
+
 ExifData parseExif(std::span<const std::uint8_t> app1) {
     ExifData exif;
     static constexpr std::array<std::uint8_t, 6> kSignature{'E', 'x', 'i', 'f', 0, 0};
@@ -333,15 +343,7 @@ public:
     // Sets the orientation to 1, unlinks the thumbnail and sets the stored pixel dimensions to
     // those of the result. Whatever is malformed is left alone.
     void apply(int width, int height) {
-        if (m_data.size() < 8) {
-            return;
-        }
-        if (m_data[0] == 'I' && m_data[1] == 'I') {
-            m_little = true;
-        } else if (m_data[0] != 'M' || m_data[1] != 'M') {
-            return;
-        }
-        if (read16(2) != 42) {
+        if (!valid()) {
             return;
         }
         const std::size_t ifd0 = read32(4);
@@ -370,8 +372,58 @@ public:
         }
     }
 
+    // Empties the GPS directory, zeroing its entries and the values they point to, so that
+    // the position is not left behind in the bytes either.
+    void removeLocation() {
+        if (!valid()) {
+            return;
+        }
+        std::size_t gpsIfd = 0;
+        forEachEntry(read32(4), [&](std::size_t entry) {
+            if (read16(entry) == 0x8825) {
+                gpsIfd = integer(entry).value_or(0);
+            }
+        });
+        if (gpsIfd == 0) {
+            return;
+        }
+        const std::size_t end = forEachEntry(gpsIfd, [&](std::size_t entry) {
+            const std::uint64_t bytes = typeSize(read16(entry + 2)) * read32(entry + 4);
+            const std::uint64_t at = read32(entry + 8);
+            if (bytes > 4 && at >= 8 && at <= m_data.size() && bytes <= m_data.size() - at) {
+                std::fill_n(m_data.begin() + static_cast<std::ptrdiff_t>(at), static_cast<std::ptrdiff_t>(bytes), 0);
+            }
+        });
+        if (end != 0) {
+            // No entries, and the zeros after the count read as the end of the chain.
+            std::fill(m_data.begin() + static_cast<std::ptrdiff_t>(gpsIfd), m_data.begin() + static_cast<std::ptrdiff_t>(end), 0);
+        }
+    }
+
 private:
     static constexpr std::size_t kEntrySize = 12;
+
+    bool valid() {
+        if (m_data.size() < 8) {
+            return false;
+        }
+        if (m_data[0] == 'I' && m_data[1] == 'I') {
+            m_little = true;
+        } else if (m_data[0] != 'M' || m_data[1] != 'M') {
+            return false;
+        }
+        return read16(2) == 42;
+    }
+
+    static std::uint64_t typeSize(std::uint16_t type) {
+        switch (type) {
+        case 1: case 2: case 6: case 7: return 1;  // BYTE, ASCII, SBYTE, UNDEFINED
+        case 3: case 8:                 return 2;  // SHORT, SSHORT
+        case 4: case 9: case 11:        return 4;  // LONG, SLONG, FLOAT
+        case 5: case 10: case 12:       return 8;  // RATIONAL, SRATIONAL, DOUBLE
+        default:                        return 0;
+        }
+    }
 
     std::uint16_t read16(std::size_t at) const {
         return m_little ? static_cast<std::uint16_t>(m_data[at] | m_data[at + 1] << 8)
@@ -438,5 +490,7 @@ private:
 }  // namespace
 
 void resetExifForPixels(std::span<std::uint8_t> tiff, int width, int height) { ExifPatcher(tiff).apply(width, height); }
+
+void removeExifLocation(std::span<std::uint8_t> tiff) { ExifPatcher(tiff).removeLocation(); }
 
 }  // namespace iv

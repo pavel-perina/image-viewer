@@ -49,6 +49,7 @@ qt_add_qml_module(iv_ui
         qml/PathBar.qml
         qml/PreviewPanel.qml
         qml/ResampledView.qml
+        qml/SaveOptionsDialog.qml
         qml/Theme.qml
         qml/ViewerPage.qml
 )

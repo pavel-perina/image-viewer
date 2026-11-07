@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 #include <functional>
 #include <stop_token>
@@ -66,6 +67,18 @@ bool canConvertToJxl();
 // trashOriginals, each JPEG whose conversion succeeded then goes to the trash.
 FileJobResult convertJpegFilesToJxl(const QStringList& paths, bool trashOriginals, std::stop_token stop,
                                     const JobProgress& progress);
+
+// The format a file name's extension asks for: "jpeg", "png", "tiff", "webp", "avif" or "jxl",
+// or empty if this build cannot write it.
+QString saveFormatFor(const QString& path);
+
+// Writes a page of an image to a file in the format its extension names, replacing one that is
+// there. The options come as the save dialog gives them: quality (1-100), chroma ("4:4:4",
+// "4:2:2" or "4:2:0"), progressive, lossless, effort (0-9, the format's own range), compression
+// for TIFF ("none", "lzw", "deflate") or the level for PNG (0-9), keepMetadata and
+// removeLocation. What is missing takes the writer's default.
+FileJobResult saveImageAs(const QString& source, int page, const QString& target, const QVariantMap& options,
+                          std::stop_token stop);
 
 // Saves as a new file named after the time, such as 2026-12-24_125959.png, adding _1 and so on
 // if that name is taken.

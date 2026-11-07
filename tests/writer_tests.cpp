@@ -9,6 +9,7 @@
 #include <lcms2.h>
 
 #include "core/image_source.h"
+#include "core/exif.h"
 #include "core/image_writer.h"
 #include "test_exif.h"
 
@@ -245,6 +246,8 @@ TEST_F(Writer, KeepsTheColourProfileAndTheExif) {
         EXPECT_EQ(back.info.exif.iso, 400);
         // The pixels are written upright, so the orientation they had does not apply.
         EXPECT_EQ(back.info.exif.orientation, Orientation::Normal);
+        // And the block itself comes back, for the next file to be written from it.
+        EXPECT_EQ(parseExif(back.info.rawExif).model, "Canon EOS 5D");
     }
 }
 
@@ -270,6 +273,9 @@ TEST_F(Writer, KeepsTheXmpWithItsOrientationReset) {
         // Every format stores the packet uncompressed, so it shows in the file as it is.
         const std::string_view file(reinterpret_cast<const char*>(bytes->data()), bytes->size());
         EXPECT_NE(file.find(expected), std::string_view::npos);
+        // And the readers find it.
+        const ReadBack back = roundTrip(image, options, metadata);
+        EXPECT_EQ(std::string(back.info.xmp.begin(), back.info.xmp.end()), expected);
     }
 }
 

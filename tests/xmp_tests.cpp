@@ -42,5 +42,46 @@ TEST(Xmp, LeavesEverythingElseAlone) {
     }
 }
 
+std::string withoutLocation(const std::string& packet) {
+    std::vector<std::uint8_t> bytes(packet.begin(), packet.end());
+    removeXmpLocation(bytes);
+    return {bytes.begin(), bytes.end()};
+}
+
+TEST(Xmp, RemovesTheLocationAttributes) {
+    const std::string packet = R"(<rdf:Description exif:GPSLatitude="49,11.51N" xmp:Rating="4")"
+                               "\n exif:GPSLongitude = '16,36.3E' exif:GPSAltitude=\"2345/10\"/>";
+    const std::string result = withoutLocation(packet);
+    EXPECT_EQ(result.size(), packet.size());
+    EXPECT_EQ(result.find("GPS"), std::string::npos);
+    EXPECT_EQ(result.find("49"), std::string::npos);
+    EXPECT_EQ(result.find("2345"), std::string::npos);
+    EXPECT_NE(result.find(R"( xmp:Rating="4")"), std::string::npos);
+    EXPECT_TRUE(result.starts_with("<rdf:Description "));
+    EXPECT_TRUE(result.ends_with(" />"));
+}
+
+TEST(Xmp, RemovesTheLocationElements) {
+    const std::string packet = "<rdf:Description><exif:GPSLatitude>49,11.51N</exif:GPSLatitude>"
+                               "<xmp:Rating>4</xmp:Rating><exif:GPSVersionID/></rdf:Description>";
+    const std::string result = withoutLocation(packet);
+    EXPECT_EQ(result.size(), packet.size());
+    EXPECT_EQ(result.find("GPS"), std::string::npos);
+    EXPECT_EQ(result.find("49"), std::string::npos);
+    EXPECT_NE(result.find("<xmp:Rating>4</xmp:Rating>"), std::string::npos);
+    EXPECT_TRUE(result.starts_with("<rdf:Description> "));
+    EXPECT_TRUE(result.ends_with(" </rdf:Description>"));
+}
+
+TEST(Xmp, LeavesWhatIsNotLocationAlone) {
+    for (const std::string packet : {
+             R"(<rdf:Description photoshop:City="Brno"/>)",
+             R"(<rdf:Description exif:GPSLatitude="49)",  // cut short
+             "<exif:GPSLatitude>49",
+         }) {
+        EXPECT_EQ(withoutLocation(packet), packet);
+    }
+}
+
 }  // namespace
 }  // namespace iv

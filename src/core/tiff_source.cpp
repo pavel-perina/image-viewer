@@ -99,6 +99,7 @@ struct Directory {
     std::vector<std::uint8_t> iccProfile;
     std::vector<std::uint64_t> subIfds;
     std::uint64_t exifOffset = 0;
+    std::vector<std::uint8_t> xmp;
     StoredFormat stored;
     ExifData exif;
     bool useRgbaInterface = false;
@@ -184,6 +185,11 @@ void readBasicCameraTags(TIFF* tiff, Directory& d) {
     toff_t offset = 0;
     if (TIFFGetField(tiff, TIFFTAG_EXIFIFD, &offset)) {
         d.exifOffset = offset;
+    }
+    std::uint32_t xmpLength = 0;
+    const std::uint8_t* xmp = nullptr;
+    if (TIFFGetField(tiff, TIFFTAG_XMLPACKET, &xmpLength, &xmp) && xmp) {
+        d.xmp.assign(xmp, xmp + xmpLength);
     }
 }
 
@@ -703,6 +709,7 @@ void addPage(std::vector<Directory> levels, std::vector<SubimageInfo>& subimages
     info.stored = main.stored;
     info.exif = main.exif;
     info.exif.orientation = main.orientation;
+    info.xmp = main.xmp;
     info.stored.storedLevels = static_cast<int>(usable.size());
     for (const Directory& level : usable) {
         info.levels.push_back({{static_cast<int>(level.width), static_cast<int>(level.height)}, tileSizeFor(level), false});

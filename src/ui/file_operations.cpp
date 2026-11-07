@@ -10,7 +10,14 @@
 #include <QObject>
 #include <QTimeZone>
 
+#include <algorithm>
+#include <optional>
+#include <type_traits>
+#include <variant>
+
+#include "core/image_writer.h"
 #include "core/jpeg_transform.h"
+#include "core/save_image.h"
 #ifdef IV_HAVE_JXL
 #include "core/jxl_transcode.h"
 #endif
@@ -311,6 +318,118 @@ FileJobResult saveNewImage(const QImage& image, const QString& folder, const QDa
             return result;
         }
     }
+}
+
+namespace {
+
+ChromaSubsampling chromaFrom(const QVariantMap& options, ChromaSubsampling fallback) {
+    const QString chroma = options.value(QStringLiteral("chroma")).toString();
+    if (chroma == QLatin1String("4:4:4")) {
+        return ChromaSubsampling::Full;
+    }
+    if (chroma == QLatin1String("4:2:2")) {
+        return ChromaSubsampling::Horizontal;
+    }
+    if (chroma == QLatin1String("4:2:0")) {
+        return ChromaSubsampling::Both;
+    }
+    return fallback;
+}
+
+int intFrom(const QVariantMap& options, const char* key, int fallback) {
+    const QVariant value = options.value(QLatin1String(key));
+    return value.isValid() ? value.toInt() : fallback;
+}
+
+bool boolFrom(const QVariantMap& options, const char* key, bool fallback) {
+    const QVariant value = options.value(QLatin1String(key));
+    return value.isValid() ? value.toBool() : fallback;
+}
+
+// The Butteraugli distance libjxl's cjxl uses for a quality, so that 90 means distance 1.
+float jxlDistanceFor(int quality) {
+    const double q = std::clamp(quality, 1, 100);
+    return static_cast<float>(q >= 30 ? 0.1 + (100 - q) * 0.09 : 53.0 / 3000 * q * q - 23.0 / 20 * q + 25);
+}
+
+// The writer's options for the format the target names, adjusted by what the dialog chose.
+std::optional<WriteOptions> writeOptionsFor(const QString& target, const QVariantMap& options) {
+    auto chosen = optionsForExtension(QFileInfo(target).filesystemFilePath());
+    if (!chosen) {
+        return std::nullopt;
+    }
+    std::visit(
+        [&](auto& o) {
+            using T = std::decay_t<decltype(o)>;
+            if constexpr (std::is_same_v<T, JpegWriteOptions>) {
+                o.quality = intFrom(options, "quality", o.quality);
+                o.chroma = chromaFrom(options, o.chroma);
+                o.progressive = boolFrom(options, "progressive", o.progressive);
+            } else if constexpr (std::is_same_v<T, PngWriteOptions>) {
+                o.compressionLevel = intFrom(options, "compressionLevel", o.compressionLevel);
+            } else if constexpr (std::is_same_v<T, TiffWriteOptions>) {
+                const QString compression = options.value(QStringLiteral("compression")).toString();
+                if (compression == QLatin1String("none")) {
+                    o.compression = TiffCompression::None;
+                } else if (compression == QLatin1String("lzw")) {
+                    o.compression = TiffCompression::Lzw;
+                } else if (compression == QLatin1String("deflate")) {
+                    o.compression = TiffCompression::Deflate;
+                }
+            } else if constexpr (std::is_same_v<T, WebpWriteOptions>) {
+                o.lossless = boolFrom(options, "lossless", o.lossless);
+                o.quality = intFrom(options, "quality", o.quality);
+                o.effort = intFrom(options, "effort", o.effort);
+            } else if constexpr (std::is_same_v<T, AvifWriteOptions>) {
+                o.quality = intFrom(options, "quality", o.quality);
+                o.speed = intFrom(options, "speed", o.speed);
+                o.chroma = chromaFrom(options, o.chroma);
+            } else if constexpr (std::is_same_v<T, JxlWriteOptions>) {
+                o.lossless = boolFrom(options, "lossless", o.lossless);
+                if (options.contains(QStringLiteral("quality"))) {
+                    o.distance = jxlDistanceFor(options.value(QStringLiteral("quality")).toInt());
+                }
+                o.effort = intFrom(options, "effort", o.effort);
+            }
+        },
+        *chosen);
+    return chosen;
+}
+
+}  // namespace
+
+QString saveFormatFor(const QString& path) {
+    const auto options = optionsForExtension(QFileInfo(path).filesystemFilePath());
+    if (!options || !canWrite(*options)) {
+        return {};
+    }
+    static constexpr const char* kNames[] = {"jpeg", "png", "tiff", "webp", "avif", "jxl"};
+    return QLatin1String(kNames[options->index()]);
+}
+
+FileJobResult saveImageAs(const QString& source, int page, const QString& target, const QVariantMap& options,
+                          std::stop_token stop) {
+    FileJobResult result;
+    const QString name = QFileInfo(target).fileName();
+    const auto writeOptions = writeOptionsFor(target, options);
+    if (!writeOptions || !canWrite(*writeOptions)) {
+        result.problems << QObject::tr("%1: this format cannot be written").arg(name);
+        return result;
+    }
+    auto opened = openImageSource(QFileInfo(source).filesystemFilePath());
+    if (!opened) {
+        result.problems << QObject::tr("%1: %2").arg(QFileInfo(source).fileName(), QString::fromStdString(opened.error()));
+        return result;
+    }
+    const SaveOptions saveOptions{.keepMetadata = boolFrom(options, "keepMetadata", true),
+                                  .removeLocation = boolFrom(options, "removeLocation", false)};
+    const auto saved = saveSubimage(**opened, page, QFileInfo(target).filesystemFilePath(), *writeOptions, saveOptions, true, stop);
+    if (!saved) {
+        result.problems << QObject::tr("%1: %2").arg(name, QString::fromStdString(saved.error()));
+        return result;
+    }
+    result.created << QFileInfo(target).absoluteFilePath();
+    return result;
 }
 
 }  // namespace iv

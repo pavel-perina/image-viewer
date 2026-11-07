@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <type_traits>
 #include <vector>
@@ -642,6 +643,25 @@ ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const Color
                 out[2] = mapFloat(in[0], range.low, scale);
                 out[3] = 255;
             }
+        }
+    }
+    return target;
+}
+
+ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation) {
+    if (orientation == Orientation::Normal) {
+        return source;
+    }
+    const ImageBuffer target = ImageBuffer::create(displaySize(source.size(), orientation), source.format());
+    const Affine transform = displayFromStored(source.size(), orientation);
+    const auto pixelBytes = static_cast<std::size_t>(bytesPerPixel(source.format()));
+    for (int y = 0; y < source.height(); ++y) {
+        const std::byte* in = source.row(y);
+        for (int x = 0; x < source.width(); ++x, in += pixelBytes) {
+            double outX = 0;
+            double outY = 0;
+            transform.apply(x + 0.5, y + 0.5, outX, outY);
+            std::memcpy(target.row(static_cast<int>(outY)) + static_cast<std::size_t>(outX) * pixelBytes, in, pixelBytes);
         }
     }
     return target;

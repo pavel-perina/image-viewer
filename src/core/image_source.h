@@ -57,6 +57,11 @@ struct SubimageInfo {
     std::chrono::milliseconds frameDelay{0};
     StoredFormat stored;
     ExifData exif;
+    // The metadata as stored, to be written out again: EXIF as a TIFF structure without the
+    // "Exif\0\0" before it, and the XMP packet. Empty when absent. A TIFF file's own EXIF
+    // directory is not kept, as libtiff has no bytes of it to hand over.
+    std::vector<std::uint8_t> rawExif;
+    std::vector<std::uint8_t> xmp;
 };
 
 struct TileCoord {
@@ -80,6 +85,9 @@ public:
 
 // Detects the format from the file contents, not its extension.
 Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path);
+
+// A whole level of a subimage in one buffer, put together from its tiles.
+Result<ImageBuffer> readLevel(ImageSource& source, int subimage, int level, const std::stop_token& stop);
 
 // Lowercase file extensions, without the dot, of the formats that can be opened.
 std::span<const std::string_view> supportedExtensions();

@@ -20,25 +20,30 @@ namespace iv {
 
 namespace {
 
-constexpr std::size_t kMaxExifBytes = 16 * 1024 * 1024;
-
-// The container prefixes an EXIF box with the offset of the TIFF structure inside it.
-void parseExifBox(const std::vector<std::uint8_t>& box, ExifData& exif) {
-    if (box.size() < 4) {
-        return;
-    }
-    const std::uint32_t offset = static_cast<std::uint32_t>(box[0]) << 24 | box[1] << 16 | box[2] << 8 | box[3];
-    if (offset <= box.size() - 4) {
-        exif = parseExif(std::span(box).subspan(4 + offset));
-    }
-}
+constexpr std::size_t kMaxBoxBytes = 16 * 1024 * 1024;
 
 struct Header {
     JxlBasicInfo basic{};
     std::vector<std::uint8_t> icc;
     ExifData exif;
+    std::vector<std::uint8_t> rawExif;
+    std::vector<std::uint8_t> xmp;
     bool recompressedJpeg = false;
 };
+
+// The container prefixes an EXIF box with the offset of the TIFF structure inside it.
+void readExifBox(const std::vector<std::uint8_t>& box, Header& header) {
+    if (box.size() < 4) {
+        return;
+    }
+    const std::uint32_t offset = static_cast<std::uint32_t>(box[0]) << 24 | box[1] << 16 | box[2] << 8 | box[3];
+    if (offset <= box.size() - 4) {
+        const auto data = std::span(box).subspan(4 + offset);
+        header.exif = parseExif(data);
+        const auto tiff = exifTiffStructure(data);
+        header.rawExif.assign(tiff.begin(), tiff.end());
+    }
+}
 
 Result<Header> readHeader(const std::vector<std::uint8_t>& bytes) {
     const JxlDecoderPtr decoder = JxlDecoderMake(nullptr);
@@ -56,13 +61,18 @@ Result<Header> readHeader(const std::vector<std::uint8_t>& bytes) {
     Header header;
     bool haveBasic = false;
     std::vector<std::uint8_t> box;
-    bool inExifBox = false;
+    enum class Box { None, Exif, Xmp } reading = Box::None;
     const auto finishBox = [&] {
-        if (inExifBox) {
-            box.resize(box.size() - JxlDecoderReleaseBoxBuffer(decoder.get()));
-            parseExifBox(box, header.exif);
-            inExifBox = false;
+        if (reading == Box::None) {
+            return;
         }
+        box.resize(box.size() - JxlDecoderReleaseBoxBuffer(decoder.get()));
+        if (reading == Box::Exif) {
+            readExifBox(box, header);
+        } else {
+            header.xmp = box;
+        }
+        reading = Box::None;
     };
     for (;;) {
         const JxlDecoderStatus status = JxlDecoderProcessInput(decoder.get());
@@ -89,17 +99,24 @@ Result<Header> readHeader(const std::vector<std::uint8_t>& bytes) {
         case JXL_DEC_BOX: {
             finishBox();
             JxlBoxType type{};
-            if (JxlDecoderGetBoxType(decoder.get(), type, JXL_TRUE) == JXL_DEC_SUCCESS && std::memcmp(type, "Exif", 4) == 0) {
+            if (JxlDecoderGetBoxType(decoder.get(), type, JXL_TRUE) != JXL_DEC_SUCCESS) {
+                break;
+            }
+            if (std::memcmp(type, "Exif", 4) == 0 && header.rawExif.empty()) {
+                reading = Box::Exif;
+            } else if (std::memcmp(type, "xml ", 4) == 0 && header.xmp.empty()) {
+                reading = Box::Xmp;
+            }
+            if (reading != Box::None) {
                 box.resize(64 * 1024);
                 JxlDecoderSetBoxBuffer(decoder.get(), box.data(), box.size());
-                inExifBox = true;
             }
             break;
         }
         case JXL_DEC_BOX_NEED_MORE_OUTPUT: {
             const std::size_t unused = JxlDecoderReleaseBoxBuffer(decoder.get());
             const std::size_t used = box.size() - unused;
-            if (box.size() >= kMaxExifBytes) {
+            if (box.size() >= kMaxBoxBytes) {
                 return haveBasic ? Result<Header>(std::move(header)) : std::unexpected("cannot read JPEG XL header");
             }
             box.resize(box.size() * 2);
@@ -217,6 +234,8 @@ Result<std::shared_ptr<ImageSource>> openJxlSource(std::vector<std::uint8_t> byt
     info.iccProfile = std::move(header->icc);
     info.exif = std::move(header->exif);
     info.exif.orientation = Orientation::Normal;  // libjxl hands over the pixels already turned
+    info.rawExif = std::move(header->rawExif);
+    info.xmp = std::move(header->xmp);
 
     StoredFormat& stored = info.stored;
     stored.container = "JPEG XL";

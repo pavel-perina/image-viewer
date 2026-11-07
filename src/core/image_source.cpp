@@ -1,6 +1,7 @@
 #include "core/image_source.h"
 
 #include <array>
+#include <cstring>
 #include <fstream>
 #include <new>
 
@@ -95,6 +96,35 @@ std::span<const std::string_view> supportedExtensions() {
 #endif
     };
     return kExtensions;
+}
+
+Result<ImageBuffer> readLevel(ImageSource& source, int subimage, int levelIndex, const std::stop_token& stop) {
+    const SubimageInfo& info = source.subimages()[static_cast<std::size_t>(subimage)];
+    const LevelInfo& level = info.levels[static_cast<std::size_t>(levelIndex)];
+    const int tileWidth = level.tileSize.width;
+    const int tileHeight = level.tileSize.height;
+    const int cols = (level.size.width + tileWidth - 1) / tileWidth;
+    const int rows = (level.size.height + tileHeight - 1) / tileHeight;
+
+    if (cols == 1 && rows == 1) {
+        return source.readTile({subimage, levelIndex, 0, 0}, stop);
+    }
+
+    const auto pixelBytes = static_cast<std::size_t>(bytesPerPixel(info.format));
+    const ImageBuffer whole = ImageBuffer::create(level.size, info.format);
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            const auto tile = source.readTile({subimage, levelIndex, col, row}, stop);
+            if (!tile) {
+                return tile;
+            }
+            for (int y = 0; y < tile->height(); ++y) {
+                std::memcpy(whole.row(row * tileHeight + y) + static_cast<std::size_t>(col * tileWidth) * pixelBytes,
+                            tile->row(y), static_cast<std::size_t>(tile->width()) * pixelBytes);
+            }
+        }
+    }
+    return whole;
 }
 
 }  // namespace iv

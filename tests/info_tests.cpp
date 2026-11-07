@@ -201,6 +201,28 @@ TEST(Exif, SurvivesCorruptionAtEveryByte) {
     }
 }
 
+TEST(Exif, RemovesTheLocationLeavingTheRest) {
+    for (const bool little : {true, false}) {
+        std::vector<std::uint8_t> block = test::exampleExifBlock(little);
+        const std::span<std::uint8_t> tiff = std::span(block).subspan(6);
+        removeExifLocation(tiff);
+        const ExifData exif = parseExif(block);
+        EXPECT_FALSE(exif.latitude);
+        EXPECT_FALSE(exif.altitude);
+        EXPECT_EQ(exif.model, "Canon EOS 5D");
+        EXPECT_EQ(*exif.iso, 400);
+    }
+}
+
+TEST(Exif, RemovingTheLocationSurvivesCorruption) {
+    const std::vector<std::uint8_t> block = test::exampleExifBlock(true);
+    for (std::size_t at = 6; at < block.size(); ++at) {
+        std::vector<std::uint8_t> copy = block;
+        copy[at] = 0xFF;
+        removeExifLocation(std::span(copy).subspan(6));
+    }
+}
+
 TEST(Exif, CleansTextAndDates) {
     EXPECT_EQ(cleanExifText(std::string_view("  Canon \0garbage", 15)), "Canon");
     EXPECT_EQ(cleanExifText("a\x01" "b"), "ab");

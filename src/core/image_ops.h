@@ -4,6 +4,7 @@
 
 #include <span>
 
+#include "core/geometry.h"
 #include "core/image_buffer.h"
 
 namespace iv {
@@ -36,6 +37,9 @@ void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const Image
 // the whole image, so use it for what has to be right, not for what has to be drawn quickly.
 // A stop request makes it give up between rows and return an empty buffer.
 ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& stop = {});
+
+// The pixels turned and mirrored the way an orientation shows them. Normal returns the same buffer.
+ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation);
 
 // Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
 // and light content stay visible, and makes it opaque. Not for gray formats, which have none.

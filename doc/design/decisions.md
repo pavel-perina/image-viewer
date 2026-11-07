@@ -304,8 +304,7 @@ change nothing useful. The first press of a double click does this too, for that
 
 ## Writers
 * `encodeImage` and `writeImage` in core write JPEG, PNG, TIFF, WebP, AVIF and JPEG XL. Each format
-  has its own options struct, and the struct passed chooses the format. There is no dialog yet;
-  Save As will use these.
+  has its own options struct, and the struct passed chooses the format. Save As uses them.
 * Defaults: JPEG quality 90, 4:2:0, progressive. PNG level 6. TIFF Deflate with a predictor.
   WebP quality 85, effort 4. AVIF quality 70, speed 6, 4:2:0. JPEG XL distance 1, effort 7.
 * Lossless: PNG and TIFF always, WebP and JPEG XL as an option. Lossless AVIF and lossless
@@ -322,15 +321,38 @@ change nothing useful. The first press of a double click does this too, for that
   not the same bytes.
 * EXIF is written to JPEG, PNG (eXIf), WebP, AVIF and JPEG XL, with the orientation reset to 1,
   the pixel dimensions set and the thumbnail unlinked, as the pixels are written as given.
-  Not to TIFF yet, where it needs its own directory. Nothing yet reads the raw EXIF bytes of an
-  opened file for Save As to pass on; readers only parse it.
+  Not to TIFF yet, where it needs its own directory.
 * XMP is written as given, with `tiff:Orientation` reset the same way as in the lossless
   JPEG tools: APP1 in JPEG, an uncompressed iTXt chunk in PNG, tag 700 in TIFF, the XMP chunk
   in WebP and an `xml ` box in JPEG XL; AVIF through libavif. A JPEG packet longer than one
-  marker (about 64 kB) is left out, as it would need extended XMP. Like EXIF, nothing reads it
-  from opened files yet. IPTC is not written.
+  marker (about 64 kB) is left out, as it would need extended XMP. IPTC is not written.
 * Files go through a temporary file and a rename, and an existing file is replaced only when
   asked.
+
+## Save As
+* File > Save As (Ctrl+Shift+S) works on one image, the current one in the viewer or the one
+  selected in the browser. The native save dialog picks the name, and the extension picks the
+  format; a name typed without one gets the chosen filter's. A second dialog then shows that
+  format's options, remembered per format, and what to do with the metadata. The native dialog
+  can hold no controls of ours, so the options cannot be in it.
+* `saveSubimage` in core opens the file again by path, so the view and its levels are not
+  involved, decodes the page at full size, turns it upright as shown, and writes it with the
+  writers. It runs as a file job, with its progress shown, and the new file becomes the current
+  one, so the viewer shows the result. A view showing a replaced file loads it again.
+* The page shown is saved; an animation saves its first frame. An image whose full-size pixels
+  would take over 2 GB is refused, as it is held whole two or three times while saving.
+* Colours are not converted: the pixels keep their colour space and the profile goes with them,
+  including one made from what the file says (CICP, PNG chunks, Adobe RGB from EXIF).
+* The readers keep the EXIF block and the XMP packet as stored (`rawExif` and `xmp` in
+  `SubimageInfo`): JPEG APP1, PNG eXIf and uncompressed iTXt, WebP chunks, AVIF through libavif,
+  JPEG XL boxes and TIFF tag 700. A TIFF file's EXIF is not kept, as libtiff gives fields rather
+  than bytes; it would have to be rebuilt.
+* Keeping camera data is the default. Removing the location empties the GPS directory, zeroing
+  its values as well so that no trace stays in the bytes, and overwrites the `exif:GPS*`
+  properties in XMP with spaces, which keeps the packet's size and its XML valid. Place names
+  typed into XMP stay.
+* Saving a JPEG as JPEG compresses it again, and the dialog says so and points to the lossless
+  tools.
 
 ## Clipboard
 * Copy puts files on the clipboard as URLs, also in the format file managers on GNOME look for.

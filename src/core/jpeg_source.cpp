@@ -15,6 +15,7 @@
 #include "core/color.h"
 #include "core/exif.h"
 #include "core/image_details.h"
+#include "core/xmp.h"
 
 namespace iv {
 
@@ -249,12 +250,22 @@ Result<std::shared_ptr<ImageSource>> openJpegSource(std::vector<std::uint8_t> by
     }
 
     for (jpeg_saved_marker_ptr marker = cinfo.marker_list; marker; marker = marker->next) {
-        if (marker->marker == JPEG_APP0 + 1) {
-            info.exif = parseExif({marker->data, marker->data_length});
-            if (info.exif.present) {  // the other APP1 block is usually XMP
+        if (marker->marker != JPEG_APP0 + 1) {
+            continue;
+        }
+        const std::span<const std::uint8_t> data{marker->data, marker->data_length};
+        if (!info.exif.present) {
+            info.exif = parseExif(data);
+            if (info.exif.present) {
                 info.orientation = info.exif.orientation;
-                break;
+                const auto tiff = exifTiffStructure(data);
+                info.rawExif.assign(tiff.begin(), tiff.end());
+                continue;
             }
+        }
+        if (info.xmp.empty() && data.size() > kXmpJpegPrefix.size() &&
+            std::equal(kXmpJpegPrefix.begin(), kXmpJpegPrefix.end(), data.begin())) {
+            info.xmp.assign(data.begin() + static_cast<std::ptrdiff_t>(kXmpJpegPrefix.size()), data.end());
         }
     }
 

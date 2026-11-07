@@ -936,6 +936,45 @@ void BrowseContext::convertToJxl(const QStringList& paths, bool trashOriginals) 
 
 bool BrowseContext::canConvertToJxl() const { return iv::canConvertToJxl(); }
 
+QString BrowseContext::saveFormat(const QString& path) const { return saveFormatFor(path); }
+
+QStringList BrowseContext::saveFilters() const {
+    static const std::pair<const char*, const char*> kFormats[] = {
+        {"JPEG (*.jpg *.jpeg)", "x.jpg"}, {"PNG (*.png)", "x.png"},   {"TIFF (*.tif *.tiff)", "x.tif"},
+        {"WebP (*.webp)", "x.webp"},      {"AVIF (*.avif)", "x.avif"}, {"JPEG XL (*.jxl)", "x.jxl"},
+    };
+    QStringList filters;
+    for (const auto& [filter, example] : kFormats) {
+        if (!saveFormatFor(QLatin1String(example)).isEmpty()) {
+            filters << QLatin1String(filter);
+        }
+    }
+    return filters;
+}
+
+void BrowseContext::saveAs(const QString& source, int page, const QString& target, const QVariantMap& options) {
+    if (source.isEmpty() || target.isEmpty()) {
+        return;
+    }
+    m_impl->startJob(this, tr("Saving"), 1,
+                     [source, page, target, options](std::stop_token stop, const JobProgress&) {
+                         return saveImageAs(source, page, target, options, stop);
+                     },
+                     [this](const FileJobResult& result) {
+                         QStringList toSelect;
+                         for (const QString& path : result.created) {
+                             if (QFileInfo(path).dir() == QDir(m_impl->directory)) {
+                                 toSelect << QFileInfo(path).fileName();
+                             }
+                         }
+                         m_impl->scan(this, toSelect);
+                         // A file that was replaced may be on show.
+                         if (!result.created.isEmpty()) {
+                             emit filesEdited(result.created);
+                         }
+                     });
+}
+
 void BrowseContext::cancelJob() { m_impl->jobStop.request_stop(); }
 
 void BrowseContext::copyFilesToClipboard(const QStringList& paths) {

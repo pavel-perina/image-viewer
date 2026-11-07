@@ -132,6 +132,14 @@ public:
     // Changes the files in place; the caller confirms first.
     Q_INVOKABLE void editJpegs(const QStringList& paths, JpegOperation operation, bool trimEdges);
     Q_INVOKABLE void convertToJxl(const QStringList& paths, bool trashOriginals);
+    // "jpeg", "png", "tiff", "webp", "avif" or "jxl" for a file name to save as, or empty if
+    // its extension names nothing this build can write.
+    Q_INVOKABLE QString saveFormat(const QString& path) const;
+    // Name filters for a save dialog, one per format this build can write.
+    Q_INVOKABLE QStringList saveFilters() const;
+    // Writes a page of an image to a file in the format of its extension; the options are
+    // those saveImageAs takes. The new file becomes the current one.
+    Q_INVOKABLE void saveAs(const QString& source, int page, const QString& target, const QVariantMap& options);
     bool canConvertToJxl() const;
     Q_INVOKABLE void cancelJob();  // stops before the next file
 

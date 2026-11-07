@@ -16,4 +16,10 @@ inline constexpr std::string_view kXmpJpegPrefix{"http://ns.adobe.com/xap/1.0/\0
 // than "tiff" is left alone, as is any value that is not a single digit.
 void resetXmpOrientation(std::span<std::uint8_t> packet);
 
+// Removes the GPS properties of the EXIF schema (exif:GPSLatitude, exif:GPSLongitude and the
+// rest) by overwriting each, attribute or element, with spaces, which XML allows there, so the
+// packet keeps its size and stays valid. Place names typed in as text are not location data
+// in this sense and stay.
+void removeXmpLocation(std::span<std::uint8_t> packet);
+
 }  // namespace iv

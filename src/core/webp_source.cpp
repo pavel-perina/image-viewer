@@ -30,6 +30,12 @@ void readChunks(const std::vector<std::uint8_t>& bytes, SubimageInfo& info) {
     if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk)) {
         info.exif = parseExif({chunk.chunk.bytes, chunk.chunk.size});
         info.orientation = info.exif.orientation;
+        const auto tiff = exifTiffStructure({chunk.chunk.bytes, chunk.chunk.size});
+        info.rawExif.assign(tiff.begin(), tiff.end());
+        WebPDemuxReleaseChunkIterator(&chunk);
+    }
+    if (WebPDemuxGetChunk(demux, "XMP ", 1, &chunk)) {
+        info.xmp.assign(chunk.chunk.bytes, chunk.chunk.bytes + chunk.chunk.size);
         WebPDemuxReleaseChunkIterator(&chunk);
     }
     WebPDemuxDelete(demux);

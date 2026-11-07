@@ -142,11 +142,8 @@ Packed pack(const ImageBuffer& image, Depth deepest, bool grayAllowed) {
 // The EXIF to write as a TIFF structure, updated for upright pixels of this size, or nothing if
 // what was given is not one.
 std::vector<std::uint8_t> exifFor(const WriteMetadata& metadata, int width, int height) {
-    std::span<const std::uint8_t> bytes = metadata.exif;
-    if (bytes.size() >= 6 && std::memcmp(bytes.data(), "Exif\0\0", 6) == 0) {
-        bytes = bytes.subspan(6);
-    }
-    if (bytes.size() < 8 || !((bytes[0] == 'I' && bytes[1] == 'I') || (bytes[0] == 'M' && bytes[1] == 'M'))) {
+    const std::span<const std::uint8_t> bytes = exifTiffStructure(metadata.exif);
+    if (bytes.empty()) {
         return {};
     }
     std::vector<std::uint8_t> tiff(bytes.begin(), bytes.end());

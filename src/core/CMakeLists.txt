@@ -35,6 +35,8 @@ add_library(iv_core STATIC
     xmp.h
     overview_source.cpp
     overview_source.h
+    save_image.cpp
+    save_image.h
     thumbnail.cpp
     thumbnail.h
     thumbnail_cache.cpp

@@ -132,6 +132,11 @@ Result<std::shared_ptr<ImageSource>> openAvifSource(std::vector<std::uint8_t> by
     if (image.exif.size > 0) {
         info.exif = parseExif({image.exif.data, image.exif.size});
         info.exif.orientation = info.orientation;  // the container decides, not the EXIF block
+        const auto tiff = exifTiffStructure({image.exif.data, image.exif.size});
+        info.rawExif.assign(tiff.begin(), tiff.end());
+    }
+    if (image.xmp.size > 0) {
+        info.xmp.assign(image.xmp.data, image.xmp.data + image.xmp.size);
     }
 
     StoredFormat& stored = info.stored;

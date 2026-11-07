@@ -8,6 +8,10 @@ Image Viewer. Early development: it currently opens JPEG, TIFF (including pyrami
 JPEG files can be rotated and flipped without loss, and repacked as JPEG XL with a byte-for-byte
 check that the original comes back (Edit > Lossless JPEG, or the file menu).
 
+File > Save As (Ctrl+Shift+S) writes the image shown as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL,
+with options per format. Camera data (EXIF and XMP) and the colour profile are kept, and the
+location can be removed.
+
 ## Build
 
 Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools), libjpeg-turbo, libtiff, SQLite, LittleCMS 2

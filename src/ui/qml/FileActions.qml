@@ -14,6 +14,8 @@ Item {
     required property BrowseContext context
     required property bool viewing
     property bool showProgress: false
+    // The page shown of the target, for Save As.
+    property int page: 0
 
     // The large view shows one image, whatever was selected before entering it.
     readonly property var targetPaths: viewing ? (context.currentPath ? [context.currentPath] : []) : context.selectedPaths
@@ -43,6 +45,7 @@ Item {
     readonly property alias convertToJxlAction: convertToJxlAction
     readonly property alias askBeforeEditingAction: askBeforeEditingAction
     readonly property alias trimEdgesAction: trimEdgesAction
+    readonly property alias saveAsAction: saveAsAction
 
     function showFolderMenu(path) {
         folderMenu.path = path
@@ -105,6 +108,35 @@ Item {
         editDialog.operation = operation
         editDialog.title = action.text.replace("&", "")
         editDialog.open()
+    }
+
+    // Asks for the new file in the native dialog, then for the format's options.
+    function saveAs() {
+        const path = targetPaths[0]
+        const slash = path.lastIndexOf("/")
+        const name = path.substring(slash + 1)
+        const dot = name.lastIndexOf(".")
+        const base = dot > 0 ? name.substring(0, dot) : name
+        saveDialog.source = path
+        saveDialog.page = page
+        saveDialog.currentFolder = context.urlFromPath(path.substring(0, slash))
+        saveDialog.selectedFile = context.urlFromPath(path.substring(0, slash + 1)
+                                                      + (context.saveFormat(path) ? name : base + ".png"))
+        saveDialog.open()
+    }
+
+    function chooseSaveOptions(source, page, target) {
+        const format = context.saveFormat(target)
+        if (!format) {
+            problemDialog.text = root.folderName(target) + ": choose a name ending in .jpg, .png, .tif, .webp, .avif or .jxl"
+            problemDialog.open()
+            return
+        }
+        saveOptionsDialog.source = source
+        saveOptionsDialog.page = page
+        saveOptionsDialog.target = target
+        saveOptionsDialog.format = format
+        saveOptionsDialog.open()
     }
 
     function fileCountText(paths, what) {
@@ -271,6 +303,14 @@ Item {
         }
     }
 
+    Action {
+        id: saveAsAction
+        text: "Save &As..."
+        shortcut: "Ctrl+Shift+S"
+        enabled: root.idle && root.targetPaths.length === 1
+        onTriggered: root.saveAs()
+    }
+
     AppMenu {
         id: fileMenu
         parent: Overlay.overlay
@@ -282,6 +322,7 @@ Item {
         AppMenuItem { action: trashAction }
         AppMenuItem { action: deleteAction }
         MenuSeparator {}
+        AppMenuItem { action: saveAsAction }
         JpegMenu { actions: root; enabled: root.idle && root.jpegTargets }
         MenuSeparator {}
         AppMenu {
@@ -353,6 +394,24 @@ Item {
                 trashFolderDialog.open()
             }
         }
+    }
+
+    FileDialog {
+        id: saveDialog
+        objectName: "saveDialog"
+        property string source
+        property int page: 0
+        title: "Save As"
+        fileMode: FileDialog.SaveFile
+        nameFilters: root.context.saveFilters()
+        // A name typed without an extension gets the chosen format's.
+        defaultSuffix: selectedNameFilter.extensions.length > 0 ? selectedNameFilter.extensions[0] : ""
+        onAccepted: root.chooseSaveOptions(source, page, root.context.pathFromUrl(selectedFile))
+    }
+
+    SaveOptionsDialog {
+        id: saveOptionsDialog
+        context: root.context
     }
 
     FolderDialog {

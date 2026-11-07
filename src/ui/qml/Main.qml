@@ -31,6 +31,7 @@ ApplicationWindow {
         id: fileActions
         context: context
         viewing: window.viewing
+        page: window.activeView.source === context.currentPath ? window.activeView.page : 0
     }
 
     Settings {
@@ -171,6 +172,7 @@ ApplicationWindow {
         AppMenu {
             title: "&File"
             AppMenuItem { action: openAction }
+            AppMenuItem { action: fileActions.saveAsAction }
             MenuSeparator {}
             AppMenuItem { action: fileActions.renameAction }
             AppMenuItem { action: fileActions.trashAction }

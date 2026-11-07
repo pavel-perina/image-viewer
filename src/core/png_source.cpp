@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "core/color.h"
+#include "core/exif.h"
 #include "core/image_ops.h"
 #include "core/whole_image_source.h"
 
@@ -134,6 +135,26 @@ private:
     png_infop m_info = nullptr;
 };
 
+// The packet of an iTXt chunk with the XMP keyword. The XMP specification has it uncompressed,
+// so a compressed one is left out.
+void readXmp(std::span<const std::uint8_t> chunk, std::vector<std::uint8_t>& xmp) {
+    constexpr std::string_view kKeyword{"XML:com.adobe.xmp\0", 18};
+    if (chunk.size() < kKeyword.size() + 2 || !std::equal(kKeyword.begin(), kKeyword.end(), chunk.begin()) ||
+        chunk[kKeyword.size()] != 0) {
+        return;
+    }
+    // After the flag and the method come a language tag and a translated keyword, each ending in NUL.
+    auto at = chunk.begin() + static_cast<std::ptrdiff_t>(kKeyword.size()) + 2;
+    for (int i = 0; i < 2; ++i) {
+        at = std::find(at, chunk.end(), std::uint8_t{0});
+        if (at == chunk.end()) {
+            return;
+        }
+        ++at;
+    }
+    xmp.assign(at, chunk.end());
+}
+
 // libpng stops at the pixels, while EXIF may follow them, and it does not know about APNG.
 void readExtraChunks(const std::vector<std::uint8_t>& bytes, SubimageInfo& info) {
     std::size_t at = kSignature.size();
@@ -146,8 +167,13 @@ void readExtraChunks(const std::vector<std::uint8_t>& bytes, SubimageInfo& info)
         if (type == "acTL") {
             info.stored.animated = true;
         } else if (type == "eXIf") {
-            info.exif = parseExif(std::span(bytes).subspan(at + 8, length));
+            const auto data = std::span(bytes).subspan(at + 8, length);
+            info.exif = parseExif(data);
             info.orientation = info.exif.orientation;
+            const auto tiff = exifTiffStructure(data);
+            info.rawExif.assign(tiff.begin(), tiff.end());
+        } else if (type == "iTXt" && info.xmp.empty()) {
+            readXmp(std::span(bytes).subspan(at + 8, length), info.xmp);
         } else if (type == "IEND") {
             return;
         }
