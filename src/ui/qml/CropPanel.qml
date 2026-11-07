@@ -32,12 +32,13 @@ Rectangle {
     color: "#e6181818"
 
     readonly property int imageWidth: view.imageWidth
-    // The stored choice, if it is still one of the list.
-    readonly property int ratioIndex: settings.ratio >= 0 && settings.ratio < ratios.length ? settings.ratio : 0
+    // The stored choice, if it is still one of the list; a screen may have gone.
+    readonly property int ratioIndex: Math.max(0, ratios.findIndex(r => r.name === settings.ratioName))
     readonly property var ratio: ratios[ratioIndex]
     readonly property int imageHeight: view.imageHeight
 
-    // Ratios with the longer side first; the orientation decides which way round they go.
+    // Ratios with the longer side first; the orientation decides which way round they go. A
+    // screen also says which way it stands.
     readonly property var ratios: [
         { name: "Free", w: 0, h: 0 },
         { name: "Keep image", w: -1, h: -1 },
@@ -47,15 +48,18 @@ Rectangle {
         { name: "3:2", w: 3, h: 2 },
         { name: "16:10", w: 16, h: 10 },
         { name: "16:9", w: 16, h: 9 },
+    ].concat(Screens.sizes.map(s => ({
+        name: s.name, w: Math.max(s.width, s.height), h: Math.min(s.width, s.height), portrait: s.height > s.width
+    }))).concat([
         { name: "A4", w: 297, h: 210 },
         { name: "Letter", w: 11, h: 8.5 },
         { name: "Custom", w: -2, h: -2 },
-    ]
+    ])
 
     Settings {
         id: settings
         category: "Crop"
-        property int ratio: 0
+        property string ratioName: "Free"
         property bool portrait: false
         property int customWidth: 4
         property int customHeight: 3
@@ -119,9 +123,11 @@ Rectangle {
             model: panel.ratios.map(r => r.name)
             currentIndex: panel.ratioIndex
             onActivated: (index) => {
-                settings.ratio = index
+                settings.ratioName = panel.ratios[index].name
                 if (panel.ratios[index].w === -1)
                     settings.portrait = panel.imageHeight > panel.imageWidth
+                else if (panel.ratios[index].portrait !== undefined)
+                    settings.portrait = panel.ratios[index].portrait
                 panel.applyRatio()
             }
         }
@@ -237,6 +243,9 @@ Rectangle {
 
     component NumberBox: SpinBox {
         editable: true
+        // Plain digits, without the thousands separator of the locale.
+        textFromValue: (value) => String(value)
+        valueFromText: (text) => parseInt(text, 10)
         Connections {
             target: contentItem
             ignoreUnknownSignals: true

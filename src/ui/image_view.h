@@ -121,6 +121,10 @@ public:
 
     // Keeps a rectangle of the image as shown.
     Q_INVOKABLE void crop(const QRect& rect);
+    // Scales the image as shown to exactly that size; with fill, a different ratio crops the
+    // middle instead of stretching. resizeProblem says why a size cannot be used, or is empty.
+    Q_INVOKABLE void resizeImage(int width, int height, bool fill);
+    Q_INVOKABLE QString resizeProblem(int width, int height) const;
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
     // Back to the page as it is in the file.

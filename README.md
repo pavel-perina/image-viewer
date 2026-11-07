@@ -12,9 +12,11 @@ File > Save As (Ctrl+Shift+S) writes the image shown as JPEG, PNG, TIFF, WebP, A
 with options per format. Camera data (EXIF and XMP) and the colour profile are kept, and the
 location can be removed.
 
-Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a fixed ratio, with
-undo and redo (Ctrl+Z, Ctrl+Shift+Z). The result is saved with Save As; leaving an edited image
-asks first.
+Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a fixed ratio
+including that of each screen, with undo and redo (Ctrl+Z, Ctrl+Shift+Z). Edit > Resize (Ctrl+R)
+scales to an exact size, with presets for the screens, long edges and percentages; a size of
+another ratio fits inside, crops the middle or stretches. The result is saved with Save As;
+leaving an edited image asks first.
 
 Edit > Probe Colours (P) reads single pixels at full size: hex, the values as stored (16-bit and
 float too), fractions from 0 to 1, and sRGB when the file has a colour profile. Each value copies

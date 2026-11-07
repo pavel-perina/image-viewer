@@ -17,7 +17,15 @@ struct CropEdit {
     bool operator==(const CropEdit&) const = default;
 };
 
-using Edit = std::variant<CropEdit>;
+// Scales to exactly the given size. With fill, the largest centred part of the ratio of that
+// size is kept first, so nothing is distorted; without it, a different ratio stretches.
+struct ResizeEdit {
+    Size size;
+    bool fill = false;
+    bool operator==(const ResizeEdit&) const = default;
+};
+
+using Edit = std::variant<CropEdit, ResizeEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.
@@ -50,6 +58,9 @@ public:
 
     // The size of the picture with the edits in effect, upright.
     Size size() const;
+
+    // Whether the picture can be resized to a size: it has to stay small enough to be saved.
+    Result<void> canResizeTo(Size size) const;
 
     // The edited picture as a source of one upright subimage, with the metadata of the original.
     // Without edits it is still upright. Each call gives a new source reflecting the edits now.

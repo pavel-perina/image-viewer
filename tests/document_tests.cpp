@@ -135,3 +135,41 @@ TEST(Document, SourcesHandedOutKeepTheirEdits) {
     ASSERT_TRUE(pixels.has_value());
     EXPECT_EQ(pixels->size(), (Size{40, 40}));
 }
+
+TEST(Document, ResizeScalesToExactlyTheSize) {
+    Document document(turnedJpeg(), 0);
+    document.apply(ResizeEdit{{20, 40}});
+    EXPECT_EQ(document.size(), (Size{20, 40}));
+    const ImageBuffer pixels = pixelsOf(document);
+    ASSERT_EQ(pixels.size(), (Size{20, 40}));
+    EXPECT_TRUE(isRed(pixels, 10, 5));
+    EXPECT_TRUE(isBlue(pixels, 10, 35));
+    document.undo();
+    EXPECT_EQ(document.size(), (Size{40, 80}));
+}
+
+TEST(Document, ResizeToAnotherRatioStretchesOrCropsTheMiddle) {
+    // Red 40 rows above blue 20, to a strip of 40 x 12.
+    Document stretched(turnedJpeg(), 0);
+    stretched.apply(CropEdit{{0, 0, 40, 60}});
+    stretched.apply(ResizeEdit{{40, 12}});
+    const ImageBuffer squeezed = pixelsOf(stretched);
+    ASSERT_EQ(squeezed.size(), (Size{40, 12}));
+    EXPECT_TRUE(isRed(squeezed, 20, 1));
+    EXPECT_TRUE(isBlue(squeezed, 20, 11)) << "all of it, squeezed";
+
+    Document filled(turnedJpeg(), 0);
+    filled.apply(CropEdit{{0, 0, 40, 60}});
+    filled.apply(ResizeEdit{{40, 12}, true});
+    const ImageBuffer middle = pixelsOf(filled);
+    ASSERT_EQ(middle.size(), (Size{40, 12}));
+    EXPECT_TRUE(isRed(middle, 20, 1));
+    EXPECT_TRUE(isRed(middle, 20, 11)) << "only rows 24 to 36, which are red";
+}
+
+TEST(Document, ResizeHasToStaySavable) {
+    const Document document(turnedJpeg(), 0);
+    EXPECT_TRUE(document.canResizeTo({80, 160}));
+    EXPECT_FALSE(document.canResizeTo({0, 10}));
+    EXPECT_FALSE(document.canResizeTo({100000, 100000}));
+}

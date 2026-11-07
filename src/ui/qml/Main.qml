@@ -80,6 +80,11 @@ ApplicationWindow {
         }
     }
 
+    ResizeDialog {
+        id: resizeDialog
+        view: viewerPage.view
+    }
+
     MessageBox {
         id: unsavedDialog
         objectName: "unsavedDialog"
@@ -168,6 +173,13 @@ ApplicationWindow {
         shortcut: "X"
         enabled: window.viewing && !window.cropping && viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
         onTriggered: viewerPage.startCrop()
+    }
+    Action {
+        id: resizeAction
+        text: "&Resize..."
+        shortcut: "Ctrl+R"
+        enabled: window.viewing && !window.toolActive && viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
+        onTriggered: resizeDialog.open()
     }
     Action {
         id: probeAction
@@ -297,6 +309,7 @@ ApplicationWindow {
             AppMenuItem { action: redoAction }
             MenuSeparator {}
             AppMenuItem { action: cropAction }
+            AppMenuItem { action: resizeAction }
             AppMenuItem { action: probeAction }
             MenuSeparator {}
             AppMenuItem { action: fileActions.copyAction }

@@ -27,7 +27,7 @@ qt_add_library(iv_ui STATIC
     thumbnail_store.h
 )
 
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Screens.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(iv_ui
     URI ImageViewer
@@ -53,9 +53,11 @@ qt_add_qml_module(iv_ui
         qml/PathBar.qml
         qml/PreviewPanel.qml
         qml/ProbePanel.qml
+        qml/ResizeDialog.qml
         qml/ResampledView.qml
         qml/SaveOptionsDialog.qml
         qml/Theme.qml
+        qml/Screens.qml
         qml/ViewerPage.qml
 )
 

@@ -411,8 +411,11 @@ Saving goes through Save As; the rest of this section is still the plan.
 * The rectangle is in whole pixels of the upright image, and dragging puts edges on the nearest
   pixel boundary, so at a high zoom they sit exactly between pixels, as screenshots need. The
   fields set the same numbers.
-* Ratios: free, the image's own, 1:1, 5:4, 4:3, 3:2, 16:10, 16:9, A4, Letter and a custom one,
-  each in landscape or portrait. Whole pixels rarely allow an exact ratio, so the side that is
+* Ratios: free, the image's own, 1:1, 5:4, 4:3, 3:2, 16:10, 16:9, each screen connected by its
+  size in pixels, A4, Letter and a custom one, each in landscape or portrait. Wide screens are
+  rarely the 21:9 they are sold as (3440 x 1440 is 43:18, 3840 x 1600 is 12:5), so for
+  wallpapers the screen's own size is the ratio that fits. A screen starts the way it stands.
+  The choice is kept by name, so screens coming and going do not shift it. Whole pixels rarely allow an exact ratio, so the side that is
   dragged follows the mouse and the other is rounded to the nearest pixel. Changing the ratio
   fits the largest rectangle of it inside the current one.
 * With a ratio, an edge sets the size and keeps the rectangle centred across it; a corner keeps
@@ -427,6 +430,19 @@ Saving goes through Save As; the rest of this section is still the plan.
   rather than solving constraints, which is also how measuring tools would work.
 * Free rotation is to come as a separate edit before crop, with an automatic crop to the largest
   rectangle of the ratio inside the turned picture.
+
+### Resize
+* A dialog, as there is nothing to drag on the image. Width and height keep the image's ratio
+  by default; presets are the screens, long edges of 3840, 2560, 1920 and 1280, 50% and 25%.
+* The size typed is the size made. Keeping a ratio by rounding the other side gives sizes such
+  as 1558 x 1200, so a target such as a screen is taken exactly: within a pixel of the image's
+  ratio it stretches by less than that pixel; beyond it the dialog asks whether to fit inside,
+  crop the middle to fill it, or stretch, and remembers the answer.
+* Wallpaper is two steps: crop at the screen's ratio where the picture should be, then resize
+  to the screen's size, which is then within a pixel.
+* It uses the Magic Kernel Sharp resize of thumbnails, in linear light for 8-bit images, on
+  the full-size picture. The edit keeps the size and whether to fill, so undo and replay give
+  the same result. Sizes are limited to what can still be saved whole.
 
 ### Still planned
 * A document is a base image, an edit list, an optional file path and an unsaved flag.

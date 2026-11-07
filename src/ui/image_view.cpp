@@ -1004,6 +1004,35 @@ void ImageView::crop(const QRect& rect) {
     d.showEdit();
 }
 
+QString ImageView::resizeProblem(int width, int height) const {
+    const Impl& d = *m_impl;
+    if (!editable() || d.status != Status::Ready) {
+        return QStringLiteral("The image cannot be edited.");
+    }
+    const auto ok = d.edit ? d.edit->canResizeTo({width, height}) : Document(d.fileSource, d.filePage).canResizeTo({width, height});
+    if (!ok) {
+        QString reason = QString::fromStdString(ok.error());
+        reason[0] = reason[0].toUpper();
+        return reason + QLatin1Char('.');
+    }
+    return {};
+}
+
+void ImageView::resizeImage(int width, int height, bool fill) {
+    Impl& d = *m_impl;
+    if (!resizeProblem(width, height).isEmpty()) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    if (d.edit->size() == Size{width, height}) {
+        return;
+    }
+    d.edit->apply(ResizeEdit{{width, height}, fill});
+    d.showEdit();
+}
+
 void ImageView::undo() {
     if (canUndo()) {
         m_impl->edit->undo();

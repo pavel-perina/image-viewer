@@ -3665,6 +3665,80 @@ TEST(Probe, AClickReadsAndRemembersAndArrowsMoveByAPixel) {
     EXPECT_FALSE(page->property("probing").toBool());
 }
 
+TEST(Editing, ResizeScalesToTheSizeAndRefusesOnesTooLarge) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTurnedJpeg(dir)));
+    EXPECT_TRUE(f.view->resizeProblem(16, 32).isEmpty());
+    EXPECT_FALSE(f.view->resizeProblem(0, 32).isEmpty());
+    EXPECT_FALSE(f.view->resizeProblem(65535, 65535).isEmpty());
+
+    f.view->resizeImage(16, 32, false);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), 16);
+    EXPECT_EQ(f.view->imageHeight(), 32);
+    EXPECT_TRUE(f.view->modified());
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageHeight(), 64);
+}
+
+TEST(Editing, TheResizeDialogKeepsTheRatioOrFillsAnother) {
+    QTemporaryDir dir;
+    const QString path = writeTurnedJpeg(dir);
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import ImageViewer
+        Window {
+            width: 600; height: 500; visible: true
+            property alias view: image
+            property alias dialog: dialog
+            ImageView { id: image; anchors.fill: parent }
+            ResizeDialog { id: dialog; view: image }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* image = root->property("view").value<ImageView*>();
+    auto* dialog = root->property("dialog").value<QObject*>();
+    image->setSource(path);
+    ASSERT_TRUE(settled(image));
+    auto* content = dialog->property("contentItem").value<QQuickItem*>();
+    QQuickItem* width = findNamed(content, QStringLiteral("resizeWidth"));
+    QQuickItem* height = findNamed(content, QStringLiteral("resizeHeight"));
+    ASSERT_NE(width, nullptr);
+
+    QMetaObject::invokeMethod(dialog, "open");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_EQ(width->property("value").toInt(), 32);
+    EXPECT_EQ(height->property("value").toInt(), 64);
+    // Typing a width sets the height for the ratio.
+    width->setProperty("value", 16);
+    EXPECT_EQ(height->property("value").toInt(), 32);
+    EXPECT_FALSE(dialog->property("otherRatio").toBool());
+    QMetaObject::invokeMethod(dialog, "accept");
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 16; }));
+    EXPECT_EQ(image->imageHeight(), 32);
+
+    // A screen of another ratio, filled by cropping the middle.
+    QMetaObject::invokeMethod(dialog, "open");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_EQ(width->property("value").toInt(), 16) << "starts from the size the image has now";
+    const QVariantMap screen{{QStringLiteral("width"), 40}, {QStringLiteral("height"), 30}};
+    QMetaObject::invokeMethod(dialog, "applyPreset", Q_ARG(QVariant, screen));
+    EXPECT_TRUE(dialog->property("otherRatio").toBool());
+    EXPECT_EQ(dialog->property("target").toSizeF(), QSizeF(40, 30));
+    QQuickItem* fill = findNamed(content, QStringLiteral("resizeFill"));
+    ASSERT_NE(fill, nullptr);
+    fill->setProperty("checked", true);
+    QMetaObject::invokeMethod(fill, "toggled");
+    QMetaObject::invokeMethod(dialog, "accept");
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 40; }));
+    EXPECT_EQ(image->imageHeight(), 30);
+}
+
 TEST(Main, LeavingAnEditedImageAsksFirst) {
     QTemporaryDir dir;
     writeTurnedJpeg(dir, QStringLiteral("a.jpg"));

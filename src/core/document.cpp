@@ -22,13 +22,28 @@ struct Overloaded : Ts... {
 };
 
 Size sizeAfter(Size /*before*/, const Edit& edit) {
-    return std::visit(Overloaded{[](const CropEdit& crop) { return Size{crop.rect.width, crop.rect.height}; }}, edit);
+    return std::visit(Overloaded{[](const CropEdit& crop) { return Size{crop.rect.width, crop.rect.height}; },
+                                 [](const ResizeEdit& resize) { return resize.size; }},
+                      edit);
 }
 
-ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit) {
+// Empty when stopped.
+ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::stop_token& stop) {
     return std::visit(Overloaded{[&](const CropEdit& crop) {
-                          return pixels.view(crop.rect.x, crop.rect.y, crop.rect.width, crop.rect.height);
-                      }},
+                                     return pixels.view(crop.rect.x, crop.rect.y, crop.rect.width, crop.rect.height);
+                                 },
+                                 [&](const ResizeEdit& scale) {
+                                     ImageBuffer from = pixels;
+                                     if (scale.fill) {
+                                         const PixelRect part = fitAspect({0, 0, pixels.width(), pixels.height()},
+                                                                          {scale.size.width, scale.size.height});
+                                         from = pixels.view(part.x, part.y, part.width, part.height);
+                                     }
+                                     if (from.width() == scale.size.width && from.height() == scale.size.height) {
+                                         return from;
+                                     }
+                                     return resize(from, scale.size, stop);
+                                 }},
                       edit);
 }
 
@@ -102,6 +117,18 @@ Size Document::size() const {
     return size;
 }
 
+Result<void> Document::canResizeTo(Size size) const {
+    if (size.width < 1 || size.height < 1) {
+        return std::unexpected("the size has to be at least one pixel");
+    }
+    SubimageInfo info = m_base->subimages()[static_cast<std::size_t>(m_subimage)];
+    info.levels.front().size = size;
+    if (!canSaveWhole(info)) {
+        return std::unexpected("the image would be too large to be saved");
+    }
+    return {};
+}
+
 std::shared_ptr<ImageSource> Document::source() const {
     SubimageInfo info = m_base->subimages()[static_cast<std::size_t>(m_subimage)];
     const Size edited = size();
@@ -119,8 +146,15 @@ std::shared_ptr<ImageSource> Document::source() const {
             return pixels;
         }
         ImageBuffer result = *pixels;
-        for (const Edit& edit : edits) {
-            result = applyEdit(result, edit);
+        try {
+            for (const Edit& edit : edits) {
+                result = applyEdit(result, edit, stop);
+                if (result.isNull()) {
+                    return std::unexpected("stopped");
+                }
+            }
+        } catch (const std::bad_alloc&) {
+            return std::unexpected("not enough memory to edit the image");
         }
         return result;
     };
