@@ -10,6 +10,7 @@ add_executable(iv_core_tests
     format_tests.cpp
     info_tests.cpp
     jpeg_transform_tests.cpp
+    writer_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp

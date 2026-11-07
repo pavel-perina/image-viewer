@@ -293,6 +293,31 @@ change nothing useful. The first press of a double click does this too, for that
   trash, each only after its own conversion succeeded, and the dialog turns into a warning
   when that is on.
 
+## Writers
+* `encodeImage` and `writeImage` in core write JPEG, PNG, TIFF, WebP, AVIF and JPEG XL. Each format
+  has its own options struct, and the struct passed chooses the format. There is no dialog yet;
+  Save As will use these.
+* Defaults: JPEG quality 90, 4:2:0, progressive. PNG level 6. TIFF Deflate with a predictor.
+  WebP quality 85, effort 4. AVIF quality 70, speed 6, 4:2:0. JPEG XL distance 1, effort 7.
+* Lossless: PNG and TIFF always, WebP and JPEG XL as an option. Lossless AVIF and lossless
+  JPEG are left out, as almost nothing uses them.
+* Depth: each format keeps what it can. 16-bit stays 16-bit in PNG, TIFF and JPEG XL, becomes
+  10-bit in AVIF, and 8-bit in JPEG and WebP. Float stays float in TIFF and JPEG XL and becomes
+  16-bit in PNG and AVIF, taking 0 to 1 as the range. The unused fourth channel is never written,
+  as the viewer does not keep alpha.
+* 8-bit images whose pixels are all gray are written as grayscale where the format has it (JPEG,
+  PNG, TIFF, JPEG XL), unless an RGB profile has to go with them.
+* The ICC profile is written when its colour space matches the pixels; without one, PNG gets
+  an sRGB chunk, AVIF sRGB colour codes and JPEG XL an sRGB colour encoding. Lossy JPEG XL
+  stores a profile it recognises as a compact description and gives back an equivalent one,
+  not the same bytes.
+* EXIF is written to JPEG, PNG (eXIf), WebP, AVIF and JPEG XL, with the orientation reset to 1,
+  the pixel dimensions set and the thumbnail unlinked, as the pixels are written as given.
+  Not to TIFF yet, where it needs its own directory. Nothing yet reads the raw EXIF bytes of an
+  opened file for Save As to pass on; readers only parse it.
+* Files go through a temporary file and a rename, and an existing file is replaced only when
+  asked.
+
 ## Clipboard
 * Copy puts files on the clipboard as URLs, also in the format file managers on GNOME look for.
   A single file is also added as an image, in sRGB and at most 16384 pixels along its longer

@@ -25,6 +25,8 @@ add_library(iv_core STATIC
     image_ops.h
     image_source.cpp
     image_source.h
+    image_writer.cpp
+    image_writer.h
     jpeg_source.cpp
     jpeg_source.h
     jpeg_transform.cpp
@@ -55,7 +57,7 @@ if(PNG_FOUND)
     target_link_libraries(iv_core PRIVATE PNG::PNG)
     target_compile_definitions(iv_core PUBLIC IV_HAVE_PNG)
 endif()
-pkg_check_modules(WEBP IMPORTED_TARGET GLOBAL libwebp libwebpdemux)
+pkg_check_modules(WEBP IMPORTED_TARGET GLOBAL libwebp libwebpdemux libwebpmux)
 if(WEBP_FOUND)
     target_sources(iv_core PRIVATE webp_source.cpp webp_source.h)
     target_link_libraries(iv_core PRIVATE PkgConfig::WEBP)

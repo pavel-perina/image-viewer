@@ -265,4 +265,120 @@ ExifData parseExif(std::span<const std::uint8_t> app1) {
     return exif;
 }
 
+namespace {
+
+// Changes a TIFF structure holding EXIF in place, so that it stays valid byte for byte.
+class ExifPatcher {
+public:
+    explicit ExifPatcher(std::span<std::uint8_t> tiff) : m_data(tiff) {}
+
+    // Sets the orientation to 1, unlinks the thumbnail and sets the stored pixel dimensions to
+    // those of the result. Whatever is malformed is left alone.
+    void apply(int width, int height) {
+        if (m_data.size() < 8) {
+            return;
+        }
+        if (m_data[0] == 'I' && m_data[1] == 'I') {
+            m_little = true;
+        } else if (m_data[0] != 'M' || m_data[1] != 'M') {
+            return;
+        }
+        if (read16(2) != 42) {
+            return;
+        }
+        const std::size_t ifd0 = read32(4);
+        std::size_t exifIfd = 0;
+        const std::size_t end = forEachEntry(ifd0, [&](std::size_t entry) {
+            const std::uint16_t tag = read16(entry);
+            if (tag == 0x0112) {
+                setInteger(entry, 1);
+            } else if (tag == 0x8769) {
+                exifIfd = integer(entry).value_or(0);
+            }
+        });
+        // The offset of the next directory, IFD1, which holds the thumbnail.
+        if (end != 0 && end + 4 <= m_data.size()) {
+            write32(end, 0);
+        }
+        if (exifIfd != 0) {
+            forEachEntry(exifIfd, [&](std::size_t entry) {
+                const std::uint16_t tag = read16(entry);
+                if (tag == 0xA002) {
+                    setInteger(entry, static_cast<std::uint32_t>(width));
+                } else if (tag == 0xA003) {
+                    setInteger(entry, static_cast<std::uint32_t>(height));
+                }
+            });
+        }
+    }
+
+private:
+    static constexpr std::size_t kEntrySize = 12;
+
+    std::uint16_t read16(std::size_t at) const {
+        return m_little ? static_cast<std::uint16_t>(m_data[at] | m_data[at + 1] << 8)
+                        : static_cast<std::uint16_t>(m_data[at] << 8 | m_data[at + 1]);
+    }
+    std::uint32_t read32(std::size_t at) const {
+        const std::uint32_t high = read16(at);
+        const std::uint32_t low = read16(at + 2);
+        return m_little ? (low << 16 | high) : (high << 16 | low);
+    }
+    void write16(std::size_t at, std::uint16_t value) {
+        m_data[at + (m_little ? 0 : 1)] = static_cast<std::uint8_t>(value);
+        m_data[at + (m_little ? 1 : 0)] = static_cast<std::uint8_t>(value >> 8);
+    }
+    void write32(std::size_t at, std::uint32_t value) {
+        write16(at + (m_little ? 0 : 2), static_cast<std::uint16_t>(value));
+        write16(at + (m_little ? 2 : 0), static_cast<std::uint16_t>(value >> 16));
+    }
+
+    // A SHORT or LONG with a single value, which then sits in the entry itself.
+    std::optional<std::uint32_t> integer(std::size_t entry) const {
+        if (read32(entry + 4) != 1) {
+            return std::nullopt;
+        }
+        switch (read16(entry + 2)) {
+        case 3:  return read16(entry + 8);
+        case 4:  return read32(entry + 8);
+        default: return std::nullopt;
+        }
+    }
+    void setInteger(std::size_t entry, std::uint32_t value) {
+        if (!integer(entry) || (read16(entry + 2) == 3 && value > 0xFFFF)) {
+            return;
+        }
+        if (read16(entry + 2) == 3) {
+            write16(entry + 8, static_cast<std::uint16_t>(value));
+        } else {
+            write32(entry + 8, value);
+        }
+    }
+
+    // Visits each entry of the directory and returns where its next-directory offset is, or 0
+    // if the directory is not all there.
+    template <typename Visit>
+    std::size_t forEachEntry(std::size_t ifd, Visit visit) {
+        if (ifd < 8 || ifd > m_data.size() || m_data.size() - ifd < 2) {
+            return 0;
+        }
+        const std::size_t count = read16(ifd);
+        const std::size_t end = ifd + 2 + count * kEntrySize;
+        if (end > m_data.size()) {
+            return 0;
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            visit(ifd + 2 + i * kEntrySize);
+        }
+        return end;
+    }
+
+    std::span<std::uint8_t> m_data;
+    bool m_little = false;
+};
+
+}  // namespace
+
+void resetExifForPixels(std::span<std::uint8_t> tiff, int width, int height) { ExifPatcher(tiff).apply(width, height); }
+
 }  // namespace iv

@@ -34,6 +34,12 @@ struct ExifData {
 // JPEG APP1 marker. The data is untrusted; whatever is malformed is left out.
 ExifData parseExif(std::span<const std::uint8_t> app1);
 
+// For pixels stored upright at the given size: sets the orientation to 1 and the stored pixel
+// dimensions, and unlinks the thumbnail, which would show the old pixels. Works in place on a
+// TIFF structure (without "Exif\0\0"), keeping its size so that offsets in maker notes hold.
+// Whatever is malformed is left alone.
+void resetExifForPixels(std::span<std::uint8_t> tiff, int width, int height);
+
 // Turns "2024:05:01 12:30:00" into "2024-05-01 12:30:00". Cameras write blanks or zeros for
 // an unset clock, and those and anything else malformed give an empty string.
 std::string normalizeExifDate(std::string_view date);
