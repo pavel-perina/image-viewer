@@ -5,6 +5,9 @@ Image Viewer. Early development: it currently opens JPEG, TIFF (including pyrami
 16-bit or float images), PNG, WebP, AVIF and JPEG XL. Animations show their first frame. See
 `doc/design`.
 
+JPEG files can be rotated and flipped without loss, and repacked as JPEG XL with a byte-for-byte
+check that the original comes back (Edit > Lossless JPEG, or the file menu).
+
 ## Build
 
 Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools), libjpeg-turbo, libtiff, SQLite, LittleCMS 2

@@ -29,6 +29,7 @@
 
 #include "core/image_details.h"
 #include "core/image_source.h"
+#include "core/jpeg_transform.h"
 #include "core/thumbnail.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
@@ -896,6 +897,44 @@ void BrowseContext::trashFolder(const QString& path) {
         return trashFiles({folder}, stop, progress);
     }, [](const FileJobResult&) {});
 }
+
+bool BrowseContext::allJpeg(const QStringList& paths) const {
+    return !paths.isEmpty() && std::ranges::all_of(paths, [](const QString& path) {
+        return hasJpegExtension(QFileInfo(path).filesystemFilePath());
+    });
+}
+
+void BrowseContext::editJpegs(const QStringList& paths, JpegOperation operation, bool trimEdges) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    static constexpr JpegEdit kEdits[] = {JpegEdit::RotateClockwise, JpegEdit::RotateCounterclockwise, JpegEdit::Rotate180,
+                                          JpegEdit::FlipHorizontal,  JpegEdit::FlipVertical,           JpegEdit::ApplyOrientation};
+    const JpegEdit edit = kEdits[operation];
+    m_impl->startJob(this, operation == ApplyOrientation ? tr("Applying orientation") : tr("Rotating"),
+                     static_cast<int>(paths.size()),
+                     [paths, edit, trimEdges](std::stop_token stop, const JobProgress& progress) {
+                         return editJpegFiles(paths, edit, trimEdges, stop, progress);
+                     },
+                     [this](const FileJobResult& result) {
+                         m_impl->scan(this);
+                         if (!result.created.isEmpty()) {
+                             emit filesEdited(result.created);
+                         }
+                     });
+}
+
+void BrowseContext::convertToJxl(const QStringList& paths, bool trashOriginals) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    m_impl->startJob(this, tr("Converting to JPEG XL"), static_cast<int>(paths.size()),
+                     [paths, trashOriginals](std::stop_token stop, const JobProgress& progress) {
+                         return convertJpegFilesToJxl(paths, trashOriginals, stop, progress);
+                     });
+}
+
+bool BrowseContext::canConvertToJxl() const { return iv::canConvertToJxl(); }
 
 void BrowseContext::cancelJob() { m_impl->jobStop.request_stop(); }
 

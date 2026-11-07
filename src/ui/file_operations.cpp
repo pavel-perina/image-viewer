@@ -10,6 +10,11 @@
 #include <QObject>
 #include <QTimeZone>
 
+#include "core/jpeg_transform.h"
+#ifdef IV_HAVE_JXL
+#include "core/jxl_transcode.h"
+#endif
+
 namespace iv {
 
 namespace {
@@ -209,6 +214,67 @@ FileJobResult createFolder(const QString& parent, const QString& name) {
     } else {
         result.problems << problem(name, QObject::tr("cannot create the folder"));
     }
+    return result;
+}
+
+FileJobResult editJpegFiles(const QStringList& paths, JpegEdit edit, bool trimEdges, std::stop_token stop,
+                            const JobProgress& progress) {
+    FileJobResult result;
+    int done = 0;
+    for (const QString& path : paths) {
+        if (stop.stop_requested()) {
+            break;
+        }
+        progress(done++);
+        const QFileInfo info(path);
+        const Result<bool> changed = transformJpegFile(info.filesystemFilePath(), edit, trimEdges);
+        if (!changed) {
+            result.problems << problem(info.fileName(), QString::fromStdString(changed.error()));
+        } else if (*changed) {
+            result.created << path;
+        }
+    }
+    progress(done);
+    return result;
+}
+
+bool canConvertToJxl() {
+#ifdef IV_HAVE_JXL
+    return true;
+#else
+    return false;
+#endif
+}
+
+FileJobResult convertJpegFilesToJxl(const QStringList& paths, bool trashOriginals, std::stop_token stop,
+                                    const JobProgress& progress) {
+    FileJobResult result;
+    int done = 0;
+    for (const QString& path : paths) {
+        if (stop.stop_requested()) {
+            break;
+        }
+        progress(done++);
+        const QFileInfo info(path);
+#ifdef IV_HAVE_JXL
+        const Result<std::filesystem::path> created = convertJpegFileToJxl(info.filesystemFilePath());
+        if (!created) {
+            result.problems << problem(info.fileName(), QString::fromStdString(created.error()));
+            continue;
+        }
+        result.created << QFileInfo(*created).absoluteFilePath();
+        if (trashOriginals) {
+            QFile file(path);
+            if (!file.moveToTrash()) {
+                result.problems << problem(info.fileName(), QObject::tr("converted, but cannot be moved to the trash: %1").arg(file.errorString()));
+            }
+        }
+#else
+        Q_UNUSED(trashOriginals);
+        result.problems << problem(info.fileName(), QObject::tr("this build cannot write JPEG XL"));
+#endif
+    }
+    progress(done);
     return result;
 }
 

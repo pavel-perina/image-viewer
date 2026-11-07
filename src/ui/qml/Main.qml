@@ -188,6 +188,8 @@ ApplicationWindow {
             AppMenuItem { action: fileActions.copyAction }
             AppMenuItem { action: fileActions.pasteAction }
             AppMenuItem { action: fileActions.copyPathAction }
+            MenuSeparator {}
+            JpegMenu { actions: fileActions; enabled: fileActions.idle && fileActions.jpegTargets }
         }
         AppMenu {
             title: "&View"

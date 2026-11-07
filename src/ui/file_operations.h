@@ -11,6 +11,8 @@ class QImage;
 
 namespace iv {
 
+enum class JpegEdit;
+
 // What to do when a file with the same name is already in the target folder.
 enum class ConflictPolicy {
     Skip,
@@ -51,6 +53,19 @@ FileJobResult moveFiles(const QStringList& paths, const QString& folder, Conflic
 // Works for files and folders, and never replaces an existing one.
 FileJobResult renamePath(const QString& path, const QString& newName);
 FileJobResult createFolder(const QString& parent, const QString& name);
+
+// Turns or mirrors JPEG files in place without loss, as jpeg_transform.h describes. created
+// lists the files that changed.
+FileJobResult editJpegFiles(const QStringList& paths, JpegEdit edit, bool trimEdges, std::stop_token stop,
+                            const JobProgress& progress);
+
+// Whether this build can write JPEG XL.
+bool canConvertToJxl();
+
+// Writes a JPEG XL file next to each JPEG, each checked to give back the original exactly. With
+// trashOriginals, each JPEG whose conversion succeeded then goes to the trash.
+FileJobResult convertJpegFilesToJxl(const QStringList& paths, bool trashOriginals, std::stop_token stop,
+                                    const JobProgress& progress);
 
 // Saves as a new file named after the time, such as 2026-12-24_125959.png, adding _1 and so on
 // if that name is taken.

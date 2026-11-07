@@ -12,26 +12,44 @@ AppDialog {
     property string text
     // Which of the standard buttons starts in focus. The first if unset.
     property int focusedButton: Dialog.NoButton
+    // Shown under the text, such as check boxes.
+    property alias extras: extraColumn.data
 
     width: Math.min(560, parent ? parent.width - 32 : 560)
 
-    onOpened: {
+    // The button that starts in focus, which Enter presses from anywhere but another button.
+    function defaultButton() {
         for (const which of [focusedButton, Dialog.Ok, Dialog.Yes]) {
             const button = which !== Dialog.NoButton ? standardButton(which) : null
-            if (button) {
-                button.forceActiveFocus()
-                return
-            }
+            if (button)
+                return button
         }
+        return null
+    }
+
+    function isFooterButton(item) {
+        for (let parent = item; parent; parent = parent.parent) {
+            if (parent === box.footer)
+                return typeof item.click === "function"
+        }
+        return false
+    }
+
+    onOpened: {
+        const button = defaultButton()
+        if (button)
+            button.forceActiveFocus()
     }
 
     Shortcut {
         sequences: ["Return", "Enter"]
         enabled: box.opened
         onActivated: {
+            // A check box is toggled with Space, as in any dialog.
             const item = box.contentItem.Window.activeFocusItem
-            if (item && typeof item.click === "function")
-                item.click()
+            const button = item && box.isFooterButton(item) ? item : box.defaultButton()
+            if (button)
+                button.click()
         }
     }
     Shortcut {
@@ -63,7 +81,12 @@ AppDialog {
             implicitHeight: 32
 
             Canvas {
+                id: icon
                 anchors.fill: parent
+                Connections {
+                    target: box
+                    function onKindChanged() { icon.requestPaint() }
+                }
                 onPaint: {
                     const ctx = getContext("2d")
                     ctx.reset()
@@ -92,12 +115,23 @@ AppDialog {
             }
         }
 
-        Label {
-            objectName: "messageText"
+        ColumnLayout {
             Layout.fillWidth: true
-            text: box.text
-            textFormat: Text.PlainText
-            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            spacing: 8
+
+            Label {
+                objectName: "messageText"
+                Layout.fillWidth: true
+                text: box.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            }
+            ColumnLayout {
+                id: extraColumn
+                Layout.fillWidth: true
+                visible: children.length > 0
+                spacing: 0
+            }
         }
     }
 }

@@ -98,6 +98,8 @@ public:
     Q_INVOKABLE void zoomOut();
     Q_INVOKABLE void fitToView();
     Q_INVOKABLE void actualSize();
+    // Loads the file again, after it changed on disk.
+    Q_INVOKABLE void reload();
 
 signals:
     void sourceChanged();

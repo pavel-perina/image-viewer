@@ -2,7 +2,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <stdexcept>
+
+#include <gtest/gtest.h>
 
 #include <jpeglib.h>
 
@@ -24,6 +28,9 @@ std::vector<std::uint8_t> encodeJpeg(const JpegOptions& options) {
     cinfo.in_color_space = JCS_RGB;
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, 95, TRUE);
+    if (options.progressive) {
+        jpeg_simple_progression(&cinfo);
+    }
     jpeg_start_compress(&cinfo, TRUE);
 
     if (!options.exif.empty()) {
@@ -58,6 +65,53 @@ std::vector<std::uint8_t> encodeJpeg(const JpegOptions& options) {
     std::vector<std::uint8_t> bytes(output, output + outputSize);
     std::free(output);
     return bytes;
+}
+
+DecodedJpeg decodeJpeg(const std::vector<std::uint8_t>& bytes) {
+    jpeg_decompress_struct cinfo{};
+    jpeg_error_mgr errors{};
+    cinfo.err = jpeg_std_error(&errors);
+    errors.error_exit = [](j_common_ptr) { throw std::runtime_error("bad JPEG"); };
+    DecodedJpeg decoded;
+    jpeg_create_decompress(&cinfo);
+    try {
+        jpeg_mem_src(&cinfo, bytes.data(), static_cast<unsigned long>(bytes.size()));
+        jpeg_save_markers(&cinfo, JPEG_APP0 + 1, 0xFFFF);
+        jpeg_save_markers(&cinfo, JPEG_APP0 + 2, 0xFFFF);
+        jpeg_read_header(&cinfo, TRUE);
+        for (jpeg_saved_marker_ptr marker = cinfo.marker_list; marker; marker = marker->next) {
+            if (marker->marker == JPEG_APP0 + 1 && marker->data_length >= 6 && std::memcmp(marker->data, "Exif\0", 6) == 0) {
+                decoded.exif.assign(marker->data, marker->data + marker->data_length);
+            }
+        }
+        JOCTET* icc = nullptr;
+        unsigned int iccSize = 0;
+        if (jpeg_read_icc_profile(&cinfo, &icc, &iccSize)) {
+            decoded.iccProfile.assign(icc, icc + iccSize);
+            std::free(icc);
+        }
+        decoded.progressive = cinfo.progressive_mode != 0;
+        cinfo.out_color_space = JCS_RGB;
+        jpeg_start_decompress(&cinfo);
+        decoded.width = static_cast<int>(cinfo.output_width);
+        decoded.height = static_cast<int>(cinfo.output_height);
+        decoded.pixels.resize(static_cast<std::size_t>(decoded.width) * decoded.height);
+        std::vector<JSAMPLE> row(static_cast<std::size_t>(decoded.width) * 3);
+        while (cinfo.output_scanline < cinfo.output_height) {
+            const auto y = static_cast<std::size_t>(cinfo.output_scanline);
+            JSAMPROW rows[] = {row.data()};
+            jpeg_read_scanlines(&cinfo, rows, 1);
+            for (std::size_t x = 0; x < static_cast<std::size_t>(decoded.width); ++x) {
+                decoded.pixels[y * static_cast<std::size_t>(decoded.width) + x] = {row[x * 3], row[x * 3 + 1], row[x * 3 + 2]};
+            }
+        }
+        jpeg_finish_decompress(&cinfo);
+    } catch (const std::runtime_error&) {
+        ADD_FAILURE() << "not a valid JPEG";
+        decoded = {};
+    }
+    jpeg_destroy_decompress(&cinfo);
+    return decoded;
 }
 
 void writeFile(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {

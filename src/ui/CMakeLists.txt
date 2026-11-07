@@ -42,6 +42,7 @@ qt_add_qml_module(iv_ui
         qml/FolderButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
+        qml/JpegMenu.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/MessageBox.qml

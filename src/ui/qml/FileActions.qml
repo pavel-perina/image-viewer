@@ -19,6 +19,8 @@ Item {
     readonly property var targetPaths: viewing ? (context.currentPath ? [context.currentPath] : []) : context.selectedPaths
     readonly property bool hasTargets: targetPaths.length > 0
     readonly property bool idle: !context.busy
+    // The lossless JPEG tools work only when every target is a JPEG.
+    readonly property bool jpegTargets: context.allJpeg(targetPaths)
 
     readonly property alias renameAction: renameAction
     readonly property alias trashAction: trashAction
@@ -32,6 +34,15 @@ Item {
     readonly property alias copyPathAction: copyPathAction
     readonly property alias refreshAction: refreshAction
     readonly property alias fileMenu: fileMenu
+    readonly property alias rotateClockwiseAction: rotateClockwiseAction
+    readonly property alias rotateCounterclockwiseAction: rotateCounterclockwiseAction
+    readonly property alias rotate180Action: rotate180Action
+    readonly property alias flipHorizontalAction: flipHorizontalAction
+    readonly property alias flipVerticalAction: flipVerticalAction
+    readonly property alias applyOrientationAction: applyOrientationAction
+    readonly property alias convertToJxlAction: convertToJxlAction
+    readonly property alias askBeforeEditingAction: askBeforeEditingAction
+    readonly property alias trimEdgesAction: trimEdgesAction
 
     function showFolderMenu(path) {
         folderMenu.path = path
@@ -83,6 +94,23 @@ Item {
             context.pasteImage()
     }
 
+    // Asks first unless told not to, as the files change in place.
+    function editJpegs(action, operation) {
+        const paths = targetPaths
+        if (!settings.askBeforeEditing) {
+            context.editJpegs(paths, operation, settings.trimEdges)
+            return
+        }
+        editDialog.paths = paths
+        editDialog.operation = operation
+        editDialog.title = action.text.replace("&", "")
+        editDialog.open()
+    }
+
+    function fileCountText(paths, what) {
+        return paths.length === 1 ? root.folderName(paths[0]) : "these " + paths.length + " " + what
+    }
+
     function askName(title, text, accept) {
         nameDialog.title = title
         nameDialog.initialText = text
@@ -94,6 +122,9 @@ Item {
         id: settings
         category: "FileOperations"
         property var recentFolders: []
+        property bool askBeforeEditing: true
+        property bool trimEdges: false
+        property bool trashAfterJxl: false
     }
 
     Action {
@@ -180,6 +211,66 @@ Item {
         onTriggered: root.context.refresh()
     }
 
+    Action {
+        id: rotateClockwiseAction
+        text: "Rotate 90° &Clockwise"
+        enabled: root.idle && root.jpegTargets
+        onTriggered: root.editJpegs(this, BrowseContext.RotateClockwise)
+    }
+    Action {
+        id: rotateCounterclockwiseAction
+        text: "Rotate 90° Counterclock&wise"
+        enabled: root.idle && root.jpegTargets
+        onTriggered: root.editJpegs(this, BrowseContext.RotateCounterclockwise)
+    }
+    Action {
+        id: rotate180Action
+        text: "Rotate &180°"
+        enabled: root.idle && root.jpegTargets
+        onTriggered: root.editJpegs(this, BrowseContext.Rotate180)
+    }
+    Action {
+        id: flipHorizontalAction
+        text: "Flip &Horizontally"
+        enabled: root.idle && root.jpegTargets
+        onTriggered: root.editJpegs(this, BrowseContext.FlipHorizontal)
+    }
+    Action {
+        id: flipVerticalAction
+        text: "Flip &Vertically"
+        enabled: root.idle && root.jpegTargets
+        onTriggered: root.editJpegs(this, BrowseContext.FlipVertical)
+    }
+    Action {
+        id: applyOrientationAction
+        text: "Apply EXIF &Orientation"
+        enabled: root.idle && root.jpegTargets
+        onTriggered: root.editJpegs(this, BrowseContext.ApplyOrientation)
+    }
+    Action {
+        id: trimEdgesAction
+        text: "&Trim Edges When Needed"
+        checkable: true
+        checked: settings.trimEdges
+        onToggled: settings.trimEdges = checked
+    }
+    Action {
+        id: askBeforeEditingAction
+        text: "&Ask Before Changing Files"
+        checkable: true
+        checked: settings.askBeforeEditing
+        onToggled: settings.askBeforeEditing = checked
+    }
+    Action {
+        id: convertToJxlAction
+        text: "Convert to JPEG &XL..."
+        enabled: root.idle && root.jpegTargets && root.context.canConvertToJxl
+        onTriggered: {
+            jxlDialog.paths = root.targetPaths
+            jxlDialog.open()
+        }
+    }
+
     AppMenu {
         id: fileMenu
         parent: Overlay.overlay
@@ -190,6 +281,8 @@ Item {
         AppMenuItem { action: renameAction }
         AppMenuItem { action: trashAction }
         AppMenuItem { action: deleteAction }
+        MenuSeparator {}
+        JpegMenu { actions: root; enabled: root.idle && root.jpegTargets }
         MenuSeparator {}
         AppMenu {
             id: copyToMenu
@@ -394,6 +487,61 @@ Item {
                    + " This cannot be undone, as the trash is not used.\n\n"
                    + names + (more > 0 ? "\nand " + more + " more" : "")
         }
+    }
+
+    MessageBox {
+        id: editDialog
+        objectName: "jpegEditDialog"
+        kind: "question"
+        property var paths: []
+        property int operation: BrowseContext.RotateClockwise
+        text: root.fileCountText(paths, "files") + " will change in place. Nothing is recompressed, so no "
+              + "quality is lost, and the EXIF orientation is reset to match."
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        extras: [
+            CheckBox {
+                objectName: "trimEdgesCheck"
+                text: "Trim edges that cannot be turned, up to 15 pixels"
+                checked: settings.trimEdges
+                onToggled: settings.trimEdges = checked
+            },
+            CheckBox {
+                id: dontAskCheck
+                objectName: "dontAskCheck"
+                text: "Do not ask again"
+            }
+        ]
+        onOpened: dontAskCheck.checked = false
+        onAccepted: {
+            if (dontAskCheck.checked)
+                settings.askBeforeEditing = false
+            root.context.editJpegs(paths, operation, settings.trimEdges)
+        }
+    }
+
+    MessageBox {
+        id: jxlDialog
+        objectName: "jxlDialog"
+        property var paths: []
+        kind: settings.trashAfterJxl ? "warning" : "question"
+        title: "Convert to JPEG XL"
+        readonly property bool one: paths.length === 1
+        text: "Convert " + root.fileCountText(paths, "JPEG files") + " to JPEG XL? "
+              + (one ? "The picture is repacked without loss, and the new file is checked to give back the original exactly."
+                     : "The pictures are repacked without loss, and each new file is checked to give back its original exactly.")
+              + "\n\n"
+              + (settings.trashAfterJxl ? (one ? "The original then goes to the trash." : "Each original then goes to the trash.")
+                                        : (one ? "The original is kept." : "The originals are kept."))
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        extras: [
+            CheckBox {
+                objectName: "trashOriginalsCheck"
+                text: "Move the originals to the trash"
+                checked: settings.trashAfterJxl
+                onToggled: settings.trashAfterJxl = checked
+            }
+        ]
+        onAccepted: root.context.convertToJxl(paths, settings.trashAfterJxl)
     }
 
     MessageBox {

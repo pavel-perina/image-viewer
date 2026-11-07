@@ -12,6 +12,12 @@ Item {
     property bool sharp: false
     readonly property alias view: imageView
 
+    // Called with files that changed on disk.
+    function reloadIfAmong(paths) {
+        if (imageView.source !== "" && paths.indexOf(imageView.source) >= 0)
+            imageView.reload()
+    }
+
     ImageView {
         id: imageView
         anchors.fill: parent

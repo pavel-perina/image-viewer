@@ -42,12 +42,16 @@ class BrowseContext : public QObject {
     Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY directoryChanged)
     // "13 directories | 311 files (500 MB) | 1 selected (780 kB)"
     Q_PROPERTY(QString summary READ summary NOTIFY summaryChanged)
+    Q_PROPERTY(bool canConvertToJxl READ canConvertToJxl CONSTANT)
 
 public:
     enum SortKey { SortByName, SortByDate, SortBySize, SortByType };
     Q_ENUM(SortKey)
     enum Conflict { SkipExisting, ReplaceExisting, KeepBoth };
     Q_ENUM(Conflict)
+    // Lossless edits of JPEG files, applied to the image as shown.
+    enum JpegOperation { RotateClockwise, RotateCounterclockwise, Rotate180, FlipHorizontal, FlipVertical, ApplyOrientation };
+    Q_ENUM(JpegOperation)
 
     explicit BrowseContext(QObject* parent = nullptr);
     ~BrowseContext() override;
@@ -123,6 +127,12 @@ public:
     Q_INVOKABLE QString rename(const QString& path, const QString& newName);
     Q_INVOKABLE QString createFolder(const QString& parent, const QString& name);
     Q_INVOKABLE void trashFolder(const QString& path);
+    // Whether every path names a JPEG file, judging by the extension. False for none.
+    Q_INVOKABLE bool allJpeg(const QStringList& paths) const;
+    // Changes the files in place; the caller confirms first.
+    Q_INVOKABLE void editJpegs(const QStringList& paths, JpegOperation operation, bool trimEdges);
+    Q_INVOKABLE void convertToJxl(const QStringList& paths, bool trashOriginals);
+    bool canConvertToJxl() const;
     Q_INVOKABLE void cancelJob();  // stops before the next file
 
     // Puts the files on the clipboard for other applications, and a single file also as an
@@ -153,6 +163,8 @@ signals:
     // The last image of the directory went away.
     void emptied();
     void operationFinished(const QStringList& problems);
+    // These files have new contents, so whatever shows them should load them again.
+    void filesEdited(const QStringList& paths);
 
 private:
     struct Impl;

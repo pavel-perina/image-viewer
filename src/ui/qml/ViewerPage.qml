@@ -43,6 +43,11 @@ Rectangle {
     }
 
     Connections {
+        target: page.context
+        function onFilesEdited(paths) { surface.reloadIfAmong(paths) }
+    }
+
+    Connections {
         target: surface.view
         function onNavigateRequested(steps) {
             const last = page.context.fileCount - 1

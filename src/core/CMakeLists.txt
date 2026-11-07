@@ -11,6 +11,8 @@ add_library(iv_core STATIC
     color.h
     exif.cpp
     exif.h
+    file_io.cpp
+    file_io.h
     geometry.cpp
     geometry.h
     histogram.cpp
@@ -25,6 +27,8 @@ add_library(iv_core STATIC
     image_source.h
     jpeg_source.cpp
     jpeg_source.h
+    jpeg_transform.cpp
+    jpeg_transform.h
     overview_source.cpp
     overview_source.h
     thumbnail.cpp
@@ -65,7 +69,7 @@ if(AVIF_FOUND)
 endif()
 pkg_check_modules(JXL IMPORTED_TARGET GLOBAL libjxl libjxl_threads)
 if(JXL_FOUND)
-    target_sources(iv_core PRIVATE jxl_source.cpp jxl_source.h)
+    target_sources(iv_core PRIVATE jxl_source.cpp jxl_source.h jxl_transcode.cpp jxl_transcode.h)
     target_link_libraries(iv_core PRIVATE PkgConfig::JXL)
     target_compile_definitions(iv_core PUBLIC IV_HAVE_JXL)
 endif()

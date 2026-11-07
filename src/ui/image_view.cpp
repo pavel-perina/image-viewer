@@ -877,6 +877,12 @@ void ImageView::fitToView() {
     m_impl->viewChanged();
 }
 
+void ImageView::reload() {
+    if (!m_impl->path.isEmpty()) {
+        m_impl->open(m_impl->path);
+    }
+}
+
 void ImageView::actualSize() {
     auto& vp = m_impl->viewport;
     vp.setFitMode(FitMode::Manual);

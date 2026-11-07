@@ -264,6 +264,35 @@ change nothing useful. The first press of a double click does this too, for that
 * The folder is watched and scanned again 200 ms after changes stop coming in. F5 does it
   by hand, for network folders that do not report changes.
 
+## Lossless JPEG tools
+* Rotate 90° either way, 180°, flip either way and apply the EXIF orientation. Each works on
+  the image as shown, so the EXIF orientation is applied first and the tag is reset to 1. The
+  menu is enabled only when every target is a JPEG, judged by extension, and the decoder
+  reports any file that is not one.
+* The DCT blocks are moved and mirrored with the libjpeg coefficient API, so nothing is
+  decoded or recompressed. TurboJPEG's transform would do the same, but its header is not
+  in every distribution's libjpeg package, and this needs only `jpeglib.h`. The output matches
+  `jpegtran -perfect` and `jpegtran -trim` pixel for pixel for 4:4:4, 4:2:2, 4:2:0 and 4:4:0,
+  baseline and progressive. Progressive files stay progressive; baseline ones get optimized
+  Huffman tables, so files come out a little smaller.
+* An edge that has to move must end on a whole block, 8 or 16 pixels. Many cameras do not
+  give such sizes (4592x3448 has 8 extra rows), so trimming, up to 15 pixels, is offered in
+  the menu and the confirmation. Without it such a file is reported and left as it was.
+* Markers are copied, with the EXIF pixel dimensions updated. The EXIF thumbnail is unlinked,
+  as it would show the old orientation. The MPF index and anything after the end of the image,
+  such as the previews some cameras append, are dropped, as their offsets no longer hold.
+* Files are replaced through a temporary file and a rename, keeping permissions. The
+  modification time changes, so thumbnails are made again. The view showing an edited file
+  loads it again.
+* The files change in place, so the first use asks, with an option not to ask again. The menu
+  turns asking back on.
+* Convert to JPEG XL repacks the coefficients with libjxl and stores what rebuilds the original
+  file. Each result is rebuilt and compared byte for byte before it is written, and a file that
+  does not come back the same is reported and not converted. The new file keeps the JPEG's
+  modification time. An existing `.jxl` is never overwritten. The originals can go to the
+  trash, each only after its own conversion succeeded, and the dialog turns into a warning
+  when that is on.
+
 ## Clipboard
 * Copy puts files on the clipboard as URLs, also in the format file managers on GNOME look for.
   A single file is also added as an image, in sRGB and at most 16384 pixels along its longer
@@ -365,7 +394,13 @@ change nothing useful. The first press of a double click does this too, for that
 
 ## Known limitations
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
-  Its thumbnail does update.
+  Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
+  they changed.
+* Reduced levels made by the viewer, for PNG, WebP, JPEG XL and the like, are averaged in linear
+  light, while a JPEG's come from libjpeg's DCT scaling, which averages the gamma-encoded
+  values. Fine detail therefore looks slightly brighter below 100% in the former, and the
+  histogram, taken from a reduced level, differs a little. A JPEG and the JPEG XL repacked from
+  it decode within 3 levels of each other at 100%, but not at fit.
 * The grid lists images only, not subdirectories. A file renamed to an unsupported extension
   leaves the grid, though it is still on disk.
 * File operations have only been run on Linux. On Windows a file that is open cannot be renamed

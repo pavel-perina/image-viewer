@@ -67,6 +67,11 @@ Rectangle {
                 sharp: panel.sharp
             }
 
+            Connections {
+                target: panel.context
+                function onFilesEdited(paths) { surface.reloadIfAmong(paths) }
+            }
+
             Label {
                 anchors.fill: parent
                 horizontalAlignment: Text.AlignHCenter

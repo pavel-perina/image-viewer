@@ -7,6 +7,7 @@
 #ifdef IV_HAVE_AVIF
 #include "core/avif_source.h"
 #endif
+#include "core/file_io.h"
 #include "core/jpeg_source.h"
 #ifdef IV_HAVE_JXL
 #include "core/jxl_source.h"
@@ -21,32 +22,6 @@
 #endif
 
 namespace iv {
-
-namespace {
-
-Result<std::vector<std::uint8_t>> readFile(const std::filesystem::path& path) {
-    std::error_code ec;
-    const auto size = std::filesystem::file_size(path, ec);
-    if (ec) {
-        return std::unexpected(ec.message());
-    }
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("cannot open file");
-    }
-    try {
-        std::vector<std::uint8_t> bytes(size);
-        file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
-        if (static_cast<std::uintmax_t>(file.gcount()) != size) {
-            return std::unexpected("cannot read file");
-        }
-        return bytes;
-    } catch (const std::bad_alloc&) {
-        return std::unexpected("not enough memory to read file");
-    }
-}
-
-}  // namespace
 
 Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path) {
     // Only the header: a TIFF can be far larger than memory.

@@ -38,6 +38,7 @@
 #include "test_jpeg.h"
 #include "test_tiff.h"
 #include "core/color.h"
+#include "core/jpeg_transform.h"
 #include "ui/browse_context.h"
 #include "ui/color_settings.h"
 #include "ui/directory_tree_model.h"
@@ -2856,6 +2857,46 @@ TEST(MessageBox, KeysWorkAsInAStandardMessageBox) {
     EXPECT_EQ(root->property("outside").toInt(), 0) << "none of these reach the window's shortcuts";
 }
 
+TEST(MessageBox, EnterOnACheckBoxPressesTheDefaultButton) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 400; visible: true
+            property int accepts: 0
+            property alias box: box
+            property alias check: check
+            MessageBox {
+                id: box
+                title: "A caption"
+                text: "Some text."
+                standardButtons: Dialog.Ok | Dialog.Cancel
+                extras: [CheckBox { id: check; text: "An option" }]
+                onAccepted: accepts++
+            }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    window->requestActivate();
+    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    auto* box = root->property("box").value<QObject*>();
+    auto* check = root->property("check").value<QQuickItem*>();
+    QMetaObject::invokeMethod(box, "open");
+    ASSERT_TRUE(waitUntil([&] { return box->property("opened").toBool(); }));
+
+    check->forceActiveFocus();
+    QTest::keyClick(window, Qt::Key_Space);
+    EXPECT_TRUE(check->property("checked").toBool()) << "Space toggles";
+    QTest::keyClick(window, Qt::Key_Return);
+    EXPECT_TRUE(check->property("checked").toBool()) << "Enter does not";
+    EXPECT_EQ(root->property("accepts").toInt(), 1);
+}
+
 namespace {
 
 // An image larger than the view, so that fitting it shrinks it.
@@ -3017,6 +3058,227 @@ TEST(ViewerPage, WheelMovesThroughTheImages) {
     EXPECT_EQ(context.currentIndex(), 2) << "stops at the last";
     wheel(120);
     EXPECT_EQ(context.currentIndex(), 1);
+}
+
+namespace {
+
+// 64x32, so that a quarter turn shows in the size.
+void writeWideJpeg(const QString& path, int height = 32) {
+    writeJpeg(path, {.width = 64, .height = height, .orientation = 1});
+}
+
+QSize jpegSize(const QString& path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    const QByteArray bytes = file.readAll();
+    const auto decoded = iv::test::decodeJpeg({bytes.begin(), bytes.end()});
+    return {decoded.width, decoded.height};
+}
+
+}  // namespace
+
+TEST(LosslessJpeg, IsOfferedOnlyWhenEveryFileIsAJpeg) {
+    BrowseContext context;
+    EXPECT_TRUE(context.allJpeg({QStringLiteral("/a/b.jpg"), QStringLiteral("/a/C.JPEG")}));
+    EXPECT_FALSE(context.allJpeg({QStringLiteral("/a/b.jpg"), QStringLiteral("/a/c.png")}));
+    EXPECT_FALSE(context.allJpeg({}));
+}
+
+TEST(LosslessJpeg, ChangesFilesInPlaceAndTellsWhatShowsThem) {
+    FileOpsFixture f(2);
+    writeWideJpeg(f.path(QStringLiteral("a.jpg")));
+    writeWideJpeg(f.path(QStringLiteral("b.jpg")));
+    QSignalSpy edited(&f.context, &BrowseContext::filesEdited);
+
+    f.context.editJpegs({f.path(QStringLiteral("a.jpg")), f.path(QStringLiteral("b.jpg"))}, BrowseContext::RotateClockwise, false);
+    f.settle([&] { return edited.count() == 1; });
+    EXPECT_TRUE(f.problems.isEmpty()) << f.problems.join(u'|').toStdString();
+    EXPECT_EQ(edited.front().front().toStringList(), (QStringList{f.path(QStringLiteral("a.jpg")), f.path(QStringLiteral("b.jpg"))}));
+    EXPECT_EQ(jpegSize(f.path(QStringLiteral("a.jpg"))), QSize(32, 64));
+    EXPECT_EQ(jpegSize(f.path(QStringLiteral("b.jpg"))), QSize(32, 64));
+
+    // An upright file has no orientation to apply, so nothing changes and nothing is reported.
+    f.context.editJpegs({f.path(QStringLiteral("a.jpg"))}, BrowseContext::ApplyOrientation, false);
+    f.settle([&] { return true; });
+    EXPECT_TRUE(f.problems.isEmpty());
+    EXPECT_EQ(edited.count(), 1);
+}
+
+TEST(LosslessJpeg, ReportsAnEdgeThatNeedsTrimmingAndTrimsWhenAllowed) {
+    FileOpsFixture f(1);
+    writeWideJpeg(f.path(QStringLiteral("a.jpg")), 40);
+    f.context.editJpegs({f.path(QStringLiteral("a.jpg"))}, BrowseContext::FlipVertical, false);
+    f.settle([&] { return !f.problems.isEmpty(); });
+    ASSERT_EQ(f.problems.size(), 1);
+    EXPECT_TRUE(f.problems.front().startsWith(QStringLiteral("a.jpg: "))) << f.problems.front().toStdString();
+    EXPECT_TRUE(f.problems.front().contains(QStringLiteral("trimmed"))) << f.problems.front().toStdString();
+    EXPECT_EQ(jpegSize(f.path(QStringLiteral("a.jpg"))), QSize(64, 40));
+
+    f.problems.clear();
+    f.context.editJpegs({f.path(QStringLiteral("a.jpg"))}, BrowseContext::FlipVertical, true);
+    f.settle([&] { return jpegSize(f.path(QStringLiteral("a.jpg"))) == QSize(64, 32); });
+    EXPECT_TRUE(f.problems.isEmpty());
+}
+
+TEST(LosslessJpeg, ConvertsToJxlAndSelectsTheResult) {
+    BrowseContext probe;
+    if (!probe.canConvertToJxl()) {
+        GTEST_SKIP() << "built without JPEG XL";
+    }
+    FileOpsFixture f(2);
+    f.context.convertToJxl({f.path(QStringLiteral("a.jpg"))}, false);
+    f.settle([&] { return f.context.fileCount() == 3; });
+    EXPECT_TRUE(f.problems.isEmpty()) << f.problems.join(u'|').toStdString();
+    EXPECT_TRUE(QFileInfo::exists(f.path(QStringLiteral("a.jxl"))));
+    EXPECT_TRUE(QFileInfo::exists(f.path(QStringLiteral("a.jpg"))));
+    EXPECT_EQ(f.context.selectedPaths(), QStringList{f.path(QStringLiteral("a.jxl"))});
+
+    // Once more, the existing file is reported and left as it is.
+    f.context.convertToJxl({f.path(QStringLiteral("a.jpg"))}, false);
+    f.settle([&] { return !f.problems.isEmpty(); });
+    EXPECT_TRUE(f.problems.front().contains(QStringLiteral("a.jxl already exists"))) << f.problems.front().toStdString();
+
+    // The original goes to the trash only when asked, and only after its conversion.
+    const QString unique = QStringLiteral("jxl-%1.jpg").arg(QCoreApplication::applicationPid());
+    ASSERT_TRUE(QFile::rename(f.path(QStringLiteral("b.jpg")), f.path(unique)));
+    f.problems.clear();
+    f.context.convertToJxl({f.path(unique)}, true);
+    f.settle([&] { return QFileInfo::exists(f.path(QFileInfo(unique).baseName() + QStringLiteral(".jxl"))) && !QFileInfo::exists(f.path(unique)); });
+    EXPECT_TRUE(f.problems.isEmpty()) << f.problems.join(u'|').toStdString();
+    EXPECT_TRUE(isInTrash(unique));
+}
+
+TEST(LosslessJpeg, AnImageOnScreenLoadsAgainAfterAnEdit) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("a.jpg"));
+    writeWideJpeg(path);
+    ViewFixture f;
+    f.view->setSource(path);
+    ASSERT_TRUE(waitUntil([&] { return f.view->status() == ImageView::Status::Ready; }));
+    ASSERT_EQ(f.view->imageWidth(), 64);
+
+    ASSERT_TRUE(iv::transformJpegFile(QFileInfo(path).filesystemFilePath(), iv::JpegEdit::RotateClockwise));
+    f.view->reload();
+    EXPECT_TRUE(waitUntil([&] { return f.view->status() == ImageView::Status::Ready && f.view->imageWidth() == 32; }));
+    EXPECT_EQ(f.view->imageHeight(), 64);
+}
+
+TEST(LosslessJpeg, AsksFirstUnlessToldNotTo) {
+    QTemporaryDir dir;
+    writeWideJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    writeJpeg(dir.filePath(QStringLiteral("b.jpg")));
+    QImage(8, 8, QImage::Format_RGB32).save(dir.filePath(QStringLiteral("c.png")));
+
+    QQmlEngine engine;
+    QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+        for (const QQmlError& warning : warnings) {
+            ADD_FAILURE() << warning.toString().toStdString();
+        }
+    });
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 800; height: 600; visible: true
+            property alias context: context
+            property alias actions: actions
+            BrowseContext { id: context }
+            FileActions { id: actions; context: context; viewing: false }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* context = root->property("context").value<BrowseContext*>();
+    auto* actions = root->property("actions").value<QObject*>();
+    context->openPath(dir.filePath(QStringLiteral("a.jpg")));
+    ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 3 && context->selectedCount() == 1; }));
+
+    auto* rotate = actions->property("rotateClockwiseAction").value<QObject*>();
+    EXPECT_TRUE(actions->property("jpegTargets").toBool());
+    EXPECT_TRUE(rotate->property("enabled").toBool());
+    context->selectAll();
+    EXPECT_FALSE(actions->property("jpegTargets").toBool()) << "c.png is not a JPEG";
+    EXPECT_FALSE(rotate->property("enabled").toBool());
+    context->clickFile(0, false, false);
+    EXPECT_TRUE(rotate->property("enabled").toBool());
+
+    auto* dialog = actions->findChild<QObject*>(QStringLiteral("jpegEditDialog"));
+    ASSERT_NE(dialog, nullptr);
+    QMetaObject::invokeMethod(rotate, "trigger");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_EQ(dialog->property("title").toString(), QStringLiteral("Rotate 90° Clockwise"));
+    EXPECT_TRUE(dialog->property("text").toString().startsWith(QStringLiteral("a.jpg will change in place")));
+    EXPECT_EQ(jpegSize(dir.filePath(QStringLiteral("a.jpg"))), QSize(64, 32)) << "nothing happens before the answer";
+
+    auto* content = dialog->property("contentItem").value<QQuickItem*>();
+    QQuickItem* dontAsk = findNamed(content, QStringLiteral("dontAskCheck"));
+    ASSERT_NE(dontAsk, nullptr);
+    dontAsk->setProperty("checked", true);
+    QMetaObject::invokeMethod(dialog, "accept");
+    ASSERT_TRUE(waitUntil([&] { return !context->busy() && jpegSize(dir.filePath(QStringLiteral("a.jpg"))) == QSize(32, 64); }));
+
+    // From now on it goes straight ahead, until the menu turns asking back on.
+    auto* ask = actions->property("askBeforeEditingAction").value<QObject*>();
+    EXPECT_FALSE(ask->property("checked").toBool());
+    QMetaObject::invokeMethod(rotate, "trigger");
+    EXPECT_FALSE(dialog->property("visible").toBool());
+    ASSERT_TRUE(waitUntil([&] { return !context->busy() && jpegSize(dir.filePath(QStringLiteral("a.jpg"))) == QSize(64, 32); }));
+    QMetaObject::invokeMethod(ask, "toggle");
+    EXPECT_TRUE(ask->property("checked").toBool());
+    QMetaObject::invokeMethod(rotate, "trigger");
+    EXPECT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(dialog, "reject");
+}
+
+TEST(LosslessJpeg, WarnsWhenTheOriginalsGoToTheTrash) {
+    BrowseContext probe;
+    if (!probe.canConvertToJxl()) {
+        GTEST_SKIP() << "built without JPEG XL";
+    }
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 800; height: 600; visible: true
+            property alias context: context
+            property alias actions: actions
+            BrowseContext { id: context }
+            FileActions { id: actions; context: context; viewing: false }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* context = root->property("context").value<BrowseContext*>();
+    auto* actions = root->property("actions").value<QObject*>();
+    context->openPath(dir.filePath(QStringLiteral("a.jpg")));
+    ASSERT_TRUE(waitUntil([&] { return context->selectedCount() == 1; }));
+
+    auto* dialog = actions->findChild<QObject*>(QStringLiteral("jxlDialog"));
+    ASSERT_NE(dialog, nullptr);
+    QMetaObject::invokeMethod(actions->property("convertToJxlAction").value<QObject*>(), "trigger");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_EQ(dialog->property("kind").toString(), QStringLiteral("question"));
+    EXPECT_TRUE(dialog->property("text").toString().contains(QStringLiteral("is kept")));
+
+    QQuickItem* trash = findNamed(dialog->property("contentItem").value<QQuickItem*>(), QStringLiteral("trashOriginalsCheck"));
+    ASSERT_NE(trash, nullptr);
+    QMetaObject::invokeMethod(trash, "toggle");
+    QMetaObject::invokeMethod(trash, "toggled");
+    EXPECT_EQ(dialog->property("kind").toString(), QStringLiteral("warning"));
+    EXPECT_TRUE(dialog->property("text").toString().contains(QStringLiteral("then goes to the trash")));
+    // Left as it was found, as the choice is remembered.
+    QMetaObject::invokeMethod(trash, "toggle");
+    QMetaObject::invokeMethod(trash, "toggled");
+    QMetaObject::invokeMethod(dialog, "reject");
 }
 
 int main(int argc, char** argv) {
