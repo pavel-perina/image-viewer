@@ -81,6 +81,16 @@ public:
 
     // May block on I/O and decoding, so call this from a worker thread.
     virtual Result<ImageBuffer> readTile(const TileCoord& coord, std::stop_token stop) = 0;
+
+    // A quick likeness of a level, at exactly its size, to show while the level itself is being
+    // made, such as a JPEG decoded at a reduced scale. It is not the level: it may be filtered
+    // differently. Sources without one say so.
+    virtual Result<ImageBuffer> roughLevel(int subimage, Size size, const std::stop_token& stop) {
+        (void)subimage;
+        (void)size;
+        (void)stop;
+        return std::unexpected("no rough level");
+    }
 };
 
 // Detects the format from the file contents, not its extension.

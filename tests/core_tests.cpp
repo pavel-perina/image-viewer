@@ -15,6 +15,7 @@
 #include "core/image_buffer.h"
 #include "core/image_source.h"
 #include "core/jpeg_source.h"
+#include "core/overview_source.h"
 #include "core/thumbnail.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
@@ -477,10 +478,10 @@ std::shared_ptr<ImageSource> openBytes(std::vector<std::uint8_t> bytes) {
 
 }  // namespace
 
-TEST(Jpeg, ExposesScaledDecodingAsPyramidLevels) {
+TEST(Jpeg, ExposesOnlyTheFullSizeAndLeavesTheLevelsToHalving) {
     JpegOptions options;
-    options.width = 800;
-    options.height = 600;
+    options.width = 4000;
+    options.height = 3000;
     const auto source = openBytes(encodeJpeg(options));
     ASSERT_TRUE(source);
 
@@ -488,11 +489,36 @@ TEST(Jpeg, ExposesScaledDecodingAsPyramidLevels) {
     const SubimageInfo& info = source->subimages()[0];
     EXPECT_EQ(info.role, SubimageRole::Page);
     EXPECT_EQ(info.format, PixelFormat::Bgrx8);
-    ASSERT_EQ(info.levels.size(), 4u);
-    EXPECT_EQ(info.levels[0].size, (Size{800, 600}));
-    EXPECT_EQ(info.levels[1].size, (Size{400, 300}));
-    EXPECT_EQ(info.levels[2].size, (Size{200, 150}));
-    EXPECT_EQ(info.levels[3].size, (Size{100, 75}));
+    ASSERT_EQ(info.levels.size(), 1u);
+    EXPECT_EQ(info.levels[0].size, (Size{4000, 3000}));
+
+    // The reduced levels come from halving, the same as for other formats.
+    const auto withLevels = withOverviews(source);
+    const auto& levels = withLevels->subimages()[0].levels;
+    ASSERT_EQ(levels.size(), 3u);
+    EXPECT_EQ(levels[1].size, (Size{2000, 1500}));
+    EXPECT_EQ(levels[2].size, (Size{1000, 750}));
+    EXPECT_TRUE(levels[2].generated);
+}
+
+TEST(Jpeg, GivesARoughLevelOfAnySizeTheLevelsHave) {
+    JpegOptions options;
+    options.width = 1001;
+    options.height = 603;
+    options.pixel = [](int, int) { return Rgb{220, 40, 90}; };
+    const auto source = openBytes(encodeJpeg(options));
+    ASSERT_TRUE(source);
+
+    // Halving rounds up, so these are the sizes of the levels 1/2 to 1/32: scaled decoding
+    // gives the first three, and the 1/8 one halved the rest.
+    for (const Size size : {Size{501, 302}, Size{251, 151}, Size{126, 76}, Size{63, 38}, Size{32, 19}}) {
+        const auto rough = source->roughLevel(0, size, {});
+        ASSERT_TRUE(rough.has_value()) << size.width << ": " << rough.error();
+        EXPECT_EQ(rough->size(), size);
+        expectPixel(*rough, 0, 0, {220, 40, 90});
+    }
+    EXPECT_FALSE(source->roughLevel(0, {300, 300}, {}).has_value());
+    EXPECT_FALSE(source->roughLevel(1, {501, 302}, {}).has_value());
 }
 
 TEST(Jpeg, TinyImagesHaveNoDuplicateLevels) {
@@ -510,12 +536,14 @@ TEST(Jpeg, DecodesColoursInTheRightChannels) {
     const auto source = openBytes(encodeJpeg(options));
     ASSERT_TRUE(source);
 
-    for (int level = 0; level < 4; ++level) {
-        const auto tile = source->readTile({0, level, 0, 0}, {});
-        ASSERT_TRUE(tile.has_value()) << tile.error();
-        expectPixel(*tile, 0, 0, {220, 40, 90});
-        EXPECT_EQ(static_cast<std::uint8_t>(tile->data()[3]), 255);
-    }
+    const auto tile = source->readTile({0, 0, 0, 0}, {});
+    ASSERT_TRUE(tile.has_value()) << tile.error();
+    expectPixel(*tile, 0, 0, {220, 40, 90});
+    EXPECT_EQ(static_cast<std::uint8_t>(tile->data()[3]), 255);
+
+    const auto rough = source->roughLevel(0, {32, 32}, {});
+    ASSERT_TRUE(rough.has_value()) << rough.error();
+    expectPixel(*rough, 0, 0, {220, 40, 90});
 }
 
 TEST(Jpeg, SplitsLargeLevelsIntoTilesAtTheRightPositions) {
@@ -580,7 +608,7 @@ TEST(Jpeg, ConcurrentReadsAcrossLevelsAndTilesAreCorrect) {
     options.height = 300;
     // Colour changes exactly on the tile boundary of level 0.
     options.pixel = [](int x, int) { return x < 2048 ? Rgb{200, 30, 30} : Rgb{30, 30, 200}; };
-    const auto source = openBytes(encodeJpeg(options));
+    const auto source = withOverviews(openBytes(encodeJpeg(options)));
     ASSERT_TRUE(source);
 
     std::atomic<int> wrong = 0;

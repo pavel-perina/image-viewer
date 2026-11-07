@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <memory>
 #include <new>
 #include <set>
@@ -166,6 +167,7 @@ struct ImageView::Impl {
     DisplayRange displayRange;
     std::shared_ptr<const ColorTransform> colorTransform;
     std::vector<std::pair<TileKey, ImageBuffer>> preview;
+    bool previewIsRough = false;  // a likeness of the level, to be replaced by the level itself
     Size fullSize;
     Affine imageToDisplay;
     Viewport viewport;
@@ -202,6 +204,7 @@ struct ImageView::Impl {
     std::map<TileKey, QImage> pendingUpload;
     std::set<TileKey> uploaded;
     std::set<TileKey> failed;
+    std::set<TileKey> rough;  // shown, but still to be read
 
     double devicePixelRatio() const {
         return q->window() ? q->window()->effectiveDevicePixelRatio() : 1.0;
@@ -346,8 +349,8 @@ struct ImageView::Impl {
         std::vector<TileKey> ordered = wanted;
         std::ranges::sort(ordered, {}, distance);
         for (const TileKey& key : ordered) {
-            if (!uploaded.contains(key) && !pendingUpload.contains(key) && !inFlight.contains(key) &&
-                !failed.contains(key)) {
+            const bool missing = rough.contains(key) || (!uploaded.contains(key) && !pendingUpload.contains(key));
+            if (missing && !inFlight.contains(key) && !failed.contains(key)) {
                 requestTile(key);
             }
         }
@@ -378,6 +381,7 @@ struct ImageView::Impl {
         }
         inFlight.erase(key);
         if (tile) {
+            rough.erase(key);
             pendingUpload.insert_or_assign(key, toQImage(*tile));
             q->update();
         } else if (tile.error() != "cancelled") {
@@ -391,6 +395,7 @@ struct ImageView::Impl {
         std::shared_ptr<ImageSource> source;
         int page = 0;
         std::vector<std::pair<TileKey, ImageBuffer>> preview;
+        bool previewIsRough = false;
         DisplayRange autoRange;
         QVariantList fileDetails;  // only when a file was opened, not for another page
         QString fileSummary;
@@ -398,15 +403,27 @@ struct ImageView::Impl {
 
     static Result<Loaded> loadPreview(std::shared_ptr<ImageSource> source, int page, const std::stop_token& stop) {
         const SubimageInfo& info = source->subimages()[static_cast<std::size_t>(page)];
-        Loaded loaded{source, page, {}, {}, {}};
+        Loaded loaded{source, page, {}, false, {}, {}, {}};
         const int coarsest = static_cast<int>(info.levels.size()) - 1;
         const LevelInfo& level = info.levels.back();
         const int cols = (level.size.width + level.tileSize.width - 1) / level.tileSize.width;
         const int rows = (level.size.height + level.tileSize.height - 1) / level.tileSize.height;
+        // A level the viewer makes needs the whole image read first, while a likeness of it,
+        // such as a JPEG decoded at 1/8, shows something sooner.
+        std::optional<ImageBuffer> likeness;
+        if (level.generated) {
+            if (auto quick = source->roughLevel(page, level.size, stop); quick && quick->size() == level.size) {
+                likeness = *quick;
+                loaded.previewIsRough = true;
+            }
+        }
         std::vector<ImageBuffer> tiles;
         for (int row = 0; row < rows; ++row) {
             for (int col = 0; col < cols; ++col) {
-                auto tile = source->readTile({page, coarsest, col, row}, stop);
+                auto tile = likeness ? Result<ImageBuffer>(likeness->view(col * level.tileSize.width, row * level.tileSize.height,
+                                                                          std::min(level.tileSize.width, level.size.width - col * level.tileSize.width),
+                                                                          std::min(level.tileSize.height, level.size.height - row * level.tileSize.height)))
+                                     : source->readTile({page, coarsest, col, row}, stop);
                 if (!tile) {
                     return std::unexpected(tile.error());
                 }
@@ -486,6 +503,7 @@ struct ImageView::Impl {
         source = loaded->source;
         page = loaded->page;
         preview = loaded->preview;
+        previewIsRough = loaded->previewIsRough;
         autoDisplayRange = loaded->autoRange;
         const SubimageInfo& info = subimage();
         autoContrast = usesAutoRangeByDefault(info.format);
@@ -581,8 +599,12 @@ struct ImageView::Impl {
         uploaded.clear();
         failed.clear();
         pendingUpload.clear();
+        rough.clear();
         for (const auto& [key, tile] : preview) {
             pendingUpload.emplace(key, toQImage(toDisplay(tile, displayRange, colorTransform.get())));
+            if (previewIsRough) {
+                rough.insert(key);
+            }
         }
     }
 
@@ -618,6 +640,8 @@ struct ImageView::Impl {
         page = 0;
         autoContrast = false;
         preview.clear();
+        previewIsRough = false;
+        rough.clear();
         inFlight.clear();
         uploaded.clear();
         failed.clear();
@@ -649,6 +673,14 @@ struct ImageView::Impl {
             const qint64 bytes = it->second.sizeInBytes();
             budget -= bytes;
             std::unique_ptr<QSGTexture> texture(q->window()->createTextureFromImage(it->second));
+            if (const auto old = root.textures.find(it->first); old != root.textures.end()) {
+                // A rough tile replaced by the real one: no node may keep the old texture.
+                if (std::ranges::find(root.drawn, it->first) != root.drawn.end()) {
+                    root.removeTileNodes();
+                    root.drawn.clear();
+                }
+                root.textureBytes -= old->second.bytes;
+            }
             root.textures.insert_or_assign(it->first, TextureEntry{std::move(texture), bytes, root.frame});
             root.textureBytes += bytes;
             uploaded.insert(it->first);

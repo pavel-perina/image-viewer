@@ -15,6 +15,7 @@
 #include "core/color.h"
 #include "core/exif.h"
 #include "core/image_details.h"
+#include "core/image_ops.h"
 #include "core/xmp.h"
 
 namespace iv {
@@ -22,6 +23,9 @@ namespace iv {
 namespace {
 
 constexpr int kTileSize = 2048;
+// The scales libjpeg decodes at directly, which are reduced levels only of a JPEG too large to be
+// decoded whole. Below that size the levels are made by halving in linear light, as for every
+// other format, and the scales serve only as a quick first look.
 constexpr std::array<int, 4> kScaleDenominators{1, 2, 4, 8};
 // Refuse to decode a level larger than this, rather than risk the OOM killer. The viewer
 // keeps showing a smaller level instead.
@@ -174,7 +178,53 @@ public:
                             std::min(level.tileSize.height, level.size.height - y));
     }
 
+    // At 1/2, 1/4 or 1/8 straight from libjpeg, which uses only the low frequencies of each
+    // block and so averages gamma-encoded values, or smaller from 1/8 by halving.
+    Result<ImageBuffer> roughLevel(int subimage, Size size, const std::stop_token& stop) override {
+        if (subimage != 0) {
+            return std::unexpected("no rough level");
+        }
+        Decompressor decompressor;
+        if (!decompressor.readHeader(m_bytes, false)) {
+            return std::unexpected(decompressor.errorMessage());
+        }
+        for (const int denominator : {2, 4, 8}) {
+            Size scaled;
+            if (!decompressor.outputSize(denominator, scaled)) {
+                return std::unexpected(decompressor.errorMessage());
+            }
+            if (scaled == size || denominator == 8) {
+                if (size.width > scaled.width || size.height > scaled.height) {
+                    return std::unexpected("no rough level of this size");
+                }
+                auto pixels = decode(decompressor, denominator, scaled, stop);
+                while (pixels && pixels->size() != size && pixels->width() > size.width) {
+                    pixels = halve(*pixels);
+                }
+                if (pixels && pixels->size() != size) {
+                    return std::unexpected("no rough level of this size");
+                }
+                return pixels;
+            }
+        }
+        return std::unexpected("no rough level of this size");
+    }
+
 private:
+    static Result<ImageBuffer> decode(Decompressor& decompressor, int denominator, Size size, const std::stop_token& stop) {
+        ImageBuffer buffer;
+        try {
+            buffer = ImageBuffer::create(size, PixelFormat::Bgrx8);
+        } catch (const std::bad_alloc&) {
+            return std::unexpected("not enough memory to decode image");
+        }
+        bool stopped = false;
+        if (!decompressor.decode(denominator, buffer, stop, stopped)) {
+            return std::unexpected(stopped ? "cancelled" : decompressor.errorMessage());
+        }
+        return buffer;
+    }
+
     // Entropy-coded JPEG data cannot be entered at an arbitrary tile, so a whole level is
     // decoded at once and the most recent one is kept to serve its other tiles.
     Result<ImageBuffer> decodedLevel(int levelIndex, const std::stop_token& stop) {
@@ -192,17 +242,11 @@ private:
         if (!decompressor.readHeader(m_bytes, false)) {
             return std::unexpected(decompressor.errorMessage());
         }
-        ImageBuffer buffer;
-        try {
-            buffer = ImageBuffer::create(size, PixelFormat::Bgrx8);
-        } catch (const std::bad_alloc&) {
-            return std::unexpected("not enough memory to decode image");
+        auto buffer = decode(decompressor, kScaleDenominators[static_cast<std::size_t>(levelIndex)], size, stop);
+        if (!buffer) {
+            return buffer;
         }
-        bool stopped = false;
-        if (!decompressor.decode(kScaleDenominators[static_cast<std::size_t>(levelIndex)], buffer, stop, stopped)) {
-            return std::unexpected(stopped ? "cancelled" : decompressor.errorMessage());
-        }
-        m_decoded = buffer;
+        m_decoded = *buffer;
         m_decodedLevel = levelIndex;
         return buffer;
     }
@@ -246,6 +290,10 @@ Result<std::shared_ptr<ImageSource>> openJpegSource(std::vector<std::uint8_t> by
         // Keep only levels that really shrink, so tiny images do not get duplicate levels.
         if (info.levels.empty() || info.levels.back().size != size) {
             info.levels.push_back({size, {kTileSize, kTileSize}});
+        }
+        const Size full = info.levels.front().size;
+        if (static_cast<std::uint64_t>(full.width) * static_cast<std::uint64_t>(full.height) * 4 <= kMaxDecodedBytes) {
+            break;  // decoded whole, and the rest made from that
         }
     }
 

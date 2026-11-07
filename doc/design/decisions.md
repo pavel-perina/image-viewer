@@ -14,8 +14,12 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   single display path, so big TIFFs are a new decoder rather than a new viewer.
 * Subimage: a page or an animation frame, each with its own format, orientation, ICC
   profile and levels. Reduced resolution copies are levels, not subimages.
-* JPEG uses libjpeg's 1/2, 1/4 and 1/8 scaled decoding as its levels. It decodes a whole
-  level and serves tiles as zero-copy views, because a JPEG cannot be entered mid-stream.
+* JPEG decodes the whole image and serves tiles as zero-copy views, because a JPEG cannot be
+  entered mid-stream. Its reduced levels are halved like any flat image's, so they look the
+  same as those of a PNG or the JPEG XL repacked from it. libjpeg's 1/2, 1/4 and 1/8 scaled
+  decoding only gives the first rough preview, and the levels of a JPEG too big to decode whole
+  (over 8 GB as pixels). The full decode stays in memory while the image is open, about 100 MB
+  for 25 megapixels.
 * TIFF keeps the file's precision: 8-bit becomes `Bgrx8`, higher depths become `Gray16`,
   `Rgba16`, `Gray32F` or `Rgba32F`. Layouts it cannot read directly (palette, 1-bit, YCbCr,
   8-bit CMYK) go through libtiff's RGBA interface as 8-bit. 16-bit CMYK is refused for now.
@@ -97,7 +101,7 @@ change nothing useful. The first press of a double click does this too, for that
   8-bit ones in linear light. What a level keeps of detail too fine for it stays there, moving
   with the image, and no later filter can tell it from the picture. On a fine test chart that
   was the visible moire; it costs about twice the time of the average, 220 ms against 120 ms for
-  20 megapixels. Levels stored in a file, and scaled JPEG decoding, stay as they are.
+  20 megapixels. Levels stored in a file stay as they are.
 * Levels go down to 1024 pixels on the long edge. Without sharp resampling the view moves to the
   next level earlier (a reduction of at most 1.6), as bilinear filtering skips pixels beyond that.
 * Sharp resampling is optional and off by default, until a settings dialog exists. It uses
@@ -457,11 +461,6 @@ change nothing useful. The first press of a double click does this too, for that
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
   they changed.
-* Reduced levels made by the viewer, for PNG, WebP, JPEG XL and the like, are averaged in linear
-  light, while a JPEG's come from libjpeg's DCT scaling, which averages the gamma-encoded
-  values. Fine detail therefore looks slightly brighter below 100% in the former, and the
-  histogram, taken from a reduced level, differs a little. A JPEG and the JPEG XL repacked from
-  it decode within 3 levels of each other at 100%, but not at fit.
 * The grid lists images only, not subdirectories. A file renamed to an unsupported extension
   leaves the grid, though it is still on disk.
 * File operations have only been run on Linux. On Windows a file that is open cannot be renamed
@@ -480,5 +479,6 @@ change nothing useful. The first press of a double click does this too, for that
 * 16-bit gray and all stretched floats are not colour managed.
 * Tiles do not overlap, so a faint seam is possible at tile edges between 100% and 200%
   zoom. From 200% up, filtering is nearest-neighbour and this does not apply.
-* Opening decodes the smallest level, then the one the view needs. For JPEG this costs
-  about twice the time, because both need the same entropy decoding.
+* Opening a JPEG decodes it twice: scaled to the smallest level as a quick rough preview, then
+  whole, as both need the same entropy decoding. The rough preview averages gamma-encoded
+  values, so fine detail may brighten a little when the halved level replaces it.

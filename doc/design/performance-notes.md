@@ -129,7 +129,8 @@ way libjpeg's scaled decode is. The viewer does not use progressive decoding yet
 
 Make the levels consistent across formats: speed up the halving first, measure again, then
 choose between a full decode for JPEG (correct, slower to open) and halving in gamma space for
-8-bit images (familiar, free). The halving is now faster; see below.
+8-bit images (familiar, free). Decided after the measurements below: a full decode for JPEG,
+keeping libjpeg's scaled decode as the first rough preview.
 
 ## Faster halving (2026-11-07)
 
@@ -161,7 +162,7 @@ Float now reads 400 MB and writes 100 MB per halving, so it is bound by memory b
 `iv_benchmarks` (Google Benchmark, built only when it is installed) measures these on a
 synthetic image of smooth noise over four scales plus grain, generated once per process.
 `IV_BENCHMARK_IMAGE=path` adds a real file: its full decode, the full decode with two halvings,
-and its 1/4 level as the viewer reads it now. A source keeps what it decodes, so each iteration
+and its 1/4 level as the viewer reads it. A source keeps what it decodes, so each iteration
 opens the file again.
 
 ### JPEG levels, measured again

@@ -157,8 +157,8 @@ void realImage(benchmark::State& state, bool decodeOnly) {
     }
 }
 
-// The 1/4 level as the viewer gets it now: a JPEG through libjpeg's scaled decode, which needs
-// no full-size image, other formats by halving twice.
+// The 1/4 level as the viewer gets it: halved twice from the full decode, or read from the file
+// where it stores one.
 void realQuarter(benchmark::State& state) {
     const char* path = std::getenv("IV_BENCHMARK_IMAGE");
     if (!path) {

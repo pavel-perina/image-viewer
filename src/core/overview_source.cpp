@@ -75,6 +75,10 @@ public:
 
     std::span<const SubimageInfo> subimages() const override { return m_subimages; }
 
+    Result<ImageBuffer> roughLevel(int subimage, Size size, const std::stop_token& stop) override {
+        return m_base->roughLevel(subimage, size, stop);
+    }
+
     Result<ImageBuffer> readTile(const TileCoord& coord, std::stop_token stop) override {
         if (coord.subimage < 0 || coord.subimage >= std::ssize(m_subimages)) {
             return std::unexpected("tile does not exist");
