@@ -1021,6 +1021,10 @@ void BrowseContext::copyPathsToClipboard(const QStringList& paths) {
     QGuiApplication::clipboard()->setText(native.join(QLatin1Char('\n')));
 }
 
+void BrowseContext::copyTextToClipboard(const QString& text) {
+    QGuiApplication::clipboard()->setText(text);
+}
+
 QStringList BrowseContext::clipboardFiles() const {
     QStringList paths;
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();

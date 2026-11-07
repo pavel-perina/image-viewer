@@ -16,6 +16,9 @@ ApplicationWindow {
     // Text fields do not claim keys such as Return and Up, so these shortcuts would take them.
     readonly property bool typing: browserPage.pathBar.editing
     readonly property bool cropping: viewerPage.cropping
+    readonly property bool probing: viewerPage.probing
+    // A tool of the large view has the mouse and keys, so moving to another image waits.
+    readonly property bool toolActive: viewerPage.toolActive
     readonly property bool edited: window.viewing && viewerPage.view.modified
     // What was to happen when the unsaved changes were asked about, until they are saved.
     property var pendingLeave: null
@@ -61,6 +64,7 @@ ApplicationWindow {
         page: window.activeView.source === context.currentPath ? window.activeView.page : 0
         editView: window.viewing ? viewerPage.view : null
         guard: window.leaveImage
+        copyTakenByTool: window.probing
         onSaveCancelled: window.pendingLeave = null
     }
 
@@ -124,6 +128,8 @@ ApplicationWindow {
     function leaveCurrentMode() {
         if (window.cropping)
             viewerPage.cancelCrop()
+        else if (window.probing)
+            viewerPage.stopProbe()
         else if (window.visibility === Window.FullScreen)
             window.visibility = Window.Windowed
         else
@@ -139,21 +145,21 @@ ApplicationWindow {
     Action {
         id: modeAction
         text: window.viewing ? "Browser" : "View"
-        enabled: (window.viewing || context.currentPath !== "") && !window.cropping
+        enabled: (window.viewing || context.currentPath !== "") && !window.toolActive
         onTriggered: window.viewing ? window.leaveImage(() => window.viewing = false) : window.viewing = true
     }
-    Action { id: previousAction; text: "Previous"; enabled: context.hasPrevious && !window.cropping; onTriggered: window.previous() }
-    Action { id: nextAction; text: "Next"; enabled: context.hasNext && !window.cropping; onTriggered: window.next() }
+    Action { id: previousAction; text: "Previous"; enabled: context.hasPrevious && !window.toolActive; onTriggered: window.previous() }
+    Action { id: nextAction; text: "Next"; enabled: context.hasNext && !window.toolActive; onTriggered: window.next() }
     Action {
         id: previousPageAction
         text: "Prev Page"
-        enabled: window.activeView.page > 0 && !window.cropping
+        enabled: window.activeView.page > 0 && !window.toolActive
         onTriggered: window.leaveImage(() => window.activeView.page = window.activeView.page - 1)
     }
     Action {
         id: nextPageAction
         text: "Next Page"
-        enabled: window.activeView.page + 1 < window.activeView.pageCount && !window.cropping
+        enabled: window.activeView.page + 1 < window.activeView.pageCount && !window.toolActive
         onTriggered: window.leaveImage(() => window.activeView.page = window.activeView.page + 1)
     }
     Action {
@@ -163,6 +169,16 @@ ApplicationWindow {
         enabled: window.viewing && !window.cropping && viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
         onTriggered: viewerPage.startCrop()
     }
+    Action {
+        id: probeAction
+        text: "&Probe Colours"
+        shortcut: "P"
+        checkable: true
+        checked: window.probing
+        enabled: window.viewing && !window.cropping && viewerPage.view.status === ImageView.Ready
+        onTriggered: window.probing ? viewerPage.stopProbe() : viewerPage.startProbe()
+    }
+    Shortcut { sequences: [StandardKey.Copy]; enabled: window.probing; onActivated: viewerPage.copyProbedHex() }
     Action {
         id: undoAction
         text: "&Undo"
@@ -224,10 +240,10 @@ ApplicationWindow {
     Action { id: fullScreenAction; text: "Full Screen"; shortcut: "F11"; onTriggered: window.toggleFullScreen() }
 
     // Space pans while cropping, with the left button.
-    Shortcut { sequences: ["Right", "Space"]; enabled: !window.typing && !window.cropping; onActivated: window.next() }
-    Shortcut { sequences: ["Left", "Backspace"]; enabled: !window.typing && !window.cropping; onActivated: window.previous() }
-    Shortcut { sequence: "PgDown"; enabled: !window.typing && !window.cropping; onActivated: window.viewing ? window.next() : browserPage.movePage(1) }
-    Shortcut { sequence: "PgUp"; enabled: !window.typing && !window.cropping; onActivated: window.viewing ? window.previous() : browserPage.movePage(-1) }
+    Shortcut { sequences: ["Right", "Space"]; enabled: !window.typing && !window.toolActive; onActivated: window.next() }
+    Shortcut { sequences: ["Left", "Backspace"]; enabled: !window.typing && !window.toolActive; onActivated: window.previous() }
+    Shortcut { sequence: "PgDown"; enabled: !window.typing && !window.toolActive; onActivated: window.viewing ? window.next() : browserPage.movePage(1) }
+    Shortcut { sequence: "PgUp"; enabled: !window.typing && !window.toolActive; onActivated: window.viewing ? window.previous() : browserPage.movePage(-1) }
     Shortcut { sequence: "Shift+PgDown"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(1) }
     Shortcut { sequence: "Shift+PgUp"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(-1) }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
@@ -281,6 +297,7 @@ ApplicationWindow {
             AppMenuItem { action: redoAction }
             MenuSeparator {}
             AppMenuItem { action: cropAction }
+            AppMenuItem { action: probeAction }
             MenuSeparator {}
             AppMenuItem { action: fileActions.copyAction }
             AppMenuItem { action: fileActions.pasteAction }
@@ -369,6 +386,7 @@ ApplicationWindow {
             ToolButton { action: infoAction; visible: window.viewing }
             ToolSeparator { visible: window.viewing }
             ToolButton { action: cropAction; visible: window.viewing }
+            ToolButton { action: probeAction; text: "Probe"; visible: window.viewing }
             Item { Layout.fillWidth: true }
         }
     }

@@ -369,6 +369,23 @@ change nothing useful. The first press of a double click does this too, for that
 * Cut is not implemented. Files cut in another application are copied on paste, leaving the
   originals in place.
 
+## Probe
+* A mode of the large view, like crop, with its panel in the same place. It reads one pixel at
+  a time; averaging an area can come later if it is missed.
+* The pixel is read from the full-size level of the file, never from what is on screen, so a
+  zoomed-out view, a rough preview or the display's colour conversion do not change the numbers.
+  The view maps the pixel shown back to the stored one, through the orientation.
+* Values are shown as stored: 0 to 255, 0 to 65535, or floats as they are, which may lie outside
+  0 to 1. Fractions divide by the format's range, with five decimals for 16 bits, where three
+  would hide the difference. The hex is always 8-bit, as that is what other programs take.
+* With a colour profile that is not sRGB, the sRGB hex and values are added, converted through
+  the profile. The swatch shows the sRGB colour then. Raw values stay first, because they are
+  what the file holds.
+* A click or drag reads; releasing remembers the pixel read last. Arrows move by one pixel and
+  only read; Enter remembers. The right button pans and the wheel zooms, as in crop.
+* Remembered colours are kept in the settings, newest first, up to 48, without repeating the
+  same pixel twice in a row. Clicking one shows its values and copies its hex.
+
 ## Editing
 Built so far: the edit list with undo, crop, and the question before leaving an edited image.
 Saving goes through Save As; the rest of this section is still the plan.

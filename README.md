@@ -16,6 +16,10 @@ Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a
 undo and redo (Ctrl+Z, Ctrl+Shift+Z). The result is saved with Save As; leaving an edited image
 asks first.
 
+Edit > Probe Colours (P) reads single pixels at full size: hex, the values as stored (16-bit and
+float too), fractions from 0 to 1, and sRGB when the file has a colour profile. Each value copies
+with a click, Ctrl+C copies the hex, and remembered colours show as a list or as swatches.
+
 ## Build
 
 Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools), libjpeg-turbo, libtiff, SQLite, LittleCMS 2

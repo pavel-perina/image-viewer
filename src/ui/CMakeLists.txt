@@ -52,6 +52,7 @@ qt_add_qml_module(iv_ui
         qml/MessageBox.qml
         qml/PathBar.qml
         qml/PreviewPanel.qml
+        qml/ProbePanel.qml
         qml/ResampledView.qml
         qml/SaveOptionsDialog.qml
         qml/Theme.qml

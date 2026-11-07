@@ -18,6 +18,8 @@ Item {
     property int page: 0
     // The view whose edits Save As saves, if any.
     property ImageView editView: null
+    // A tool that copies something of its own takes Ctrl+C meanwhile.
+    property bool copyTakenByTool: false
     // Runs what would change or remove the file on show, once its edits are saved or given up.
     property var guard: (proceed) => proceed()
 
@@ -238,7 +240,7 @@ Item {
         id: copyAction
         text: "&Copy"
         shortcut: StandardKey.Copy
-        enabled: root.hasTargets
+        enabled: root.hasTargets && !root.copyTakenByTool
         onTriggered: root.context.copyFilesToClipboard(root.targetPaths)
     }
     Action {

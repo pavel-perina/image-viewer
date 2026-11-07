@@ -7,6 +7,7 @@
 #include <QSize>
 #include <QString>
 #include <QVariant>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 #include <memory>
@@ -129,6 +130,11 @@ public:
     // Unless it has been edited further since the image was taken.
     Q_INVOKABLE void markSaved(const QVariant& image);
 
+    // Reads the pixel at a point of the image as shown, at full size, and reports it with
+    // probed: x and y as shown, hex, values and fractions as stored, depth, srgbHex and
+    // srgbValues when the colour profile makes them differ, and color for a swatch.
+    Q_INVOKABLE void probe(QPointF point);
+
 signals:
     void sourceChanged();
     void statusChanged();
@@ -139,6 +145,7 @@ signals:
     void resampleChanged();
     void wheelNavigatesChanged();
     void editChanged();
+    void probed(const QVariantMap& pixel);
     void navigateRequested(int steps);  // positive towards the next image
 
 protected:

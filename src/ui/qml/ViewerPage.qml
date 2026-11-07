@@ -24,10 +24,32 @@ Rectangle {
     property bool cropping: false
     readonly property bool cropPanelShown: cropping && (fullScreen ? panelRevealed : true)
     readonly property bool cropPanelEditing: cropPanel.editing
+    // Reading pixels: the probe panel takes the same place.
+    property bool probing: false
+    readonly property bool probePanelShown: probing && (fullScreen ? panelRevealed : true)
+    readonly property bool toolActive: cropping || probing
+
+    function startProbe() {
+        if (view.status !== ImageView.Ready)
+            return
+        cropping = false
+        probing = true
+        probeArea.forceActiveFocus()
+    }
+
+    function stopProbe() {
+        probing = false
+    }
+
+    function copyProbedHex() {
+        if (probePanel.shown)
+            probePanel.copy(probePanel.shown.hex)
+    }
 
     function startCrop() {
         if (!view.editable || view.status !== ImageView.Ready)
             return
+        probing = false
         cropping = true
         cropPanel.start()
         cropOverlay.forceActiveFocus()
@@ -59,11 +81,118 @@ Rectangle {
         anchors.bottom: parent.bottom
         // The panel takes room from the image, except at full screen where it comes and goes
         // with the mouse, and refitting the image each time would be restless.
-        anchors.right: page.fullScreen ? parent.right : page.cropping ? cropPanel.left : panel.left
+        anchors.right: page.fullScreen ? parent.right : page.cropping ? cropPanel.left : page.probing ? probePanel.left : panel.left
         source: page.active ? page.context.currentPath : ""
-        histogramEnabled: page.panelShown && !page.cropping
+        histogramEnabled: page.panelShown && !page.toolActive
         sharp: settings.sharpResampling
-        wheelNavigates: !page.cropping
+        wheelNavigates: !page.toolActive
+    }
+
+    // Reads the pixel under a press and while dragging; arrow keys step by a pixel. The right or
+    // middle button pans and the wheel goes on to the view.
+    Item {
+        id: probeArea
+        objectName: "probeArea"
+        anchors.fill: surface
+        visible: page.probing
+        enabled: page.probing
+
+        property point requested: Qt.point(-1, -1)  // the pixel asked for last, as shown
+        property bool rememberWhenRead: false
+        property int viewRevision: 0  // for the marker to follow zooming and panning
+
+        function probeImagePoint(point) {
+            requested = Qt.point(Math.floor(point.x), Math.floor(point.y))
+            surface.view.probe(point)
+        }
+
+        function probeAt(x, y) {
+            probeImagePoint(surface.view.itemToImage(mapToItem(surface.view, x, y)))
+        }
+
+        // Once the pixel asked for has been read.
+        function rememberIfRead() {
+            const read = probePanel.probed
+            if (rememberWhenRead && read && read.x === requested.x && read.y === requested.y) {
+                rememberWhenRead = false
+                probePanel.remember(read)
+            }
+        }
+
+        Connections {
+            target: surface.view
+            function onZoomChanged() { probeArea.viewRevision++ }
+            function onProbed(pixel) {
+                probePanel.probed = pixel
+                probeArea.rememberIfRead()
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            cursorShape: panning ? Qt.ClosedHandCursor : Qt.CrossCursor
+            property bool panning: false
+            property point last
+            onPressed: (mouse) => {
+                probeArea.forceActiveFocus()
+                last = Qt.point(mouse.x, mouse.y)
+                panning = mouse.button !== Qt.LeftButton
+                if (!panning)
+                    probeArea.probeAt(mouse.x, mouse.y)
+            }
+            onPositionChanged: (mouse) => {
+                if (panning) {
+                    surface.view.panBy(mouse.x - last.x, mouse.y - last.y)
+                    last = Qt.point(mouse.x, mouse.y)
+                } else {
+                    probeArea.probeAt(mouse.x, mouse.y)
+                }
+            }
+            onReleased: {
+                if (!panning) {
+                    probeArea.rememberWhenRead = true
+                    probeArea.rememberIfRead()
+                }
+                panning = false
+            }
+            onWheel: (wheel) => wheel.accepted = false
+        }
+
+        Keys.onPressed: (event) => {
+            const read = probePanel.probed
+            const steps = { [Qt.Key_Left]: [-1, 0], [Qt.Key_Right]: [1, 0], [Qt.Key_Up]: [0, -1], [Qt.Key_Down]: [0, 1] }
+            const step = steps[event.key]
+            if (step && read) {
+                probeArea.probeImagePoint(Qt.point(read.x + step[0] + 0.5, read.y + step[1] + 0.5))
+                event.accepted = true
+            } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && read) {
+                probePanel.remember(read)
+                event.accepted = true
+            }
+        }
+
+        // Around the pixel read, never smaller than a few screen pixels.
+        Item {
+            id: marker
+            readonly property var pixel: probePanel.probed
+            readonly property rect bounds: {
+                probeArea.viewRevision
+                if (!pixel)
+                    return Qt.rect(0, 0, 0, 0)
+                const a = probeArea.mapFromItem(surface.view, surface.view.imageToItem(Qt.point(pixel.x, pixel.y)))
+                const b = probeArea.mapFromItem(surface.view, surface.view.imageToItem(Qt.point(pixel.x + 1, pixel.y + 1)))
+                const size = Math.max(7, b.x - a.x)
+                return Qt.rect((a.x + b.x - size) / 2, (a.y + b.y - size) / 2, size, size)
+            }
+            visible: !!pixel
+            x: bounds.x - 1
+            y: bounds.y - 1
+            width: bounds.width + 2
+            height: bounds.height + 2
+            Rectangle { anchors.fill: parent; color: "transparent"; border.color: "black" }
+            Rectangle { anchors.fill: parent; anchors.margins: 1; color: "transparent"; border.color: "white" }
+        }
     }
 
     CropOverlay {
@@ -78,10 +207,15 @@ Rectangle {
     // Leaving the image, or an edit that changes it, ends choosing a crop.
     Connections {
         target: surface.view
-        function onSourceChanged() { page.cropping = false }
-        function onStatusChanged() { if (surface.view.status !== ImageView.Ready) page.cropping = false }
+        function onSourceChanged() { page.cropping = false; page.probing = false }
+        function onStatusChanged() {
+            if (surface.view.status !== ImageView.Ready) {
+                page.cropping = false
+                probePanel.probed = null  // its pixel may be elsewhere in what comes
+            }
+        }
     }
-    onActiveChanged: if (!active) cropping = false
+    onActiveChanged: if (!active) { cropping = false; probing = false }
 
     Connections {
         target: page.context
@@ -116,7 +250,7 @@ Rectangle {
             const x = point.position.x
             if (x >= page.width - page.edgeMargin)
                 page.panelRevealed = true
-            else if (x < page.width - (page.cropping ? cropPanel.width : panel.width) - page.edgeMargin)
+            else if (x < page.width - (page.cropping ? cropPanel.width : page.probing ? probePanel.width : panel.width) - page.edgeMargin)
                 page.panelRevealed = false
         }
     }
@@ -128,7 +262,7 @@ Rectangle {
         view: surface.view
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        x: page.panelShown && !page.cropping ? page.width - width : page.width
+        x: page.panelShown && !page.toolActive ? page.width - width : page.width
         visible: x < page.width
 
         Behavior on x {
@@ -149,6 +283,21 @@ Rectangle {
         onApplyRequested: page.applyCrop()
         onCancelRequested: page.cancelCrop()
         onDoneEditing: cropOverlay.forceActiveFocus()
+
+        Behavior on x {
+            enabled: page.panelAnimated
+            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+        }
+    }
+
+    ProbePanel {
+        id: probePanel
+        objectName: "probePanel"
+        context: page.context
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        x: page.probePanelShown ? page.width - width : page.width
+        visible: x < page.width
 
         Behavior on x {
             enabled: page.panelAnimated

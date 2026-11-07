@@ -149,6 +149,7 @@ public:
     // image, which arrives there a moment later as it has to be decoded.
     Q_INVOKABLE void copyFilesToClipboard(const QStringList& paths);
     Q_INVOKABLE void copyPathsToClipboard(const QStringList& paths);
+    Q_INVOKABLE void copyTextToClipboard(const QString& text);
     // Local files on the clipboard, which take precedence over an image there.
     Q_INVOKABLE QStringList clipboardFiles() const;
     // Saves the image on the clipboard as a new file in the directory.

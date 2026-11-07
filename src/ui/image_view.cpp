@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QLocale>
+#include <QColor>
 #include <QCursor>
 #include <QMatrix4x4>
 #include <QtMath>
@@ -38,6 +39,7 @@
 #include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
+#include "core/pixel_probe.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
@@ -52,6 +54,7 @@ namespace {
 constexpr int kOpenPriority = 1000;
 constexpr int kTilePriority = 500;
 constexpr int kHistogramPriority = 100;
+constexpr int kProbePriority = 900;
 constexpr double kZoomStep = 1.25;
 // Tile textures kept on the GPU. Past this, the least recently drawn ones are dropped.
 constexpr qint64 kTextureBudgetBytes = 768ll * 1024 * 1024;
@@ -214,6 +217,7 @@ struct ImageView::Impl {
     std::set<TileKey> uploaded;
     std::set<TileKey> failed;
     std::set<TileKey> rough;  // shown, but still to be read
+    std::uint64_t probeRequest = 0;
 
     double devicePixelRatio() const {
         return q->window() ? q->window()->effectiveDevicePixelRatio() : 1.0;
@@ -1031,6 +1035,52 @@ void ImageView::markSaved(const QVariant& image) {
         d.edit->markSaved();
         emit editChanged();
     }
+}
+
+void ImageView::probe(QPointF point) {
+    Impl& d = *m_impl;
+    if (!d.source || d.status != Status::Ready) {
+        return;
+    }
+    const int x = static_cast<int>(std::floor(point.x()));
+    const int y = static_cast<int>(std::floor(point.y()));
+    const Size shown = displaySize(d.fullSize, d.subimage().orientation);
+    if (x < 0 || y < 0 || x >= shown.width || y >= shown.height) {
+        return;
+    }
+    // The centre of the pixel as shown lands in the middle of the stored one.
+    double storedX = 0;
+    double storedY = 0;
+    d.imageToDisplay.inverse().apply(x + 0.5, y + 0.5, storedX, storedY);
+    const std::uint64_t request = ++d.probeRequest;
+    d.queue.submit(d.group, kProbePriority,
+                   [this, source = d.source, page = d.page, x, y, sx = static_cast<int>(std::floor(storedX)),
+                    sy = static_cast<int>(std::floor(storedY)), request](std::stop_token stop) {
+        const auto result = probePixel(*source, page, sx, sy, stop);
+        if (!result) {
+            return;
+        }
+        QVariantMap pixel;
+        const auto colour = result->srgb.value_or(result->eightBit);
+        pixel.insert(QStringLiteral("x"), x);
+        pixel.insert(QStringLiteral("y"), y);
+        pixel.insert(QStringLiteral("hex"), QString::fromStdString(hexText(result->eightBit)));
+        pixel.insert(QStringLiteral("values"), QString::fromStdString(valuesText(*result)));
+        pixel.insert(QStringLiteral("fractions"), QString::fromStdString(fractionsText(*result)));
+        pixel.insert(QStringLiteral("gray"), result->channels == 1);
+        pixel.insert(QStringLiteral("depth"), result->format == PixelFormat::Bgrx8 ? QStringLiteral("8-bit")
+                                              : result->format == PixelFormat::Gray16 || result->format == PixelFormat::Rgba16
+                                                  ? QStringLiteral("16-bit")
+                                                  : QStringLiteral("32-bit float"));
+        pixel.insert(QStringLiteral("srgbHex"), result->srgb ? QString::fromStdString(hexText(*result->srgb)) : QString());
+        pixel.insert(QStringLiteral("srgbValues"), result->srgb ? QString::fromStdString(eightBitText(*result->srgb)) : QString());
+        pixel.insert(QStringLiteral("color"), QColor(colour[0], colour[1], colour[2]));
+        QMetaObject::invokeMethod(this, [this, request, pixel = std::move(pixel)] {
+            if (request == m_impl->probeRequest) {  // only the latest, while the mouse drags
+                emit this->probed(pixel);
+            }
+        });
+    });
 }
 
 void ImageView::zoomIn() {

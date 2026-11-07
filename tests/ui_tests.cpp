@@ -3572,6 +3572,99 @@ TEST(Editing, APressOutsideTheImageTakesAnEdgeAndAClickDrawsNothing) {
     EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(4, 8, 20, 40));
 }
 
+namespace {
+
+// Stored 8 x 4 at 16 bits and turned a quarter, so upright it is 4 x 8. Red counts columns and
+// green rows of the stored image.
+QString writeTurnedTiff(const QTemporaryDir& dir) {
+    const QString path = dir.filePath(QStringLiteral("turned.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(),
+                        {{.width = 8, .height = 4, .bits = 16, .orientation = 6, .pixel = [](int x, int y) {
+                              return Rgb{static_cast<std::uint8_t>(x * 20), static_cast<std::uint8_t>(y * 20), 100};
+                          }}});
+    return path;
+}
+
+}  // namespace
+
+TEST(Probe, ReadsThePixelShownAsTheFileStoresIt) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTurnedTiff(dir)));
+    ASSERT_EQ(f.view->imageWidth(), 4);
+    QSignalSpy probed(f.view, &ImageView::probed);
+
+    // Shown at 1, 5, which turned back is the stored pixel 5, 2.
+    f.view->probe(QPointF(1.7, 5.2));
+    ASSERT_TRUE(waitUntil([&] { return probed.count() == 1; }));
+    const QVariantMap pixel = probed.front().front().toMap();
+    EXPECT_EQ(pixel.value(QStringLiteral("x")).toInt(), 1);
+    EXPECT_EQ(pixel.value(QStringLiteral("y")).toInt(), 5);
+    EXPECT_EQ(pixel.value(QStringLiteral("depth")).toString(), QStringLiteral("16-bit"));
+    EXPECT_EQ(pixel.value(QStringLiteral("values")).toString(), QStringLiteral("25700, 10280, 25700"));
+    EXPECT_EQ(pixel.value(QStringLiteral("fractions")).toString(), QStringLiteral("0.39216, 0.15686, 0.39216"));
+    EXPECT_EQ(pixel.value(QStringLiteral("hex")).toString(), QStringLiteral("#642864"));
+    EXPECT_TRUE(pixel.value(QStringLiteral("srgbHex")).toString().isEmpty()) << "no profile, nothing to convert";
+
+    // Outside what is shown, nothing is read.
+    f.view->probe(QPointF(4.5, 1));
+    f.view->probe(QPointF(-0.5, 1));
+    waitUntil([] { return false; }, 200);
+    EXPECT_EQ(probed.count(), 1);
+}
+
+TEST(Probe, AClickReadsAndRemembersAndArrowsMoveByAPixel) {
+    QTemporaryDir dir;
+    writeTurnedTiff(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(700, 500);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 8; }));
+
+    QMetaObject::invokeMethod(page, "startProbe");
+    EXPECT_TRUE(page->property("probing").toBool());
+    auto* panel = page->findChild<QObject*>(QStringLiteral("probePanel"));
+    ASSERT_NE(panel, nullptr);
+    QMetaObject::invokeMethod(panel, "clearHistory");
+    auto* area = page->findChild<QQuickItem*>(QStringLiteral("probeArea"));
+    ASSERT_NE(area, nullptr);
+    // The panel slides in and the image refits to the room left.
+    ASSERT_TRUE(waitUntil([&] { return image->width() < 500; }));
+    waitUntil([] { return false; }, 300);
+
+    // Small images are not enlarged to fit; at 100% a click would land on pixel edges.
+    for (int i = 0; i < 12; ++i) {
+        image->zoomIn();
+    }
+    ASSERT_GT(image->imageToItem(QPointF(1, 0)).x() - image->imageToItem(QPointF(0, 0)).x(), 8);
+    const QPoint at = image->mapToScene(image->imageToItem(QPointF(2.5, 3.5))).toPoint();
+    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, at);
+    ASSERT_TRUE(waitUntil([&] { return panel->property("entries").toList().size() == 1; }));
+    const QVariantMap read = panel->property("probed").toMap();
+    EXPECT_EQ(read.value(QStringLiteral("x")).toInt(), 2);
+    EXPECT_EQ(read.value(QStringLiteral("y")).toInt(), 3);
+    EXPECT_EQ(read.value(QStringLiteral("values")).toString(), QStringLiteral("15420, 5140, 25700"));
+
+    // A pixel to the right reads the next one without remembering it; Enter remembers it.
+    QTest::keyClick(&view, Qt::Key_Right);
+    ASSERT_TRUE(waitUntil([&] { return panel->property("probed").toMap().value(QStringLiteral("x")).toInt() == 3; }));
+    EXPECT_EQ(panel->property("entries").toList().size(), 1);
+    QTest::keyClick(&view, Qt::Key_Return);
+    ASSERT_EQ(panel->property("entries").toList().size(), 2);
+    EXPECT_EQ(panel->property("entries").toList().front().toMap().value(QStringLiteral("x")).toInt(), 3);
+
+    QMetaObject::invokeMethod(page, "stopProbe");
+    EXPECT_FALSE(page->property("probing").toBool());
+}
+
 TEST(Main, LeavingAnEditedImageAsksFirst) {
     QTemporaryDir dir;
     writeTurnedJpeg(dir, QStringLiteral("a.jpg"));
