@@ -379,56 +379,101 @@ double mks2013(double x) {
     return 0.0;
 }
 
+double magicKernel(double x) {
+    x = std::abs(x);
+    if (x <= 0.5) {
+        return 0.75 - x * x;
+    }
+    if (x <= 1.5) {
+        return 0.5 * (x - 1.5) * (x - 1.5);
+    }
+    return 0.0;
+}
+
 // The source pixels of one target pixel, in a row, and how much of each.
 struct KernelSpan {
     int first = 0;
     std::vector<float> weights;
 };
 
-std::vector<KernelSpan> kernelSpans(int sourceLength, int targetLength) {
-    constexpr double kSupport = 2.5;
+// Magic Kernel Sharp is the Magic Kernel followed by the weights -1/4 3/2 -1/4 between target
+// pixels. When reducing, doing those as two steps reads 3 rather than 5 source pixels per unit of
+// the kernel, as the second step runs on the smaller image. When enlarging the kernel has no
+// room to be split, as its units are source pixels.
+struct AxisFilter {
+    std::vector<KernelSpan> spans;
+    bool sharpenAfter = false;
+};
+
+AxisFilter axisFilter(int sourceLength, int targetLength) {
     const double ratio = static_cast<double>(sourceLength) / targetLength;
     const double spacing = std::max(ratio, 1.0);
-    std::vector<KernelSpan> spans(static_cast<std::size_t>(targetLength));
+    AxisFilter filter;
+    filter.sharpenAfter = ratio > 1.0;
+    const double support = filter.sharpenAfter ? 1.5 : 2.5;
+    const auto kernel = filter.sharpenAfter ? magicKernel : mks2013;
+    filter.spans.resize(static_cast<std::size_t>(targetLength));
     for (int target = 0; target < targetLength; ++target) {
         const double centre = (target + 0.5) * ratio;
-        const int first = static_cast<int>(std::ceil(centre - 0.5 - kSupport * spacing));
-        const int last = static_cast<int>(std::floor(centre - 0.5 + kSupport * spacing));
-        KernelSpan& span = spans[static_cast<std::size_t>(target)];
+        const int first = static_cast<int>(std::ceil(centre - 0.5 - support * spacing));
+        const int last = static_cast<int>(std::floor(centre - 0.5 + support * spacing));
+        KernelSpan& span = filter.spans[static_cast<std::size_t>(target)];
         span.first = std::clamp(first, 0, sourceLength - 1);
-        span.weights.assign(static_cast<std::size_t>(std::clamp(last, 0, sourceLength - 1) - span.first + 1), 0.0F);
+        const auto count = static_cast<std::size_t>(std::clamp(last, 0, sourceLength - 1) - span.first + 1);
+        std::vector<double> weights(count, 0.0);
         double sum = 0;
-        std::vector<double> weights(span.weights.size(), 0.0);
         for (int i = first; i <= last; ++i) {
-            const double weight = mks2013((i + 0.5 - centre) / spacing);
+            const double weight = kernel((i + 0.5 - centre) / spacing);
             // The edge pixel continues outwards, as nothing lies beyond the image.
             weights[static_cast<std::size_t>(std::clamp(i, 0, sourceLength - 1) - span.first)] += weight;
             sum += weight;
         }
-        for (std::size_t i = 0; i < weights.size(); ++i) {
+        span.weights.resize(count);
+        for (std::size_t i = 0; i < count; ++i) {
             span.weights[i] = static_cast<float>(weights[i] / sum);
         }
     }
-    return spans;
+    return filter;
+}
+
+// Applies -1/4 3/2 -1/4 along lines of an image of floats, one line after another.
+void sharpenLines(float* data, int lines, int length, std::size_t pixelStep, std::size_t lineStep, int channels) {
+    std::vector<float> line(static_cast<std::size_t>(length));
+    for (int l = 0; l < lines; ++l) {
+        for (int c = 0; c < channels; ++c) {
+            float* start = data + static_cast<std::size_t>(l) * lineStep + static_cast<std::size_t>(c);
+            for (int i = 0; i < length; ++i) {
+                line[static_cast<std::size_t>(i)] = start[static_cast<std::size_t>(i) * pixelStep];
+            }
+            for (int i = 0; i < length; ++i) {
+                const float before = line[static_cast<std::size_t>(std::max(i - 1, 0))];
+                const float after = line[static_cast<std::size_t>(std::min(i + 1, length - 1))];
+                start[static_cast<std::size_t>(i) * pixelStep] = 1.5F * line[static_cast<std::size_t>(i)] - 0.25F * (before + after);
+            }
+        }
+    }
 }
 
 template <typename Sample, int Channels, typename Samples>
-ImageBuffer resizeTyped(const ImageBuffer& source, Size size) {
+ImageBuffer resizeTyped(const ImageBuffer& source, Size size, const std::stop_token& stop) {
     const ImageBuffer target = ImageBuffer::create(size, source.format());
-    const std::vector<KernelSpan> across = kernelSpans(source.width(), size.width);
-    const std::vector<KernelSpan> down = kernelSpans(source.height(), size.height);
+    const AxisFilter across = axisFilter(source.width(), size.width);
+    const AxisFilter down = axisFilter(source.height(), size.height);
 
-    // Across first, into floats that keep linear light and the overshoot.
+    // Across first, into floats that keep linear light and any overshoot.
     const auto rowLength = static_cast<std::size_t>(size.width) * Channels;
     std::vector<float> reduced(rowLength * static_cast<std::size_t>(source.height()));
     std::vector<float> decoded(static_cast<std::size_t>(source.width()) * Channels);
     for (int y = 0; y < source.height(); ++y) {
+        if (stop.stop_requested()) {
+            return {};
+        }
         const auto* in = reinterpret_cast<const Sample*>(source.row(y));
         for (std::size_t i = 0; i < decoded.size(); ++i) {
             decoded[i] = Samples::decode(in[i], static_cast<int>(i % Channels));
         }
         float* out = reduced.data() + rowLength * static_cast<std::size_t>(y);
-        for (const KernelSpan& span : across) {
+        for (const KernelSpan& span : across.spans) {
             std::array<float, Channels> sum{};
             const float* from = decoded.data() + static_cast<std::size_t>(span.first) * Channels;
             for (const float weight : span.weights) {
@@ -440,10 +485,13 @@ ImageBuffer resizeTyped(const ImageBuffer& source, Size size) {
         }
     }
 
-    std::vector<float> mixed(rowLength);
+    std::vector<float> result(rowLength * static_cast<std::size_t>(size.height), 0.0F);
     for (int y = 0; y < size.height; ++y) {
-        const KernelSpan& span = down[static_cast<std::size_t>(y)];
-        std::ranges::fill(mixed, 0.0F);
+        if (stop.stop_requested()) {
+            return {};
+        }
+        const KernelSpan& span = down.spans[static_cast<std::size_t>(y)];
+        float* mixed = result.data() + rowLength * static_cast<std::size_t>(y);
         const float* from = reduced.data() + rowLength * static_cast<std::size_t>(span.first);
         for (const float weight : span.weights) {
             for (std::size_t i = 0; i < rowLength; ++i) {
@@ -451,9 +499,20 @@ ImageBuffer resizeTyped(const ImageBuffer& source, Size size) {
             }
             from += rowLength;
         }
+    }
+
+    if (across.sharpenAfter) {
+        sharpenLines(result.data(), size.height, size.width, Channels, rowLength, Channels);
+    }
+    if (down.sharpenAfter) {
+        sharpenLines(result.data(), size.width, size.height, rowLength, Channels, Channels);
+    }
+
+    for (int y = 0; y < size.height; ++y) {
         auto* out = reinterpret_cast<Sample*>(target.row(y));
+        const float* in = result.data() + rowLength * static_cast<std::size_t>(y);
         for (std::size_t i = 0; i < rowLength; ++i) {
-            out[i] = Samples::encode(mixed[i], static_cast<int>(i % Channels));
+            out[i] = Samples::encode(in[i], static_cast<int>(i % Channels));
         }
     }
     return target;
@@ -461,16 +520,16 @@ ImageBuffer resizeTyped(const ImageBuffer& source, Size size) {
 
 }  // namespace
 
-ImageBuffer resize(const ImageBuffer& source, Size size) {
+ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& stop) {
     if (source.size() == size) {
         return source;
     }
     switch (source.format()) {
-    case PixelFormat::Bgrx8:   return resizeTyped<std::uint8_t, 4, DisplaySamples>(source, size);
-    case PixelFormat::Gray16:  return resizeTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, size);
-    case PixelFormat::Rgba16:  return resizeTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, size);
-    case PixelFormat::Gray32F: return resizeTyped<float, 1, PlainSamples<float>>(source, size);
-    case PixelFormat::Rgba32F: return resizeTyped<float, 4, PlainSamples<float>>(source, size);
+    case PixelFormat::Bgrx8:   return resizeTyped<std::uint8_t, 4, DisplaySamples>(source, size, stop);
+    case PixelFormat::Gray16:  return resizeTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, size, stop);
+    case PixelFormat::Rgba16:  return resizeTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, size, stop);
+    case PixelFormat::Gray32F: return resizeTyped<float, 1, PlainSamples<float>>(source, size, stop);
+    case PixelFormat::Rgba32F: return resizeTyped<float, 4, PlainSamples<float>>(source, size, stop);
     }
     return {};
 }

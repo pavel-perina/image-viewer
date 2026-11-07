@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stop_token>
+
 #include <span>
 
 #include "core/image_buffer.h"
@@ -32,7 +34,8 @@ void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const Image
 // Any size to any size with Magic Kernel Sharp 2013, stretched along when reducing. 8-bit images
 // are filtered in linear light, assuming the sRGB curve, and other formats as they are. Works on
 // the whole image, so use it for what has to be right, not for what has to be drawn quickly.
-ImageBuffer resize(const ImageBuffer& source, Size size);
+// A stop request makes it give up between rows and return an empty buffer.
+ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& stop = {});
 
 // Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
 // and light content stay visible, and makes it opaque. Not for gray formats, which have none.

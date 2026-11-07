@@ -1,6 +1,7 @@
 # Pure C++ on purpose: nothing in this library may depend on Qt.
 find_package(JPEG REQUIRED)
 find_package(TIFF REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET GLOBAL lcms2)
@@ -28,6 +29,8 @@ add_library(iv_core STATIC
     overview_source.h
     thumbnail.cpp
     thumbnail.h
+    thumbnail_cache.cpp
+    thumbnail_cache.h
     tiff_source.cpp
     tiff_source.h
     viewport.cpp
@@ -39,7 +42,7 @@ add_library(iv_core STATIC
 )
 
 target_include_directories(iv_core PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(iv_core PRIVATE JPEG::JPEG TIFF::TIFF PkgConfig::LCMS2)
+target_link_libraries(iv_core PRIVATE JPEG::JPEG TIFF::TIFF SQLite::SQLite3 PkgConfig::LCMS2)
 
 # Optional formats: the viewer builds without them and simply does not list them.
 find_package(PNG)

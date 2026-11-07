@@ -1,17 +1,20 @@
 #include "ui/thumbnail_provider.h"
 
 #include <QByteArray>
+#include <QDir>
 #include <QFileInfo>
 #include <QImage>
 #include <QQuickTextureFactory>
+#include <QStandardPaths>
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
 #include "core/image_buffer.h"
-#include "core/thumbnail.h"
+#include "core/thumbnail_cache.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
 #include "ui/qimage_bridge.h"
@@ -24,6 +27,21 @@ constexpr int kDefaultEdge = 256;
 // Below every other kind of work, so opening an image is never held up by thumbnails.
 constexpr int kBasePriority = -1'000'000'000;
 
+// Enough for about 50 000 thumbnails at the size the browser shows them.
+constexpr std::uint64_t kCacheBytes = 512ull * 1024 * 1024;
+
+// Opened on first use by a worker, as it can touch the disk. Null if it cannot be used.
+ThumbnailCache* diskCache() {
+    static const std::unique_ptr<ThumbnailCache> cache = []() -> std::unique_ptr<ThumbnailCache> {
+        const QString folder = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        if (folder.isEmpty() || !QDir().mkpath(folder)) {
+            return nullptr;
+        }
+        return ThumbnailCache::open(QFileInfo(folder + QStringLiteral("/thumbnails.db")).filesystemFilePath(), kCacheBytes);
+    }();
+    return cache.get();
+}
+
 class ThumbnailResponse final : public QQuickImageResponse {
 public:
     ThumbnailResponse(const QString& path, int priority, int edge) : m_link(std::make_shared<Link>()) {
@@ -31,7 +49,7 @@ public:
         m_task = WorkQueue::global().submit(
             group(), priority,
             [link = m_link, edge, file = QFileInfo(path).filesystemFilePath()](std::stop_token stop) {
-                auto thumbnail = makeThumbnail(file, edge, stop, ColorSettings::target());
+                auto thumbnail = makeCachedThumbnail(diskCache(), file, edge, stop, ColorSettings::target());
                 const std::scoped_lock lock(link->mutex);
                 if (link->response) {
                     link->response->complete(thumbnail);

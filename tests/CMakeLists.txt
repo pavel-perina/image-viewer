@@ -18,7 +18,8 @@ add_executable(iv_core_tests
     tiff_tests.cpp
 )
 set_target_properties(iv_core_tests PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
-target_link_libraries(iv_core_tests PRIVATE iv_core JPEG::JPEG TIFF::TIFF PkgConfig::LCMS2 GTest::gtest GTest::gtest_main)
+find_package(SQLite3 REQUIRED)
+target_link_libraries(iv_core_tests PRIVATE iv_core JPEG::JPEG TIFF::TIFF SQLite::SQLite3 PkgConfig::LCMS2 GTest::gtest GTest::gtest_main)
 # The formats' own encoders create the test files.
 find_package(PkgConfig REQUIRED)
 if(PNG_FOUND)

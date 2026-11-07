@@ -18,15 +18,29 @@ namespace {
 // a worker for too long, so such files simply have no thumbnail.
 constexpr std::uint64_t kMaxScannedPixels = 256ull * 1024 * 1024;
 constexpr int kMaxOversampledEdge = 4096;
+constexpr std::uint64_t kMaxDirectBytes = 512ull * 1024 * 1024;
 
+// The smallest level with enough pixels, among those that can be had without generating levels,
+// which would cost more than the kernel does when it reads the source directly.
 int chooseThumbnailLevel(const SubimageInfo& subimage, int maxEdge) {
     int chosen = 0;
     for (int i = 0; i < std::ssize(subimage.levels); ++i) {
-        const Size size = subimage.levels[static_cast<std::size_t>(i)].size;
-        if (std::max(size.width, size.height) < maxEdge) {
+        const LevelInfo& level = subimage.levels[static_cast<std::size_t>(i)];
+        if (level.generated || std::max(level.size.width, level.size.height) < maxEdge) {
             break;
         }
         chosen = i;
+    }
+    // A level this large cannot be held at once, while generated ones are built a tile at a time.
+    const Size size = subimage.levels[static_cast<std::size_t>(chosen)].size;
+    if (static_cast<std::uint64_t>(size.width) * size.height * bytesPerPixel(subimage.format) > kMaxDirectBytes) {
+        for (int i = chosen + 1; i < std::ssize(subimage.levels); ++i) {
+            const Size smaller = subimage.levels[static_cast<std::size_t>(i)].size;
+            if (std::max(smaller.width, smaller.height) < maxEdge) {
+                break;
+            }
+            chosen = i;
+        }
     }
     return chosen;
 }
@@ -111,7 +125,10 @@ Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge
         const double scale = std::min(1.0, static_cast<double>(maxEdge) / std::max(level->width(), level->height()));
         const Size size{std::max(1, static_cast<int>(std::lround(level->width() * scale))),
                         std::max(1, static_cast<int>(std::lround(level->height() * scale)))};
-        const ImageBuffer small = resize(*level, size);
+        const ImageBuffer small = resize(*level, size, stop);
+        if (stop.stop_requested()) {
+            return std::unexpected("cancelled");
+        }
         const std::array samples{small};
         const DisplayRange range = usesAutoRangeByDefault(small.format()) ? autoRange(samples) : fullRange(small.format());
         const auto transform = displayTransform(subimage, target);

@@ -2412,6 +2412,7 @@ int main(int argc, char** argv) {
     qputenv("HOME", settingsFolder.path().toLocal8Bit());
     qputenv("XDG_DATA_HOME", (settingsFolder.path() + QStringLiteral("/share")).toLocal8Bit());
     qputenv("XDG_CONFIG_HOME", (settingsFolder.path() + QStringLiteral("/config")).toLocal8Bit());
+    qputenv("XDG_CACHE_HOME", (settingsFolder.path() + QStringLiteral("/cache")).toLocal8Bit());
     QDir().mkpath(settingsFolder.path() + QStringLiteral("/share"));  // Trash is left for Qt to make
     QGuiApplication app(argc, argv);
     QSettings::setDefaultFormat(QSettings::IniFormat);

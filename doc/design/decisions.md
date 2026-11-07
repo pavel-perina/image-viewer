@@ -176,9 +176,23 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   selects only that one, including moving in the large view.
 * The browser and large view are two pages sharing one `BrowseContext`, each with its own
   `ImageView`. A page's view loads only while the page is active.
-* Thumbnails are made with Magic Kernel Sharp 2013 from a level with at least twice the pixels,
-  at the size they are shown, because a second resize would undo the sharpening. They never
-  enlarge, so a tiny image stays tiny in its cell.
+* Thumbnails are made with Magic Kernel Sharp 2013 from a stored level with at least twice the
+  pixels, at the size they are shown, because a second resize would undo the sharpening. They
+  never enlarge, so a tiny image stays tiny in its cell.
+* A flat image is reduced directly from its pixels, without generating levels, which is faster
+  (about 120 ms against 220 ms for 20 megapixels) and at least as clean. Only one too large to
+  hold at once (512 MB) goes through generated levels, which are built a tile at a time.
+* The CPU resize runs as the Magic Kernel across, the same down, then -1/4 3/2 -1/4 in each
+  direction on the result, which equals Magic Kernel Sharp 2013 and reads fewer source pixels.
+* Thumbnails are kept on disk in a SQLite file under the system's cache folder, up to 512 MB, with
+  the least recently used going first. They are JPEG XL at distance 0.5, which is about the size of
+  JPEG at quality 92 with about 40% less RMS error, measured on two small images, and still decodes
+  at over 1000 per second. A build without
+  JPEG XL uses that JPEG, without chroma subsampling, and treats entries it cannot read as missing.
+  A file's time and size say whether its thumbnail is still valid, and the size and colour
+  settings are part of the key, as colour conversion is already in the pixels.
+* A thumbnail stays until it is pushed out, even if its file was deleted, and it holds a small
+  copy of the image and its path outside the folder it came from. Clearing the cache is to do.
 * Thumbnails go through an async QML image provider on the shared work queue, below all
   other work. The newest request runs first, and Qt cancels requests when their delegate
   goes away. Qt deletes a response only after `finished()`, so `cancel()` must emit it.
@@ -314,7 +328,6 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * XML in XMP and OME-TIFF can use pugixml (MIT), which needs no Qt.
 
 ## Known limitations
-* Thumbnails are cached only in memory, by Qt's pixmap cache. The SQLite cache is still to do.
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update.
 * The grid lists images only, not subdirectories. A file renamed to an unsupported extension

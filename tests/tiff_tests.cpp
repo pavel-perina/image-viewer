@@ -1,5 +1,9 @@
+#include <random>
+#include <cmath>
+#include <stop_token>
 #include <gtest/gtest.h>
 
+#include <sqlite3.h>
 #include <tiffio.h>
 
 #include <algorithm>
@@ -19,6 +23,7 @@
 #include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/thumbnail.h"
+#include "core/thumbnail_cache.h"
 #include "test_jpeg.h"
 #include "test_tiff.h"
 
@@ -601,23 +606,60 @@ TEST(Resize, KeepsEveryFlatValueExactly) {
     }
 }
 
-TEST(Resize, MatchesTheKernelWorkedOutByHand) {
-    // Reducing 8 pixels to 4 stretches the kernel to 2 pixels per unit. The first target pixel
-    // lies between source pixels 0 and 1, and reads 0 to 5, with the edge pixel standing in for
-    // what lies before it. Weights at distances 0.25, 0.75, 1.25, 1.75, 2.25 from the centre.
+TEST(Resize, MatchesTheSharpKernelWhenReducing) {
+    // Reducing in two steps must give what the formula of Magic Kernel Sharp 2013 gives in one,
+    // away from the edges, where the two handle what lies beyond the image differently.
     const auto kernel = [](double x) {
-        return x <= 0.5 ? 17.0 / 16 - 1.75 * x * x : x <= 1.5 ? (1 - x) * (1.75 - x) : -0.125 * (x - 2.5) * (x - 2.5);
+        x = std::abs(x);
+        return x <= 0.5 ? 17.0 / 16 - 1.75 * x * x : x <= 1.5 ? (1 - x) * (1.75 - x) : x <= 2.5 ? -0.125 * (x - 2.5) * (x - 2.5) : 0.0;
     };
-    const ImageBuffer source = ImageBuffer::create({8, 1}, PixelFormat::Gray32F);
-    const std::array<float, 8> values{10, 20, 40, 80, 160, 320, 640, 1280};
-    std::ranges::copy(values, reinterpret_cast<float*>(source.row(0)));
-    const std::array<double, 5> weight{kernel(0.25), kernel(0.75), kernel(1.25), kernel(1.75), kernel(2.25)};
-    // Pixels -4 to -1 repeat pixel 0, and pixel 0 is 0.25 from the centre on the left, pixel 1 on the right.
-    const double left = weight[0] + weight[1] + weight[2] + weight[3] + weight[4];
-    const double sum = left + weight[0] + weight[1] + weight[2] + weight[3] + weight[4];
-    const double expected = (left * 10 + weight[0] * 20 + weight[1] * 40 + weight[2] * 80 + weight[3] * 160 + weight[4] * 320) / sum;
-    const ImageBuffer resized = resize(source, {4, 1});
-    EXPECT_NEAR(*reinterpret_cast<const float*>(resized.row(0)), expected, 1e-3);
+    constexpr int kWidth = 1000;
+    const ImageBuffer source = ImageBuffer::create({kWidth, 1}, PixelFormat::Gray32F);
+    auto* in = reinterpret_cast<float*>(source.row(0));
+    for (int x = 0; x < kWidth; ++x) {
+        in[x] = static_cast<float>(100 + 50 * std::sin(x * 0.11) + 20 * std::sin(x * 0.53));
+    }
+    for (const int width : {500, 333, 137, 61}) {
+        const ImageBuffer resized = resize(source, {width, 1});
+        const double ratio = static_cast<double>(kWidth) / width;
+        const auto* out = reinterpret_cast<const float*>(resized.row(0));
+        for (int x = 4; x < width - 4; ++x) {
+            const double centre = (x + 0.5) * ratio;
+            double sum = 0;
+            double weights = 0;
+            for (int i = static_cast<int>(std::ceil(centre - 0.5 - 2.5 * ratio)); i <= static_cast<int>(std::floor(centre - 0.5 + 2.5 * ratio)); ++i) {
+                const double weight = kernel((i + 0.5 - centre) / ratio);
+                sum += weight * in[i];
+                weights += weight;
+            }
+            ASSERT_NEAR(out[x], sum / weights, 0.05) << "width " << width << " at " << x;
+        }
+    }
+}
+
+TEST(Resize, GivesUpWhenStopped) {
+    const ImageBuffer source = ImageBuffer::create({64, 64}, PixelFormat::Bgrx8);
+    std::memset(source.data(), 90, source.stride() * 64);
+    std::stop_source stop;
+    stop.request_stop();
+    EXPECT_EQ(resize(source, {8, 8}, stop.get_token()).width(), 0);
+}
+
+TEST(Thumbnail, ReadsAFlatImageDirectlyRatherThanGeneratingLevels) {
+    TempDir dir;
+    TiffImage image;
+    image.width = 4000;
+    image.height = 3000;
+    image.samples = 1;
+    image.tileSize = 512;
+    image.pixel = [](int x, int) { return x < 2000 ? Rgb{200, 200, 200} : Rgb{40, 40, 40}; };
+    writeTiff(dir.file("t.tif"), {image});
+    const auto thumbnail = makeThumbnail(dir.file("t.tif"), 164, {});
+    ASSERT_TRUE(thumbnail) << thumbnail.error();
+    EXPECT_EQ(thumbnail->size(), (Size{164, 123}));
+    const auto* row = reinterpret_cast<const std::uint8_t*>(thumbnail->row(60));
+    EXPECT_EQ(row[10 * 4], 200);
+    EXPECT_EQ(row[150 * 4], 40);
 }
 
 TEST(Resize, MixesDisplayPixelsInLinearLight) {
@@ -669,6 +711,190 @@ TEST(Resize, HandlesEnlargingAndTheSmallestImages) {
     EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(large.row(2)), 1234);
     const ImageBuffer same = resize(one, {1, 1});
     EXPECT_EQ(*reinterpret_cast<const std::uint16_t*>(same.row(0)), 1234);
+}
+
+namespace {
+
+ThumbnailCache::Key cacheKey(const std::string& path = "/a.png", int edge = 164, const std::string& color = "srgb") {
+    return {path, edge, color, 1000, 2000};
+}
+
+ImageBuffer flatImage(Size size, int value) {
+    const ImageBuffer image = ImageBuffer::create(size, PixelFormat::Bgrx8);
+    std::memset(image.data(), value, image.stride() * static_cast<std::size_t>(size.height));
+    return image;
+}
+
+}  // namespace
+
+TEST(ThumbnailCache, KeepsPixelsBetweenRuns) {
+    TempDir dir;
+    {
+        const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+        ASSERT_TRUE(cache);
+        EXPECT_FALSE(cache->find(cacheKey()));
+        cache->store(cacheKey(), flatImage({20, 10}, 123));
+    }
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    const auto found = cache->find(cacheKey());
+    ASSERT_TRUE(found);
+    EXPECT_EQ(found->size(), (Size{20, 10}));
+    EXPECT_EQ(found->format(), PixelFormat::Bgrx8);
+    EXPECT_NEAR(static_cast<int>(reinterpret_cast<const std::uint8_t*>(found->row(5))[20]), 123, 1);
+}
+
+TEST(ThumbnailCache, MissesWhenAnythingItDependsOnDiffers) {
+    TempDir dir;
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    cache->store(cacheKey(), flatImage({8, 8}, 50));
+    EXPECT_TRUE(cache->find(cacheKey()));
+    EXPECT_FALSE(cache->find(cacheKey("/b.png")));
+    EXPECT_FALSE(cache->find(cacheKey("/a.png", 328)));
+    EXPECT_FALSE(cache->find(cacheKey("/a.png", 164, "off")));
+    ThumbnailCache::Key changed = cacheKey();
+    changed.modified = 1001;
+    EXPECT_FALSE(cache->find(changed));
+    changed = cacheKey();
+    changed.size = 2001;
+    EXPECT_FALSE(cache->find(changed));
+    // A new version of the file replaces the old thumbnail rather than adding to it.
+    changed.size = 2001;
+    cache->store(changed, flatImage({8, 8}, 60));
+    EXPECT_TRUE(cache->find(changed));
+    EXPECT_FALSE(cache->find(cacheKey()));
+}
+
+TEST(ThumbnailCache, ReplacesADamagedFile) {
+    TempDir dir;
+    {
+        std::ofstream file(dir.file("c.db"), std::ios::binary);
+        file << std::string(5000, 'x');
+    }
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    cache->store(cacheKey(), flatImage({8, 8}, 50));
+    EXPECT_TRUE(cache->find(cacheKey()));
+}
+
+TEST(ThumbnailCache, ADamagedEntryIsNotFound) {
+    TempDir dir;
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    // With detail, so that half of it is cut from the pixels rather than from the headers.
+    const ImageBuffer picture = flatImage({128, 128}, 50);
+    std::mt19937 random(1);
+    for (int y = 0; y < picture.height(); ++y) {
+        auto* row = reinterpret_cast<std::uint8_t*>(picture.row(y));
+        std::generate_n(row, picture.width() * 4, [&] { return static_cast<std::uint8_t>(random()); });
+    }
+    cache->store(cacheKey(), picture);
+    ASSERT_TRUE(cache->find(cacheKey()));
+
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &db), SQLITE_OK);
+    // Cut short, then with a valid start followed by nonsense.
+    for (const char* damage : {"UPDATE thumbnails SET bytes = substr(bytes, 1, length(bytes) / 2)",
+                               "UPDATE thumbnails SET bytes = substr(bytes, 1, 2) || zeroblob(200)"}) {
+        ASSERT_EQ(sqlite3_exec(db, damage, nullptr, nullptr, nullptr), SQLITE_OK);
+        EXPECT_FALSE(cache->find(cacheKey())) << damage;
+    }
+    sqlite3_close(db);
+
+    cache->store(cacheKey(), picture);
+    EXPECT_TRUE(cache->find(cacheKey()));
+}
+
+TEST(ThumbnailCache, ReturnsNullWhereItCannotBeCreated) {
+    EXPECT_FALSE(ThumbnailCache::open("/does/not/exist/c.db", 1 << 20));
+    EXPECT_FALSE(makeCachedThumbnail(nullptr, "/does/not/exist.jpg", 164, {}).has_value());
+}
+
+TEST(ThumbnailCache, TrimDropsTheLeastRecentlyUsed) {
+    TempDir dir;
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    std::mt19937 random(1);  // noise, so that the entries have some size
+    const ImageBuffer noise = ImageBuffer::create({128, 128}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 128; ++y) {
+        auto* row = reinterpret_cast<std::uint8_t*>(noise.row(y));
+        for (int i = 0; i < 128 * 4; ++i) {
+            row[i] = static_cast<std::uint8_t>(random());
+        }
+    }
+    for (int i = 0; i < 80; ++i) {
+        cache->store(cacheKey("/" + std::to_string(i)), noise);
+    }
+    int before = 0;
+    for (int i = 0; i < 80; ++i) {
+        before += cache->find(cacheKey("/" + std::to_string(i))).has_value() ? 1 : 0;
+    }
+    ASSERT_EQ(before, 80) << "the limit is meant to be reached only by the next step";
+
+    const auto small = ThumbnailCache::open(dir.file("c.db"), 200 * 1024);
+    ASSERT_TRUE(small);
+    int after = 0;
+    for (int i = 0; i < 80; ++i) {
+        after += small->find(cacheKey("/" + std::to_string(i))).has_value() ? 1 : 0;
+    }
+    EXPECT_GT(after, 0);
+    EXPECT_LT(after, 80);
+}
+
+TEST(ThumbnailCache, ServesAFileItHasSeenWithoutReadingIt) {
+    TempDir dir;
+    const auto path = dir.file("a.jpg");
+    {
+        test::JpegOptions options;
+        options.width = 400;
+        options.height = 200;
+        const std::vector<std::uint8_t> bytes = test::encodeJpeg(options);
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    const auto first = makeCachedThumbnail(cache.get(), path, 164, {});
+    ASSERT_TRUE(first);
+    EXPECT_EQ(first->size(), (Size{164, 82}));
+
+    // The same size and time, but no longer an image: only the cache can answer now.
+    const auto time = std::filesystem::last_write_time(path);
+    const auto size = std::filesystem::file_size(path);
+    {
+        std::ofstream file(path, std::ios::binary);
+        file << std::string(size, 'x');
+    }
+    std::filesystem::last_write_time(path, time);
+    const auto second = makeCachedThumbnail(cache.get(), path, 164, {});
+    ASSERT_TRUE(second) << second.error();
+    EXPECT_EQ(second->size(), (Size{164, 82}));
+
+    ColorTarget off;
+    off.enabled = false;
+    EXPECT_FALSE(makeCachedThumbnail(cache.get(), path, 164, {}, off)) << "another colour setting is another thumbnail";
+}
+
+TEST(ThumbnailCache, CanBeUsedFromSeveralThreads) {
+    TempDir dir;
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    std::vector<std::thread> threads;
+    std::atomic<int> found = 0;
+    for (int t = 0; t < 4; ++t) {
+        threads.emplace_back([&, t] {
+            for (int i = 0; i < 40; ++i) {
+                const auto key = cacheKey("/" + std::to_string(t) + "/" + std::to_string(i));
+                cache->store(key, flatImage({16, 16}, i));
+                found += cache->find(key).has_value() ? 1 : 0;
+            }
+        });
+    }
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+    EXPECT_EQ(found, 160);
 }
 
 TEST(Overviews, SmallImagesAreLeftAlone) {
