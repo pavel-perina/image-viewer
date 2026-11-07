@@ -14,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <stop_token>
@@ -855,6 +856,48 @@ TEST(ThumbnailCache, LeavesANewerVersionToTheProgramThatMadeIt) {
     sqlite3_exec(db, "PRAGMA user_version", [](void* out, int, char** values, char**) { *static_cast<int*>(out) = std::atoi(values[0]); return 0; }, &version, nullptr);
     sqlite3_close(db);
     EXPECT_EQ(version, 999);
+}
+
+TEST(ThumbnailCache, ClearingLeavesNothingOfThemInTheFile) {
+    TempDir dir;
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 26);
+    const auto other = ThumbnailCache::open(dir.file("c.db"), 1 << 26);  // another copy of the program
+    ASSERT_TRUE(cache);
+    ASSERT_TRUE(other);
+    std::mt19937 random(2);
+    const ImageBuffer noise = ImageBuffer::create({128, 128}, PixelFormat::Bgrx8);
+    for (int y = 0; y < noise.height(); ++y) {
+        auto* row = reinterpret_cast<std::uint8_t*>(noise.row(y));
+        std::generate_n(row, noise.width() * 4, [&] { return static_cast<std::uint8_t>(random()); });
+    }
+    for (int i = 0; i < 40; ++i) {
+        cache->store(cacheKey("/holiday/secret_" + std::to_string(i) + ".jpg"), noise);
+    }
+    const ThumbnailCache::Usage before = cache->usage();
+    EXPECT_EQ(before.count, 40u);
+    EXPECT_GT(before.bytes, 40u * 1000);
+    // With the log, where SQLite writes first.
+    const auto onDisk = [&] {
+        std::error_code missing;
+        const auto log = std::filesystem::file_size(dir.file("c.db").string() + "-wal", missing);
+        return std::filesystem::file_size(dir.file("c.db")) + (missing ? 0 : log);
+    };
+    const auto sizeBefore = onDisk();
+
+    EXPECT_TRUE(cache->clear());
+    EXPECT_EQ(cache->usage().count, 0u);
+    EXPECT_EQ(other->usage().count, 0u);
+    EXPECT_FALSE(other->find(cacheKey("/holiday/secret_0.jpg")));
+    EXPECT_LT(onDisk(), sizeBefore / 4) << "rewritten, not only marked free: " << sizeBefore << " -> " << onDisk();
+    for (const char* suffix : {"", "-wal"}) {
+        std::ifstream file(dir.file("c.db").string() + suffix, std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        EXPECT_EQ(bytes.find("secret_"), std::string::npos) << "a path is left in c.db" << suffix;
+    }
+
+    // Both go on working.
+    other->store(cacheKey("/after.png"), flatImage({8, 8}, 1));
+    EXPECT_TRUE(cache->find(cacheKey("/after.png")));
 }
 
 TEST(ThumbnailCache, ReturnsNullWhereItCannotBeCreated) {

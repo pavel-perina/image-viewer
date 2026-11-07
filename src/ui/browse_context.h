@@ -138,6 +138,7 @@ public:
     Q_INVOKABLE QString pathFromUrl(const QUrl& url) const;
     Q_INVOKABLE QUrl urlFromPath(const QString& path) const;
     Q_INVOKABLE QString nativePath(const QString& path) const;
+    Q_INVOKABLE QString dataSizeText(double bytes) const;  // "780 kB", "1.5 MB"
 
 signals:
     void directoryChanged();

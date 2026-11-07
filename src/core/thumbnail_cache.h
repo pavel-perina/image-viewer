@@ -36,6 +36,16 @@ public:
     void store(const Key& key, const ImageBuffer& thumbnail);  // expects Bgrx8
     void trim();
 
+    struct Usage {
+        std::uint64_t count = 0;
+        std::uint64_t bytes = 0;  // of the thumbnails themselves
+    };
+    Usage usage();
+    // Removes every thumbnail and rewrites the file, so that what they showed, and where they
+    // came from, is not left behind in its free space. Copies of the program sharing the file
+    // lose theirs too. False if that could not be done.
+    bool clear();
+
 private:
     struct Impl;
     explicit ThumbnailCache(std::unique_ptr<Impl> impl);

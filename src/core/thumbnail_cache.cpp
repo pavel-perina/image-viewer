@@ -479,6 +479,32 @@ void ThumbnailCache::trim() {
     m_impl->trimLocked();
 }
 
+ThumbnailCache::Usage ThumbnailCache::usage() {
+    const std::scoped_lock lock(m_impl->mutex);
+    const Statement query = prepare(m_impl->db.get(), "SELECT COUNT(*), TOTAL(LENGTH(bytes)) FROM thumbnails");
+    if (!query || sqlite3_step(query.get()) != SQLITE_ROW) {
+        return {};
+    }
+    return {static_cast<std::uint64_t>(sqlite3_column_int64(query.get(), 0)),
+            static_cast<std::uint64_t>(sqlite3_column_double(query.get(), 1))};
+}
+
+bool ThumbnailCache::clear() {
+    const std::scoped_lock lock(m_impl->mutex);
+    sqlite3* db = m_impl->db.get();
+    // Overwrites what it frees, in case another copy of the program keeps the rewrite below from
+    // happening now.
+    sqlite3_exec(db, "PRAGMA secure_delete=ON", nullptr, nullptr, nullptr);
+    const bool deleted = sqlite3_exec(db, "DELETE FROM thumbnails", nullptr, nullptr, nullptr) == SQLITE_OK;
+    sqlite3_exec(db, "PRAGMA secure_delete=OFF", nullptr, nullptr, nullptr);
+    if (deleted) {
+        sqlite3_exec(db, "VACUUM", nullptr, nullptr, nullptr);
+        sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE)", nullptr, nullptr, nullptr);
+    }
+    m_impl->storesSinceTrim = 0;
+    return deleted;
+}
+
 Result<ImageBuffer> makeCachedThumbnail(ThumbnailCache* cache, const std::filesystem::path& path, int maxEdge,
                                         std::stop_token stop, const ColorTarget& target) {
     std::optional<ThumbnailCache::Key> key;

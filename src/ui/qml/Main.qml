@@ -228,6 +228,8 @@ ApplicationWindow {
             AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.open() }
             AppMenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
             MenuSeparator {}
+            AppMenuItem { text: "Clear &Thumbnail Cache..."; onTriggered: ThumbnailStore.measure() }
+            MenuSeparator {}
             AppMenuItem { action: infoAction }
             AppMenuItem { action: animatePanelAction }
             MenuSeparator {}
@@ -372,6 +374,49 @@ ApplicationWindow {
         title: "Open Image"
         nameFilters: ["Images (*.jpg *.jpeg *.jpe *.jfif *.tif *.tiff *.png *.webp *.avif *.jxl)", "All files (*)"]
         onAccepted: context.openUrl(selectedFile)
+    }
+
+    // Asks first with what there is, as clearing makes every folder slow to show once more.
+    Connections {
+        target: ThumbnailStore
+        function onMeasured(available, count, bytes) {
+            if (!available) {
+                clearCacheResult.kind = "error"
+                clearCacheResult.text = "The thumbnail cache cannot be opened, perhaps because another copy of the program is using it."
+                clearCacheResult.open()
+            } else if (count === 0) {
+                clearCacheResult.kind = "info"
+                clearCacheResult.text = "There are no stored thumbnails."
+                clearCacheResult.open()
+            } else {
+                clearCacheDialog.text = "Remove all " + count.toLocaleString(Qt.locale(), "f", 0) + " stored thumbnails ("
+                        + context.dataSizeText(bytes) + ")? They are made again when their folders are shown."
+                clearCacheDialog.open()
+            }
+        }
+        function onCleared(done) {
+            if (!done) {
+                clearCacheResult.kind = "error"
+                clearCacheResult.text = "The thumbnails could not be removed."
+                clearCacheResult.open()
+            }
+        }
+    }
+
+    MessageBox {
+        id: clearCacheDialog
+        objectName: "clearCacheDialog"
+        kind: "question"
+        title: "Clear Thumbnail Cache"
+        standardButtons: Dialog.Yes | Dialog.No
+        onAccepted: ThumbnailStore.clear()
+    }
+
+    MessageBox {
+        id: clearCacheResult
+        objectName: "clearCacheResult"
+        title: "Clear Thumbnail Cache"
+        standardButtons: Dialog.Ok
     }
 
     MessageBox {

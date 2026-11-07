@@ -20,6 +20,8 @@ qt_add_library(iv_ui STATIC
     subfolder_list.h
     thumbnail_provider.cpp
     thumbnail_provider.h
+    thumbnail_store.cpp
+    thumbnail_store.h
 )
 
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)

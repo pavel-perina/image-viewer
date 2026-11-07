@@ -599,6 +599,10 @@ void BrowseContext::goUp() {
     }
 }
 
+QString BrowseContext::dataSizeText(double bytes) const {
+    return QString::fromStdString(shortDataSize(bytes > 0 ? static_cast<std::uint64_t>(bytes) : 0));
+}
+
 QString BrowseContext::summary() const {
     if (m_impl->directory.isEmpty()) {
         return {};

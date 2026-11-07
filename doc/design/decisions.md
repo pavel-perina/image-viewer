@@ -170,6 +170,13 @@ change nothing useful. The first press of a double click does this too, for that
   system, with other colours derived from these, such as a darker accent or a mix. `AppScrollBar`
   and `PathBar` draw flat controls from the palette in the meantime.
 * Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
+* Camera RAW files, first only their embedded preview and EXIF, without developing the sensor
+  data. Most (DNG, CR2, NEF, ARW, ORF, PEF, SRW, RW2) are TIFF structures holding a large JPEG
+  preview, which the TIFF and EXIF readers here can mostly reach, though some keep it in a
+  maker note or a tag of their own. CR3 (ISO base media) and RAF (a header of its own) need small
+  readers of their own. The preview is often smaller than the sensor, and is what the camera
+  made of it, so the details should say so. Developing the raw data would need LibRaw (LGPL or
+  CDDL) and colour work of its own, so it is a much later step if at all.
 * Tools: crop, compare, image strip builder, batch resize, convert and rename. Some act on
   the selection of the current panel.
 * Possibly a dual-panel file manager. File icons are OS dependent, so they belong in the
@@ -199,6 +206,8 @@ change nothing useful. The first press of a double click does this too, for that
   JPEG at quality 92 with about 40% less RMS error, measured on two small images, and still decodes
   at over 1000 per second. A build without
   JPEG XL uses that JPEG, without chroma subsampling, and treats entries it cannot read as missing.
+  View > Clear Thumbnail Cache removes them all and rewrites the file, with SQLite's secure
+  delete, so that neither pictures nor paths stay in its free space.
   Copies of the program running at once share it, as SQLite allows. Only a file that is damaged or
   of an older version is replaced; a locked one, or a newer version, means no cache for that run.
   A file's time and size say whether its thumbnail is still valid, and the size and colour

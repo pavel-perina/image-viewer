@@ -49,6 +49,7 @@
 #include "ui/image_view.h"
 #include "ui/subfolder_list.h"
 #include "ui/thumbnail_provider.h"
+#include "ui/thumbnail_store.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 
@@ -2674,6 +2675,40 @@ namespace {
 int QQuickDialogNoButton() { return 0x00010000; }
 
 }  // namespace
+
+TEST(ThumbnailStore, MeasuresAndClearsTheThumbnailsOnDisk) {
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    iv::ThumbnailStore store;
+    QSignalSpy measured(&store, &iv::ThumbnailStore::measured);
+    QSignalSpy cleared(&store, &iv::ThumbnailStore::cleared);
+    const auto measure = [&] {
+        measured.clear();
+        store.measure();
+        EXPECT_TRUE(waitUntil([&] { return !measured.isEmpty(); }));
+        return measured.isEmpty() ? QVariantList() : measured.first();
+    };
+
+    store.clear();
+    ASSERT_TRUE(waitUntil([&] { return !cleared.isEmpty(); }));
+    EXPECT_TRUE(cleared.takeFirst().at(0).toBool());
+    EXPECT_EQ(measure().value(1).toDouble(), 0);
+
+    // A thumbnail made through the provider is kept.
+    iv::ThumbnailProvider provider;
+    std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(dir.filePath(QStringLiteral("a.jpg"))), QSize(64, 64)));
+    QSignalSpy finished(response.get(), &QQuickImageResponse::finished);
+    ASSERT_TRUE(finished.wait(5000));
+    const QVariantList some = measure();
+    EXPECT_TRUE(some.value(0).toBool());
+    EXPECT_EQ(some.value(1).toDouble(), 1);
+    EXPECT_GT(some.value(2).toDouble(), 0);
+
+    store.clear();
+    ASSERT_TRUE(waitUntil([&] { return !cleared.isEmpty(); }));
+    EXPECT_TRUE(cleared.takeFirst().at(0).toBool());
+    EXPECT_EQ(measure().value(1).toDouble(), 0);
+}
 
 TEST(KeyNames, WritesShortcutsAsTheSystemDoes) {
     EXPECT_EQ(iv::KeyNames::text(QStringLiteral("Ctrl+Shift+N")), QKeySequence(QStringLiteral("Ctrl+Shift+N")).toString(QKeySequence::NativeText));
