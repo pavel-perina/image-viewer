@@ -717,11 +717,19 @@ the question before leaving an edited image. Still planned lists the rest.
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
   they changed.
+* Thumbnails cannot be dragged, neither to another application (a file manager, a mail or chat
+  window, an editor) nor to a folder in the tree to copy or move them, and files dropped from
+  outside are not taken either.
+* Sorting by name, date modified, size or type exists but is hidden in View > Sort By; the browser
+  shows no control for it, nor what the order is. There is no sorting by the date a photo was
+  taken (EXIF), which needs metadata read in the background (see Metadata).
 * The grid lists images only, not subdirectories. A file renamed to an unsupported extension
   leaves the grid, though it is still on disk.
-* File operations have only been run on Linux. On Windows a file that is open cannot be renamed
-  or trashed, and the view can hold the current image open, for instance a TIFF. Expect an error
-  message there rather than the operation working, until this has been tested.
+* On Windows the test suite passes except for four tests, listed with what is known about them
+  in `doc/building-windows.md`. The tests cannot confirm that a file reached the Recycle Bin, as
+  it renames what it receives. File operations have not been tried there by hand: a file that is
+  open cannot be renamed or trashed on Windows, and the view can hold the current image open,
+  for instance a TIFF, so expect an error message in that case rather than the operation working.
 * Replace sends the old file to the trash before copying. If the copy then fails, the old file
   is in the trash and the error names the file.
 * CMYK JPEGs use a rough conversion, and their CMYK profile is not applied.
