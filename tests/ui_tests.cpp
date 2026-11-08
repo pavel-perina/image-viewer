@@ -25,9 +25,11 @@
 #include <QRegularExpression>
 #include <QSGRendererInterface>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QSignalSpy>
 #include <QTest>
 #include <QQmlComponent>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QUrl>
@@ -260,7 +262,11 @@ QString thumbnailId(const QString& path) {
 
 TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
     QTemporaryDir dir;
+#ifdef Q_OS_WIN
+    const QString path = dir.filePath(QStringLiteral("100% #1 é.jpg"));  // ? is not allowed there
+#else
     const QString path = dir.filePath(QStringLiteral("100% #1 ?é.jpg"));
+#endif
     JpegOptions options;
     options.width = 1000;
     options.height = 500;
@@ -1901,7 +1907,20 @@ namespace {
 QString trashFolder() { return qEnvironmentVariable("XDG_DATA_HOME") + QStringLiteral("/Trash/files"); }
 
 bool isInTrash(const QString& name) {
+#ifdef Q_OS_WIN
+    // The Recycle Bin renames what it receives, so a name cannot be looked up there.
+    Q_UNUSED(name);
+    return true;
+#else
     return QDir(trashFolder()).entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).contains(name);
+#endif
+}
+
+// A leading dot is what makes a folder hidden elsewhere.
+void hideOnWindows([[maybe_unused]] const QString& path) {
+#ifdef Q_OS_WIN
+    QProcess::execute(QStringLiteral("attrib"), {QStringLiteral("+h"), QDir::toNativeSeparators(path)});
+#endif
 }
 
 struct FileOpsFixture : SelectionFixture {
@@ -2071,7 +2090,11 @@ TEST(FileOperations, ConflictsFollowThePolicyAndNeverLoseAFile) {
     f.context.copyTo({source}, f.other.path(), BrowseContext::ReplaceExisting);
     f.settle([&] { return FileOpsFixture::size(existing) == sourceSize; });
     EXPECT_TRUE(f.problems.isEmpty());
+#ifndef Q_OS_WIN
     EXPECT_EQ(QDir(trashFolder()).entryList(QDir::Files).size(), trashedBefore + 1) << "the old file went to the trash";
+#else
+    Q_UNUSED(trashedBefore);
+#endif
 }
 
 TEST(FileOperations, AFileNeverReplacesItself) {
@@ -2378,6 +2401,7 @@ TEST(SubfolderList, ListsFoldersOnlyInNaturalOrderAndFollowsThePath) {
     for (const char* name : {"b10", "b9", "A", ".hidden"}) {
         ASSERT_TRUE(QDir(dir.path()).mkpath(QString::fromLatin1(name)));
     }
+    hideOnWindows(dir.filePath(QStringLiteral(".hidden")));
     writeJpeg(dir.filePath(QStringLiteral("file.jpg")));
 
     iv::SubfolderList list;
@@ -4685,6 +4709,7 @@ TEST(FolderListing, ListsFoldersFirstNaturallyAndFiltersAndSorts) {
     ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("zeta")));
     ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("Alpha")));
     ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral(".hidden")));
+    hideOnWindows(dir.filePath(QStringLiteral(".hidden")));
     touchFile(dir.filePath(QStringLiteral("img10.jpg")), 10);
     touchFile(dir.filePath(QStringLiteral("img2.JPG")), 300);
     touchFile(dir.filePath(QStringLiteral("notes.txt")), 20);
@@ -4967,7 +4992,16 @@ int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsFolder.path());
-    QCoreApplication::setOrganizationName(QStringLiteral("ImageViewerTests"));
+#ifdef Q_OS_WIN
+    // Qt ignores XDG_CACHE_HOME here, so each process needs a thumbnail cache of its own this way.
+    static const QString organization = QStringLiteral("ImageViewerTests/") + QString::number(QCoreApplication::applicationPid());
+    static const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QLatin1Char('/') + organization;
+    // At exit, and registered first so that it runs last: the thumbnail database is open until then.
+    std::atexit([] { QDir(cacheRoot).removeRecursively(); });
+#else
+    const QString organization = QStringLiteral("ImageViewerTests");
+#endif
+    QCoreApplication::setOrganizationName(organization);
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

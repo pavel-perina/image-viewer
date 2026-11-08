@@ -200,6 +200,11 @@ public:
         }
         m_dst.image_width = m_width;
         m_dst.image_height = m_height;
+#if JPEG_LIB_VERSION >= 70
+        // In the libjpeg 7 and 8 APIs, a transcode takes the size from these instead.
+        m_dst.jpeg_width = m_width;
+        m_dst.jpeg_height = m_height;
+#endif
         if (m_src.progressive_mode) {
             jpeg_simple_progression(&m_dst);
         } else {

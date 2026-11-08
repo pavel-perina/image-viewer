@@ -28,7 +28,10 @@ public:
             source = *opened;
         }
     }
-    ~ProbeFile() { std::filesystem::remove(m_path); }
+    ~ProbeFile() {
+        source.reset();  // Windows cannot delete a file that is open
+        std::filesystem::remove(m_path);
+    }
 
     std::shared_ptr<ImageSource> source;
 

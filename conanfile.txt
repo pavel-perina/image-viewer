@@ -20,6 +20,9 @@ libtiff/*:jpeg=libjpeg-turbo
 libyuv/*:with_jpeg=libjpeg-turbo
 # jbig-kit is GPL. The recipe's default is already off; this keeps it that way.
 libtiff/*:jbig=False
+# Off by default in the recipe, and files using them would not open.
+libtiff/*:zstd=True
+libtiff/*:libdeflate=True
 # Without assembly, AV1 encoding in Save As is several times slower.
 libaom-av1/*:assembly=True
 

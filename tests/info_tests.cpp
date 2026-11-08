@@ -139,20 +139,21 @@ TEST(Histogram, CountsOnlyRealPixelsAcrossTilesAndUsesAReducedLevel) {
     reduced.pixel = [](int, int) { return Rgb{100, 100, 100}; };
     writeTiff(path, {full, reduced});
 
-    const auto source = openImageSource(path);
+    auto source = openImageSource(path);
     ASSERT_TRUE(source.has_value()) << source.error();
     const auto histogram = computeHistogram(**source, 0, {});
     ASSERT_TRUE(histogram.has_value()) << histogram.error();
     EXPECT_EQ(histogram->measuredSize, (Size{1100, 1050}));
     EXPECT_EQ(histogram->channels[0][100], 1100u * 1050u);
     EXPECT_EQ(total(histogram->channels[0]), 1100u * 1050u);
+    source->reset();  // Windows cannot delete a file that is open
     std::filesystem::remove(path);
 }
 
 TEST(Histogram, CancelsAndRejectsMissingPages) {
     const auto path = tempFile("cancel.tif");
     writeTiff(path, {TiffImage{}});
-    const auto source = openImageSource(path);
+    auto source = openImageSource(path);
     ASSERT_TRUE(source.has_value());
     std::stop_source stop;
     stop.request_stop();
@@ -160,6 +161,7 @@ TEST(Histogram, CancelsAndRejectsMissingPages) {
     ASSERT_FALSE(cancelled.has_value());
     EXPECT_EQ(cancelled.error(), "cancelled");
     EXPECT_FALSE(computeHistogram(**source, 7, {}).has_value());
+    source->reset();
     std::filesystem::remove(path);
 }
 
@@ -296,6 +298,9 @@ TEST(Details, NamesChromaSubsampling) {
 }
 
 TEST(Details, DescribesTiffPagesSeparately) {
+    if (!TIFFIsCODECConfigured(COMPRESSION_ZSTD)) {
+        GTEST_SKIP() << "this libtiff is built without Zstandard";
+    }
     const auto path = tempFile("pages.tif");
     TiffImage first;
     first.width = 2000;
@@ -314,9 +319,9 @@ TEST(Details, DescribesTiffPagesSeparately) {
     second.compression = COMPRESSION_ZSTD;
     writeTiff(path, {first, reduced, second});
 
-    const auto source = openImageSource(path);
+    auto source = openImageSource(path);
     ASSERT_TRUE(source.has_value()) << source.error();
-    const auto page1 = describeImage((*source)->subimages()[0]);
+    const auto page1 =describeImage((*source)->subimages()[0]);
     EXPECT_EQ(valueOf(page1, "Dimensions"), "2000 x 1500");
     EXPECT_EQ(valueOf(page1, "Megapixels"), "3.0 MP");
     EXPECT_EQ(valueOf(page1, "Format"), "TIFF");
@@ -330,6 +335,7 @@ TEST(Details, DescribesTiffPagesSeparately) {
     EXPECT_EQ(valueOf(page2, "Color"), "Grayscale");
     EXPECT_EQ(valueOf(page2, "Compression"), "Zstandard, lossless");
     EXPECT_EQ(valueOf(page2, "Pyramid"), "");
+    source->reset();
     std::filesystem::remove(path);
 }
 
@@ -418,7 +424,7 @@ TEST(Details, ReadsCameraTagsAndExifDirectoryFromTiff) {
         TIFFClose(tiff);
     }
 
-    const auto source = openImageSource(path);
+    auto source = openImageSource(path);
     ASSERT_TRUE(source.has_value()) << source.error();
     const auto rows = describeImage((*source)->subimages()[0]);
     EXPECT_EQ(valueOf(rows, "Camera"), "Nikon Corporation D850");
@@ -432,5 +438,6 @@ TEST(Details, ReadsCameraTagsAndExifDirectoryFromTiff) {
     const auto tile = (*source)->readTile({0, 0, 0, 0}, {});
     ASSERT_TRUE(tile.has_value()) << tile.error();
     EXPECT_EQ(*reinterpret_cast<const std::uint8_t*>(tile->row(0)), 90);
+    source->reset();
     std::filesystem::remove(path);
 }

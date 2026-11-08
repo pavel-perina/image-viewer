@@ -103,6 +103,9 @@ class TiffFormats : public testing::TestWithParam<FormatCase> {};
 
 TEST_P(TiffFormats, DecodesToTheRightFormatAndColours) {
     const FormatCase c = GetParam();
+    if (!TIFFIsCODECConfigured(static_cast<std::uint16_t>(c.compression))) {
+        GTEST_SKIP() << "this libtiff is built without the codec";
+    }
     TempDir dir;
     TiffImage image;
     image.width = 300;

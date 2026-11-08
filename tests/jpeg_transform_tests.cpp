@@ -273,7 +273,9 @@ TEST_F(JpegTransformFile, IsReplacedKeepingItsPermissions) {
     const auto changed = transformJpegFile(path, JpegEdit::RotateClockwise);
     ASSERT_TRUE(changed) << changed.error();
     EXPECT_TRUE(*changed);
+#ifndef _WIN32  // files have no such permission bits there
     EXPECT_EQ(fs::status(path).permissions(), fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
+#endif
     const DecodedJpeg edited = test::decodeJpeg(*readFile(path));
     EXPECT_EQ(edited.width, 48);
     EXPECT_EQ(edited.height, 64);

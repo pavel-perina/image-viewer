@@ -14,6 +14,8 @@ if(WIN32)
             $<IF:$<CONFIG:Debug>,--debug,--release>
             --no-compiler-runtime
             --no-translations
+            # The UI tests run from this folder too, and Qt looks for plugins here first.
+            --include-plugins qoffscreen
             $<TARGET_FILE:imageviewer>
         VERBATIM
     )

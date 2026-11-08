@@ -57,6 +57,9 @@ DLLs, plugins and QML modules into `build\release`. So the app starts from there
 
     build\release\imageviewer.exe
 
+The tests also need Qt on `PATH`, for Qt Test:
+
+    set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%PATH%
     ctest --test-dir build\release -j 8 --timeout 120 --output-on-failure
 
 The GPU shader tests are skipped under `ctest`, which uses the software renderer. They have not
@@ -119,19 +122,18 @@ CMS 2, libpng, libwebp, libavif, libjxl, GoogleTest, and pkgconf as a build tool
 
 ## Test status
 
-On 2026-11-08: 486 tests, of which 448 passed, 3 were skipped (the GPU tests) and 35 failed. The
-causes below are read from the failure messages and have not been confirmed. None has been fixed.
+On 2026-11-08: 486 tests, of which 479 passed, 3 were skipped (the GPU tests) and 4 failed. Which
+folder tree tests fail changes from run to run. The causes are not known yet.
 
-| Tests | Count | What happens |
-| --- | --- | --- |
-| `JpegTransform.*` (6), `LosslessJpeg.*` (4) | 10 | Lossless edits don't give the expected result, for example the dimensions don't swap after a rotation. |
-| `Probe.*` | 6 | The test process dies with no assertion message. |
-| `Histogram.*` (2), `Details.*` (2) | 4 | Mostly "file is being used by another process" when deleting a temporary file, so a file stays open. One is "cannot write test TIFF data". |
-| `BrowserPage.Tree*`, `BrowserPage.DoubleClickingAFolder*` | 4 | The folder tree doesn't reach the expected rows in time. |
-| `FileOperations.*` (2), `LosslessJpeg.ConvertsToJxl*` | 3 | `isInTrash` is false after moving to the Recycle Bin. The helper may be looking in the freedesktop Trash. |
-| `SubfolderList.*`, `FolderListing.*` | 2 | A folder named `.hidden` is listed, as a leading dot doesn't mean hidden on Windows. |
-| `TiffFormats…/Gray16Zstd` | 1 | Probably because the Conan libtiff recipe defaults to `zstd=False`, unlike Linux. |
-| `ThumbnailProvider`, `FileOperations.Conflicts…`, `ThumbnailStore`, `MessageBox`, `Compare` | 5 | One each, not looked into. |
+| Tests | What happens |
+| --- | --- |
+| `MessageBox.TakesTheHeightOfAllItsText` | The box doesn't grow to fit several lines of text in time. |
+| `Compare.TwoFilesZoomAndScrollTogether` | A simulated mouse drag doesn't scroll the image. |
+| `BrowserPage.Tree*`, `BrowserPage.DoubleClickingAFolder*` | Rows aren't found in time. The tree shows the real path to the temporary folder, and many folders beside it may push rows out of view. An empty `TEMP` fixed only some of these. |
+
+On Windows the tests can't confirm that a file reached the Recycle Bin, as it renames what it
+receives, and those tests send small files to the real Recycle Bin. Tests that need a libtiff codec
+skip themselves if it's missing.
 
 ## Compiler warnings
 
