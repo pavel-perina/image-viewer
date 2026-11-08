@@ -14,6 +14,8 @@ qt_add_library(iv_ui STATIC
     edited_image.h
     file_operations.cpp
     file_operations.h
+    folder_listing.cpp
+    folder_listing.h
     folder_lists.cpp
     folder_lists.h
     key_hold.cpp
@@ -52,6 +54,9 @@ qt_add_qml_module(iv_ui
         qml/CropPanel.qml
         qml/FileActions.qml
         qml/FolderButton.qml
+        qml/FileChooser.qml
+        qml/FileListView.qml
+        qml/FolderTree.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
         qml/JpegMenu.qml

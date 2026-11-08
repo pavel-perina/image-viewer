@@ -351,10 +351,9 @@ change nothing useful. The first press of a double click does this too, for that
 
 ## Save As
 * File > Save As (Ctrl+Shift+S) works on one image, the current one in the viewer or the one
-  selected in the browser. The native save dialog picks the name, and the extension picks the
-  format; a name typed without one gets the chosen filter's. A second dialog then shows that
-  format's options, remembered per format, and what to do with the metadata. The native dialog
-  can hold no controls of ours, so the options cannot be in it.
+  selected in the browser. The file chooser picks the name, and the extension picks the format.
+  A second dialog then shows that format's options, remembered per format, and what to do with
+  the metadata.
 * `saveSubimage` in core opens the file again by path, so the view and its levels are not
   involved, decodes the page at full size, turns it upright as shown, and writes it with the
   writers. It runs as a file job, with its progress shown, and the new file becomes the current
@@ -373,9 +372,38 @@ change nothing useful. The first press of a double click does this too, for that
   typed into XMP stay.
 * Saving a JPEG as JPEG compresses it again, and the dialog says so and points to the lossless
   tools.
-* To be redone once the browser has places: a dialog of our own, with the folder chosen from the
-  places, the name, the format and its options in one window, instead of the native dialog
-  followed by the options.
+* The format's options could still move into the chooser, so that saving is one window.
+
+## File chooser
+* Opening, saving, Copy To and Move To, the display profile and `.cube` files all use a chooser
+  of our own (`FileChooser.qml`) rather than the system's or Qt's dialog. The dialogs those give
+  differ per platform and behaved badly where it matters: choosing another type left the
+  extension of the name as it was, and the save button acted on a folder selected in the list,
+  opening it rather than saving.
+* It is drawn inside the window, at most of its size, and is modal, so window shortcuts do not
+  see what is typed into it. Its parts come from the browser: the path bar with its crumbs,
+  subfolder menus and history (with its own browsing context, and without adding the folders
+  to the recent ones), and the folder tree, made only while the chooser is shown since each tree
+  watches the file system. On the left above the tree are the places (`FolderLists::places`:
+  home and its usual folders, the disks, leaving out what the system mounts for itself and parts
+  of the system disk such as Btrfs subvolumes), the favourites and the recent folders.
+* The files come from `FolderListing`, a list model of one folder read in the background and
+  again when the folder changes: folders first, hidden entries left out, names in natural order,
+  the type from the MIME database. `FileListView.qml` shows it either as names in columns that
+  scroll sideways (brief) or as rows of name, size, type and date with headers that sort
+  (details); the choice is remembered. It is meant to serve elsewhere too, such as a list view
+  in the browser.
+* Saving takes the name typed, in the folder shown, and nothing else. A file clicked in the list
+  only fills in the name. Choosing another type replaces the extension of the name with the
+  type's, or adds it; typing a known extension chooses its type; a name without a known one gets
+  the type's. A name of a folder opens that folder and leaves the file name as it was. An
+  existing file is replaced only after asking, and saying no keeps the chooser open.
+* Opening: Enter or a double click opens a folder or opens the file; the button does the same
+  for a name typed or the entry selected. Choosing a folder chooses the folder selected, else the
+  one shown, and the button names it.
+* Types are given as `{label, extensions}` rather than filter strings, so nothing parses labels.
+* Not yet: selecting several files, typing to jump to a name, icons other than a drawn folder,
+  and `~` for the home folder in a typed name.
 
 ## Clipboard
 * Copy puts files on the clipboard as URLs, also in the format file managers on GNOME look for.
@@ -441,7 +469,7 @@ the question before leaving an edited image. Still planned lists the rest.
 * The view keeps the edits of the page shown. Moving to another image, page or folder, back to
   the browser, quitting, and the file operations that change the file on show (rename, trash,
   delete, move, the lossless JPEG tools) ask first: Save (as), Discard or Cancel. Saving to the
-  same name replaces the file, after the file dialog's own question, and the view reloads it.
+  same name replaces the file, after the file chooser's question, and the view reloads it.
 * After a crop the view fits the image again, as the old zoom and position mean little for the
   new picture.
 

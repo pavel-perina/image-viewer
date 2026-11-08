@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 namespace iv {
@@ -27,6 +28,9 @@ public:
     Q_INVOKABLE void noteVisited(const QString& path);
     // A folder on a disk that is not attached stays listed, but cannot be opened for now.
     Q_INVOKABLE bool exists(const QString& path) const;
+    // The home folder and the usual ones in it that exist, then the disks and drives attached,
+    // each as {name, path}. Read anew on each call, as disks come and go.
+    Q_INVOKABLE QVariantList places() const;
 
 signals:
     void favoritesChanged();

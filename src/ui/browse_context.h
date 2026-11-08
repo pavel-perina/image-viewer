@@ -137,8 +137,9 @@ public:
     // "jpeg", "png", "tiff", "webp", "avif" or "jxl" for a file name to save as, or empty if
     // its extension names nothing this build can write.
     Q_INVOKABLE QString saveFormat(const QString& path) const;
-    // Name filters for a save dialog, one per format this build can write.
-    Q_INVOKABLE QStringList saveFilters() const;
+    // One {label, extensions} per format this build can write, for the file chooser; the first
+    // extension is the one a new name gets.
+    Q_INVOKABLE QVariantList saveTypes() const;
     // Writes a page of an image to a file in the format of its extension; the options are
     // those saveImageAs takes. The new file becomes the current one.
     // The page of the source file, or the edited image from ImageView::editedImage if valid.

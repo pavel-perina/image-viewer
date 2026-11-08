@@ -9,7 +9,9 @@ JPEG files can be rotated and flipped without loss, and repacked as JPEG XL with
 check that the original comes back (Edit > Lossless JPEG, or the file menu).
 
 File > Save As (Ctrl+Shift+S) writes the image shown as JPEG, PNG, TIFF, WebP, AVIF or JPEG XL,
-with options per format. Camera data (EXIF and XMP) and the colour profile are kept, and the
+with options per format. Files are opened and saved through a chooser of its own, with places,
+favourite and recent folders, the folder tree and a brief or detailed list; choosing a type
+changes the extension of the name, and Save saves the name typed. Camera data (EXIF and XMP) and the colour profile are kept, and the
 location can be removed.
 
 Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a fixed ratio

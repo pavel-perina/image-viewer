@@ -21,6 +21,8 @@ Rectangle {
     readonly property int menuRowHeight: 26
 
     property bool editing: false
+    // Folders opened here count as visited, for the recent folders; not in a file chooser.
+    property bool recordVisits: true
     property string problem: ""
     readonly property alias editText: field.text
     readonly property alias menuFolders: subfolders.folders
@@ -96,6 +98,7 @@ Rectangle {
 
     Connections {
         target: bar.context
+        enabled: bar.recordVisits
         function onDirectoryChanged() {
             FolderLists.noteVisited(bar.context.directory)
         }

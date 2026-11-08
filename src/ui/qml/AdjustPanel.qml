@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import ImageViewer
 
@@ -78,13 +77,21 @@ Rectangle {
 
     onSettingsChanged: preview()
 
-    FileDialog {
+    // Made on first use, and kept so that it opens where it was left.
+    Loader {
         id: cubeDialog
-        title: "Load a Colour Table"
-        nameFilters: ["Colour tables (*.cube *.CUBE)", "All files (*)"]
-        onAccepted: {
-            panel.message = panel.view.loadColorCube(selectedFile)
-            panel.preview()
+        active: false
+        sourceComponent: FileChooser {
+            title: "Load a Colour Table"
+            types: [{ label: "Colour tables", extensions: ["cube"] }, { label: "All files", extensions: [] }]
+            onChosen: (path) => {
+                panel.message = panel.view.loadColorCube(urlOf(path))
+                panel.preview()
+            }
+        }
+        function start() {
+            active = true
+            item.start("", "")
         }
     }
 
@@ -208,7 +215,7 @@ Rectangle {
                 objectName: "adjustLoadCube"
                 focusPolicy: Qt.NoFocus
                 text: "Load .cube..."
-                onClicked: cubeDialog.open()
+                onClicked: cubeDialog.start()
             }
             Button {
                 focusPolicy: Qt.NoFocus

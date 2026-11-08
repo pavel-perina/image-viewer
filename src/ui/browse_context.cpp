@@ -949,18 +949,24 @@ bool BrowseContext::canConvertToJxl() const { return iv::canConvertToJxl(); }
 
 QString BrowseContext::saveFormat(const QString& path) const { return saveFormatFor(path); }
 
-QStringList BrowseContext::saveFilters() const {
-    static const std::pair<const char*, const char*> kFormats[] = {
-        {"JPEG (*.jpg *.jpeg)", "x.jpg"}, {"PNG (*.png)", "x.png"},   {"TIFF (*.tif *.tiff)", "x.tif"},
-        {"WebP (*.webp)", "x.webp"},      {"AVIF (*.avif)", "x.avif"}, {"JPEG XL (*.jxl)", "x.jxl"},
+QVariantList BrowseContext::saveTypes() const {
+    struct Type {
+        const char* label;
+        QStringList extensions;
     };
-    QStringList filters;
-    for (const auto& [filter, example] : kFormats) {
-        if (!saveFormatFor(QLatin1String(example)).isEmpty()) {
-            filters << QLatin1String(filter);
+    const Type kTypes[] = {
+        {"JPEG", {QStringLiteral("jpg"), QStringLiteral("jpeg")}}, {"PNG", {QStringLiteral("png")}},
+        {"TIFF", {QStringLiteral("tif"), QStringLiteral("tiff")}}, {"WebP", {QStringLiteral("webp")}},
+        {"AVIF", {QStringLiteral("avif")}},                        {"JPEG XL", {QStringLiteral("jxl")}},
+    };
+    QVariantList types;
+    for (const Type& type : kTypes) {
+        if (!saveFormatFor(QStringLiteral("x.") + type.extensions.first()).isEmpty()) {
+            types << QVariantMap{{QStringLiteral("label"), QLatin1String(type.label)},
+                                 {QStringLiteral("extensions"), type.extensions}};
         }
     }
-    return filters;
+    return types;
 }
 
 void BrowseContext::saveAs(const QString& source, int page, const QString& target, const QVariantMap& options,

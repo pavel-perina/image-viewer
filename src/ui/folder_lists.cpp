@@ -2,6 +2,12 @@
 
 #include <QFileInfo>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QStorageInfo>
+#include <QVariantMap>
+
+#include <algorithm>
+#include <utility>
 
 namespace iv {
 
@@ -56,5 +62,68 @@ void FolderLists::noteVisited(const QString& path) {
 }
 
 bool FolderLists::exists(const QString& path) const { return QFileInfo(path).isDir(); }
+
+QVariantList FolderLists::places() const {
+    QVariantList places;
+    QStringList seen;
+    const auto add = [&](const QString& name, const QString& path) {
+        if (!path.isEmpty() && !seen.contains(path) && QFileInfo(path).isDir()) {
+            seen << path;
+            places << QVariantMap{{QStringLiteral("name"), name}, {QStringLiteral("path"), path}};
+        }
+    };
+    const QString home = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    add(QStringLiteral("Home"), home);
+    for (const auto& [name, location] : {std::pair{"Desktop", QStandardPaths::DesktopLocation},
+                                         std::pair{"Documents", QStandardPaths::DocumentsLocation},
+                                         std::pair{"Pictures", QStandardPaths::PicturesLocation},
+                                         std::pair{"Downloads", QStandardPaths::DownloadLocation}}) {
+        const QString path = QStandardPaths::writableLocation(location);
+        if (path != home) {  // where a folder is missing, Qt gives the home folder instead
+            add(QString::fromLatin1(name), path);
+        }
+    }
+    // Disks, leaving out what the system mounts for itself.
+#ifndef Q_OS_WIN
+    const QByteArray systemDevice = QStorageInfo::root().device();
+#endif
+    for (const QStorageInfo& volume : QStorageInfo::mountedVolumes()) {
+        const QString root = volume.rootPath();
+        if (!volume.isValid() || !volume.isReady()) {
+            continue;
+        }
+#ifndef Q_OS_WIN
+        static const QStringList kSystem{QStringLiteral("/proc"), QStringLiteral("/sys"), QStringLiteral("/dev"),
+                                         QStringLiteral("/run"), QStringLiteral("/snap"), QStringLiteral("/boot"),
+                                         QStringLiteral("/tmp"), QStringLiteral("/var"), QStringLiteral("/efi")};
+        const bool removable = root.startsWith(QStringLiteral("/run/media/")) || root.startsWith(QStringLiteral("/media/")) ||
+                               root.startsWith(QStringLiteral("/mnt/"));
+        const bool system = std::ranges::any_of(kSystem, [&](const QString& prefix) {
+            return root == prefix || root.startsWith(prefix + QLatin1Char('/'));
+        });
+        if (system && !removable) {
+            continue;
+        }
+        if (root == home || (root != QStringLiteral("/") && home.startsWith(root + QLatin1Char('/')) && !removable)) {
+            continue;  // the disk holding the home folder, which is already there
+        }
+        // Parts of the system disk mounted on their own, such as Btrfs subvolumes.
+        if (root != QStringLiteral("/") && (volume.device() == systemDevice || QFileInfo(root).fileName().startsWith(QLatin1Char('.')))) {
+            continue;
+        }
+#endif
+        QString name = volume.displayName();
+        if (root == QStringLiteral("/")) {
+            name = QStringLiteral("File System");
+        } else if (name.isEmpty() || name == root) {
+            name = QFileInfo(root).fileName().isEmpty() ? root : QFileInfo(root).fileName();
+        }
+#ifdef Q_OS_WIN
+        name = QStringLiteral("%1 (%2)").arg(name, root.left(2));
+#endif
+        add(name, root);
+    }
+    return places;
+}
 
 }  // namespace iv

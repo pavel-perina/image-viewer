@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtCore
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import ImageViewer
 
@@ -192,7 +191,7 @@ ApplicationWindow {
     function next() { window.leaveImage(() => context.next()) }
     function previous() { window.leaveImage(() => context.previous()) }
 
-    Action { id: openAction; text: "&Open..."; shortcut: StandardKey.Open; onTriggered: openDialog.open() }
+    Action { id: openAction; text: "&Open..."; shortcut: StandardKey.Open; onTriggered: openDialog.start(context.directory, "") }
     Action { id: quitAction; text: "&Quit"; shortcut: StandardKey.Quit; onTriggered: window.close() }
     Action {
         id: modeAction
@@ -478,7 +477,7 @@ ApplicationWindow {
             AppMenuItem { action: sharpResamplingAction }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }
-            AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.open() }
+            AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.start("", "") }
             AppMenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
             MenuSeparator {}
             AppMenuItem { text: "Clear &Thumbnail Cache..."; onTriggered: ThumbnailStore.measure() }
@@ -619,12 +618,12 @@ ApplicationWindow {
         }
     }
 
-    FileDialog {
+    FileChooser {
         id: displayProfileDialog
         title: "Choose Display Profile"
-        nameFilters: ["ICC profiles (*.icc *.icm)", "All files (*)"]
-        onAccepted: {
-            const problem = ColorSettings.useDisplayProfile(selectedFile)
+        types: [{ label: "ICC profiles", extensions: ["icc", "icm"] }, { label: "All files", extensions: [] }]
+        onChosen: (path) => {
+            const problem = ColorSettings.useDisplayProfile(urlOf(path))
             if (problem) {
                 profileProblemDialog.text = problem
                 profileProblemDialog.open()
@@ -639,14 +638,13 @@ ApplicationWindow {
         standardButtons: Dialog.Ok
     }
 
-    FileDialog {
+    FileChooser {
         id: openDialog
+        objectName: "openDialog"
         title: "Open Image"
-        nameFilters: ["Images (*.jpg *.jpeg *.jpe *.jfif *.tif *.tiff *.png *.webp *.avif *.jxl)", "All files (*)"]
-        onAccepted: {
-            const file = selectedFile
-            window.leaveImage(() => context.openUrl(file))
-        }
+        types: [{ label: "Images", extensions: ["jpg", "jpeg", "jpe", "jfif", "tif", "tiff", "png", "webp", "avif", "jxl"] },
+                { label: "All files", extensions: [] }]
+        onChosen: (path) => window.leaveImage(() => context.openPath(path))
     }
 
     // Asks first with what there is, as clearing makes every folder slow to show once more.

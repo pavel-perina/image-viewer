@@ -33,6 +33,7 @@
 #include <QUrl>
 #include <QtQml/QQmlExtensionPlugin>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
@@ -48,6 +49,7 @@
 #include "ui/browse_context.h"
 #include "ui/color_settings.h"
 #include "ui/directory_tree_model.h"
+#include "ui/folder_listing.h"
 #include "ui/folder_lists.h"
 #include "ui/key_hold.h"
 #include "ui/key_names.h"
@@ -3493,7 +3495,10 @@ TEST(LosslessJpeg, WarnsWhenTheOriginalsGoToTheTrash) {
 
 TEST(SaveAs, OffersOnlyWhatCanBeWritten) {
     BrowseContext context;
-    EXPECT_TRUE(context.saveFilters().contains(QStringLiteral("PNG (*.png)")));
+    const QVariantList types = context.saveTypes();
+    EXPECT_TRUE(std::ranges::any_of(types, [](const QVariant& type) {
+        return type.toMap().value(QStringLiteral("extensions")).toStringList() == QStringList{QStringLiteral("png")};
+    }));
     EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b.JPG")), QStringLiteral("jpeg"));
     EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b.tiff")), QStringLiteral("tiff"));
     EXPECT_EQ(context.saveFormat(QStringLiteral("/a/b.bmp")), QString());
@@ -4608,6 +4613,305 @@ TEST(KeyHold, TellsWhileAKeyIsHeldAndIgnoresRepeats) {
     hold.setEnabled(false);
     QCoreApplication::sendEvent(&window, &press);
     EXPECT_FALSE(hold.held());
+}
+
+namespace {
+
+QStringList listingNames(const iv::FolderListing& listing) {
+    QStringList names;
+    for (int row = 0; row < listing.count(); ++row) {
+        names << listing.get(row).value(QStringLiteral("name")).toString();
+    }
+    return names;
+}
+
+// Each character as a key press, as QTest::keyClicks does only for widgets.
+void typeText(QWindow* window, const QString& text) {
+    for (const QChar c : text) {
+        QTest::keyClick(window, c.toLatin1());
+    }
+}
+
+void touchFile(const QString& path, int bytes = 0) {
+    QFile file(path);
+    ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray(bytes, 'x'));
+}
+
+}  // namespace
+
+TEST(FolderListing, ListsFoldersFirstNaturallyAndFiltersAndSorts) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("zeta")));
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("Alpha")));
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral(".hidden")));
+    touchFile(dir.filePath(QStringLiteral("img10.jpg")), 10);
+    touchFile(dir.filePath(QStringLiteral("img2.JPG")), 300);
+    touchFile(dir.filePath(QStringLiteral("notes.txt")), 20);
+
+    iv::FolderListing listing;
+    listing.setPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading(); }));
+    EXPECT_EQ(listingNames(listing), (QStringList{"Alpha", "zeta", "img2.JPG", "img10.jpg", "notes.txt"}));
+    EXPECT_TRUE(listing.get(0).value(QStringLiteral("isFolder")).toBool());
+    EXPECT_EQ(listing.indexOf(QStringLiteral("notes.txt")), 4);
+
+    listing.setExtensions({QStringLiteral("JPG")});
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading() && listing.count() == 4; }));
+    EXPECT_EQ(listingNames(listing), (QStringList{"Alpha", "zeta", "img2.JPG", "img10.jpg"}));
+
+    // Folders stay first whichever way the files go.
+    listing.setSortKey(iv::FolderListing::SortKey::Size);
+    listing.setSortDescending(false);
+    EXPECT_EQ(listingNames(listing), (QStringList{"Alpha", "zeta", "img10.jpg", "img2.JPG"}));
+    listing.setSortDescending(true);
+    EXPECT_EQ(listingNames(listing), (QStringList{"zeta", "Alpha", "img2.JPG", "img10.jpg"}));
+
+    listing.setShowFiles(false);
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading() && listing.count() == 2; }));
+
+    EXPECT_EQ(listing.kindOf(dir.path()), QStringLiteral("folder"));
+    EXPECT_EQ(listing.kindOf(dir.filePath(QStringLiteral("notes.txt"))), QStringLiteral("file"));
+    EXPECT_EQ(listing.kindOf(dir.filePath(QStringLiteral("nothing"))), QString());
+}
+
+TEST(FolderListing, ReadsTheFolderAgainWhenItChanges) {
+    QTemporaryDir dir;
+    iv::FolderListing listing;
+    listing.setPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading(); }));
+    EXPECT_EQ(listing.count(), 0);
+    touchFile(dir.filePath(QStringLiteral("new.png")));
+    EXPECT_TRUE(waitUntil([&] { return listing.count() == 1; }));
+}
+
+namespace {
+
+// A file chooser in a window of its own, with a folder holding a.jpg, b.png and a subfolder.
+struct ChooserFixture {
+    QTemporaryDir dir;
+    QQmlEngine engine;
+    std::unique_ptr<QObject> root;
+    QQuickWindow* window = nullptr;
+    QObject* chooser = nullptr;
+    std::unique_ptr<QSignalSpy> chosen;
+    std::unique_ptr<QSignalSpy> cancelled;
+
+    explicit ChooserFixture(const QString& mode) {
+        touchFile(dir.filePath(QStringLiteral("a.jpg")));
+        touchFile(dir.filePath(QStringLiteral("b.png")));
+        EXPECT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("sub")));
+        QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+            for (const QQmlError& warning : warnings) {
+                ADD_FAILURE() << warning.toString().toStdString();
+            }
+        });
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import QtQuick.Controls
+            import ImageViewer
+            ApplicationWindow {
+                width: 1000; height: 700; visible: true
+                property alias chooser: chooser
+                FileChooser { id: chooser }
+            }
+        )", QUrl());
+        EXPECT_TRUE(component.isReady()) << component.errorString().toStdString();
+        root.reset(component.create());
+        window = qobject_cast<QQuickWindow*>(root.get());
+        chooser = root->property("chooser").value<QObject*>();
+        chooser->setProperty("mode", mode);
+        chooser->setProperty("types", QVariantList{
+            QVariantMap{{"label", "JPEG"}, {"extensions", QStringList{"jpg", "jpeg"}}},
+            QVariantMap{{"label", "PNG"}, {"extensions", QStringList{"png"}}},
+        });
+        chosen = std::make_unique<QSignalSpy>(chooser, SIGNAL(chosen(QString)));
+        cancelled = std::make_unique<QSignalSpy>(chooser, SIGNAL(cancelled()));
+        EXPECT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    }
+
+    QObject* part(const char* name) const { return chooser->property(name).value<QObject*>(); }
+    QQuickItem* item(const char* name) const { return qobject_cast<QQuickItem*>(part(name)); }
+    QObject* listing() const { return chooser->findChild<iv::FolderListing*>(); }
+    QString name() const { return item("nameField")->property("text").toString(); }
+    QString directory() const { return chooser->property("directory").toString(); }
+
+    void start(const QString& name) {
+        QMetaObject::invokeMethod(chooser, "start", Q_ARG(QVariant, dir.path()), Q_ARG(QVariant, name));
+        ASSERT_TRUE(waitUntil([&] { return chooser->property("opened").toBool(); }));
+        ASSERT_TRUE(waitUntil([&] { return !listing()->property("loading").toBool() && directory() == dir.path(); }));
+    }
+
+    void click(QQuickItem* target) {
+        ASSERT_NE(target, nullptr);
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                          target->mapToScene(QPointF(target->width() / 2, target->height() / 2)).toPoint());
+    }
+
+    // Makes an entry current as a click would.
+    void pick(const QString& entry) {
+        int row = -1;
+        QMetaObject::invokeMethod(listing(), "indexOf", Q_RETURN_ARG(int, row), Q_ARG(QString, entry));
+        ASSERT_GE(row, 0) << entry.toStdString();
+        QQuickItem* list = item("fileList");
+        list->setProperty("currentIndex", row);
+        QMetaObject::invokeMethod(list, "clicked", Q_ARG(int, row));
+    }
+};
+
+}  // namespace
+
+TEST(FileChooser, ChoosingAnotherTypeChangesTheExtension) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    EXPECT_EQ(f.chooser->property("typeIndex").toInt(), 0);
+    QMetaObject::invokeMethod(f.part("typeBox"), "activated", Q_ARG(int, 1));
+    EXPECT_EQ(f.name(), QStringLiteral("a.png"));
+    EXPECT_EQ(f.part("typeBox")->property("currentIndex").toInt(), 1);
+    // Only files of the type are listed.
+    EXPECT_TRUE(waitUntil([&] { return f.listing()->property("count").toInt() == 2; }));  // sub and b.png
+
+    f.click(f.item("acceptButton"));
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("a.png")));
+    EXPECT_EQ(f.cancelled->size(), 0);
+}
+
+TEST(FileChooser, TypingAKnownExtensionChoosesItsTypeAndANameWithoutOneGetsTheType) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    QQuickItem* field = f.item("nameField");
+    ASSERT_TRUE(waitUntil([&] { return field->hasActiveFocus(); }));
+    QTest::keyClick(f.window, Qt::Key_A, Qt::ControlModifier);
+    typeText(f.window, QStringLiteral("new.png"));
+    EXPECT_EQ(f.name(), QStringLiteral("new.png"));
+    EXPECT_EQ(f.chooser->property("typeIndex").toInt(), 1);
+
+    QTest::keyClick(f.window, Qt::Key_A, Qt::ControlModifier);
+    typeText(f.window, QStringLiteral("plain"));
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("plain.png")));
+}
+
+TEST(FileChooser, SaveSavesTheTypedNameEvenWithAFolderSelected) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("new.jpg"));
+    f.pick(QStringLiteral("sub"));
+    EXPECT_EQ(f.name(), QStringLiteral("new.jpg")) << "a folder does not take the place of the name";
+    f.click(f.item("acceptButton"));
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("new.jpg")));
+}
+
+TEST(FileChooser, ANameOfAFolderOpensItAndKeepsTheFileName) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("new.jpg"));
+    f.item("nameField")->setProperty("text", QStringLiteral("sub"));
+    f.click(f.item("acceptButton"));
+    EXPECT_EQ(f.chosen->size(), 0);
+    EXPECT_TRUE(waitUntil([&] { return f.directory() == f.dir.filePath(QStringLiteral("sub")); }));
+    EXPECT_EQ(f.name(), QStringLiteral("new.jpg"));
+    EXPECT_TRUE(f.chooser->property("opened").toBool());
+}
+
+TEST(FileChooser, ReplacingAFileAsksAndCancelKeepsTheChooser) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("x.jpg"));
+    f.pick(QStringLiteral("a.jpg"));
+    EXPECT_EQ(f.name(), QStringLiteral("a.jpg"));
+    f.click(f.item("acceptButton"));
+    QObject* replace = f.part("replaceBox");
+    ASSERT_TRUE(waitUntil([&] { return replace->property("opened").toBool(); }));
+    EXPECT_EQ(f.chosen->size(), 0);
+
+    QMetaObject::invokeMethod(replace, "reject");
+    ASSERT_TRUE(waitUntil([&] { return !replace->property("visible").toBool(); }));
+    EXPECT_TRUE(f.chooser->property("opened").toBool());
+    EXPECT_EQ(f.chosen->size(), 0);
+    EXPECT_EQ(f.cancelled->size(), 0);
+
+    f.click(f.item("acceptButton"));
+    ASSERT_TRUE(waitUntil([&] { return replace->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(replace, "accept");
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("a.jpg")));
+}
+
+TEST(FileChooser, EscapeCancels) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return f.cancelled->size() == 1; }));
+    EXPECT_EQ(f.chosen->size(), 0);
+}
+
+TEST(FileChooser, OpenEntersFoldersAndOpensFiles) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
+    f.start(QString());
+    QQuickItem* list = f.item("fileList");
+    ASSERT_TRUE(waitUntil([&] { return list->hasActiveFocus(); }));
+    QTest::keyClick(f.window, Qt::Key_Down);  // the first entry, the folder
+    EXPECT_EQ(list->property("currentIndex").toInt(), 0);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    EXPECT_TRUE(waitUntil([&] { return f.directory() == f.dir.filePath(QStringLiteral("sub")); }));
+    EXPECT_EQ(f.chosen->size(), 0);
+    QTest::keyClick(f.window, Qt::Key_Backspace);
+    EXPECT_TRUE(waitUntil([&] { return f.directory() == f.dir.path(); }));
+
+    ASSERT_TRUE(waitUntil([&] { return f.listing()->property("count").toInt() == 3; }));
+    f.pick(QStringLiteral("b.png"));
+    EXPECT_EQ(f.name(), QStringLiteral("b.png"));
+    f.click(f.item("acceptButton"));
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("b.png")));
+}
+
+TEST(FileChooser, FolderModeChoosesTheSelectedFolderOrElseTheOneShown) {
+    ChooserFixture f(QStringLiteral("folder"));
+    f.start(QString());
+    EXPECT_EQ(f.listing()->property("count").toInt(), 1) << "folders only";
+    f.click(f.item("acceptButton"));
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.path());
+
+    f.start(QString());
+    f.pick(QStringLiteral("sub"));
+    EXPECT_EQ(f.item("acceptButton")->property("text").toString(), QStringLiteral("Choose “sub”"));
+    f.click(f.item("acceptButton"));
+    ASSERT_EQ(f.chosen->size(), 2);
+    EXPECT_EQ(f.chosen->at(1).at(0).toString(), f.dir.filePath(QStringLiteral("sub")));
+}
+
+TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
+    QTemporaryDir dir;
+    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
+    engine.loadFromModule("ImageViewer", "Main");
+    ASSERT_EQ(engine.rootObjects().size(), 1);
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    window->requestActivate();
+    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    auto* context = window->findChild<BrowseContext*>();
+    ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 1 && context->selectedCount() == 1; }));
+
+    auto* chooser = window->findChild<QObject*>(QStringLiteral("saveDialog"));
+    ASSERT_NE(chooser, nullptr);
+    QMetaObject::invokeMethod(chooser, "start", Q_ARG(QVariant, dir.path()), Q_ARG(QVariant, QStringLiteral("a.jpg")));
+    auto* field = chooser->property("nameField").value<QQuickItem*>();
+    ASSERT_TRUE(waitUntil([&] { return field->hasActiveFocus(); }));
+    // S straightens and X crops the selected image, Space and Backspace move between images.
+    QTest::keyClick(window, Qt::Key_End);
+    typeText(window, QStringLiteral("sx p"));
+    QTest::keyClick(window, Qt::Key_Backspace);
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("a.jpgsx "));
+    EXPECT_FALSE(window->property("viewing").toBool());
+    EXPECT_TRUE(chooser->property("opened").toBool());
+    QTest::keyClick(window, Qt::Key_Escape);
 }
 
 int main(int argc, char** argv) {

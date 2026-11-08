@@ -60,97 +60,11 @@ SplitView {
         SplitView.preferredWidth: 300
         SplitView.minimumWidth: 120
 
-        TreeView {
-            id: tree
+        FolderTree {
             SplitView.fillHeight: true
             SplitView.minimumHeight: 80
-            clip: true
-            model: DirectoryTreeModel {
-                id: treeModel
-            }
-
-            // Opens the folder too, so its subfolders show. Only when arriving at a folder, so
-            // that one the user has collapsed stays that way.
-            property string revealedPath
-
-            function reveal(path) {
-                if (path === revealedPath)
-                    return
-                revealedPath = path
-                treeModel.readParentsOf(path)
-                const index = treeModel.indexForPath(path)
-                expandToIndex(index)
-                forceLayout()
-                const row = rowAtIndex(index)
-                expand(row)
-                positionViewAtRow(row, TableView.Contain)
-            }
-
-            delegate: TreeViewDelegate {
-                id: treeRow
-                implicitWidth: tree.width
-                // Rows inserted above can leave this row showing what it held before, reading
-                // "c" while it opens "b", so both of these read the model again when they appear.
-                highlighted: {
-                    tree.rows
-                    return treeModel.pathForIndex(tree.index(row, 0)) === page.context.directory
-                }
-                contentItem: Label {
-                    text: {
-                        tree.rows
-                        treeRow.model.display  // for a rename, which keeps the number of rows
-                        return treeModel.data(tree.index(treeRow.row, 0)) ?? ""
-                    }
-                    elide: Text.ElideRight
-                    visible: !treeRow.editing
-                }
-                TapHandler {
-                    // The arrow belongs to expanding and collapsing, not to opening.
-                    function onArrow(point) {
-                        return point.position.x < treeRow.indicator.x + treeRow.indicator.width
-                    }
-                    onTapped: (point) => {
-                        if (onArrow(point))
-                            return
-                        const path = treeModel.pathForIndex(tree.index(treeRow.row, 0))
-                        if (path !== page.context.directory)
-                            page.context.openPath(path)
-                    }
-                    // The delegate toggles on a double click, which would close what the first
-                    // click just opened. Later, so that it comes after the toggle.
-                    onDoubleTapped: (point) => {
-                        if (!onArrow(point))
-                            Qt.callLater(tree.expand, treeRow.row)
-                    }
-                }
-                TapHandler {
-                    acceptedButtons: Qt.RightButton
-                    onTapped: page.folderMenuRequested(treeModel.pathForIndex(tree.index(treeRow.row, 0)))
-                }
-            }
-
-            ScrollBar.vertical: AppScrollBar {}
-
-            Connections {
-                target: page.context
-                function onDirectoryChanged() {
-                    tree.reveal(page.context.directory)
-                }
-            }
-
-            // Its parents have filled in above it, which pushes it down, perhaps out of sight.
-            // In the middle, as its own subfolders come below it.
-            Connections {
-                target: treeModel
-                function onDirectoryLoaded(path) {
-                    if (tree.revealedPath.startsWith(path) && path !== tree.revealedPath) {
-                        Qt.callLater(() => {
-                            tree.forceLayout()
-                            tree.positionViewAtRow(tree.rowAtIndex(treeModel.indexForPath(tree.revealedPath)), TableView.AlignVCenter)
-                        })
-                    }
-                }
-            }
+            context: page.context
+            onFolderMenuRequested: (path) => page.folderMenuRequested(path)
         }
 
         PreviewPanel {

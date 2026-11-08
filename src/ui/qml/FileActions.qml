@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtCore
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import ImageViewer
 
@@ -98,8 +97,7 @@ Item {
     function chooseFolder(moving) {
         folderDialog.moving = moving
         const recent = settings.recentFolders
-        folderDialog.currentFolder = context.urlFromPath(recent.length > 0 ? recent[0] : context.directory)
-        folderDialog.open()
+        folderDialog.start(recent.length > 0 ? recent[0] : context.directory, "")
     }
 
     function paste() {
@@ -165,7 +163,7 @@ Item {
         }, () => saveCancelled())
     }
 
-    // Asks for the new file in the native dialog, then for the format's options.
+    // Asks for the new file in the file chooser, then for the format's options.
     function saveAs() {
         const path = targetPaths[0]
         const slash = path.lastIndexOf("/")
@@ -175,10 +173,7 @@ Item {
         saveDialog.source = path
         saveDialog.page = page
         saveDialog.edited = editView ? editView.editedImage() : undefined
-        saveDialog.currentFolder = context.urlFromPath(path.substring(0, slash))
-        saveDialog.selectedFile = context.urlFromPath(path.substring(0, slash + 1)
-                                                      + (context.saveFormat(path) ? name : base + ".png"))
-        saveDialog.open()
+        saveDialog.start(path.substring(0, slash) || "/", context.saveFormat(path) ? name : base + ".png")
     }
 
     function chooseSaveOptions(source, page, target, edited) {
@@ -477,22 +472,20 @@ Item {
         }
     }
 
-    FileDialog {
+    FileChooser {
         id: saveDialog
         objectName: "saveDialog"
         property string source
         property int page: 0
         property var edited
         title: "Save As"
-        fileMode: FileDialog.SaveFile
-        nameFilters: root.context.saveFilters()
-        // A name typed without an extension gets the chosen format's.
-        defaultSuffix: selectedNameFilter.extensions.length > 0 ? selectedNameFilter.extensions[0] : ""
-        onAccepted: {
-            root.chooseSaveOptions(source, page, root.context.pathFromUrl(selectedFile), edited)
+        mode: "save"
+        types: root.context.saveTypes()
+        onChosen: (path) => {
+            root.chooseSaveOptions(source, page, path, edited)
             edited = undefined
         }
-        onRejected: {
+        onCancelled: {
             edited = undefined
             root.saveCancelled()
         }
@@ -527,11 +520,13 @@ Item {
         }
     }
 
-    FolderDialog {
+    FileChooser {
         id: folderDialog
+        objectName: "folderDialog"
         property bool moving: false
         title: moving ? "Move To" : "Copy To"
-        onAccepted: root.transferToChosen(root.context.pathFromUrl(selectedFolder))
+        mode: "folder"
+        onChosen: (path) => root.transferToChosen(path)
     }
 
     AppDialog {

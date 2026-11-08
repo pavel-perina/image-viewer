@@ -1,0 +1,430 @@
+pragma ComponentBehavior: Bound
+
+import QtCore
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import ImageViewer
+
+// Chooses a file to open, a name to save as, or a folder, inside the window. The places and the
+// folder tree are on the left, the path bar above and the files of the folder in the middle, as a
+// brief or a detailed list.
+//
+// Saving takes the name typed, in the folder shown, and nothing else: a file selected in the list
+// only fills in the name. Choosing another type changes the extension of the name, typing a known
+// extension chooses its type, and a name without one gets the type's. A name of a folder opens
+// that folder instead, and a file that exists is replaced only when the user says so.
+AppDialog {
+    id: chooser
+    objectName: "fileChooser"
+
+    property string mode: "open"  // "open", "save" or "folder"
+    // One {label, extensions} per type to offer, extensions in lower case without the dot; empty
+    // extensions offer every file.
+    property var types: []
+    property int typeIndex: 0
+    property string acceptText: mode === "save" ? "Save" : "Open"
+
+    signal chosen(string path)
+    signal cancelled()
+
+    readonly property alias directory: browse.directory
+    readonly property alias nameField: nameField
+    readonly property alias fileList: fileList
+    readonly property alias acceptButton: acceptButton
+    readonly property alias typeBox: typeBox
+    readonly property alias replaceBox: replaceBox
+    property string problem
+    // The file name to come back to after a folder name typed in its place opens that folder.
+    property string lastFileName
+    property bool finished: false
+
+    width: Math.round(parent.width * 0.85)
+    height: Math.round(parent.height * 0.85)
+    padding: 10
+    closePolicy: Popup.CloseOnEscape
+
+    // Opens the chooser in a folder, else where it was last, else in the home folder, with a name
+    // filled in for saving.
+    function start(folder, name) {
+        finished = false
+        problem = ""
+        if (folder && listing.kindOf(folder) === "folder")
+            browse.openPath(folder)
+        else if (!browse.directory || listing.kindOf(browse.directory) !== "folder")
+            browse.openPath(FolderLists.places()[0].path)
+        nameField.text = name ?? ""
+        lastFileName = nameField.text
+        const type = typeOf(nameField.text)
+        typeIndex = Math.max(0, Math.min(types.length - 1, mode === "save" && type >= 0 ? type : typeIndex))
+        placesView.model = placeRows()
+        open()
+    }
+
+    // For what takes a URL rather than a path.
+    function urlOf(path) {
+        return browse.urlFromPath(path)
+    }
+
+    function folderName(path) {
+        const trimmed = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
+        return trimmed.substring(trimmed.lastIndexOf("/") + 1) || trimmed
+    }
+
+    function suffixOf(name) {
+        const dot = name.lastIndexOf(".")
+        return dot > 0 && dot > name.lastIndexOf("/") ? name.substring(dot + 1).toLowerCase() : ""
+    }
+
+    // The type whose extensions include that of the name, or -1.
+    function typeOf(name) {
+        const suffix = suffixOf(name)
+        return suffix ? types.findIndex(type => type.extensions.indexOf(suffix) >= 0) : -1
+    }
+
+    // The name with the extension of a type, in place of that of another type or added.
+    function withType(name, index) {
+        if (!name || index < 0 || index >= types.length || types[index].extensions.length === 0)
+            return name
+        const base = typeOf(name) >= 0 ? name.substring(0, name.lastIndexOf(".")) : name
+        return base + "." + types[index].extensions[0]
+    }
+
+    function resolve(name) {
+        if (name.startsWith("/") || /^[A-Za-z]:[\\/]/.test(name))
+            return name
+        const folder = browse.directory
+        return folder.endsWith("/") ? folder + name : folder + "/" + name
+    }
+
+    function placeRows() {
+        const rows = FolderLists.places().map(place => ({ name: place.name, path: place.path, section: "Places" }))
+        for (const path of FolderLists.favorites) {
+            if (FolderLists.exists(path))
+                rows.push({ name: folderName(path), path: path, section: "Favorites" })
+        }
+        for (const path of FolderLists.recent.slice(0, 8)) {
+            if (FolderLists.exists(path))
+                rows.push({ name: folderName(path), path: path, section: "Recent" })
+        }
+        return rows
+    }
+
+    function openFolder(path) {
+        problem = ""
+        browse.openPath(path)
+        nameField.text = mode === "save" ? lastFileName : ""
+    }
+
+    function finish(path) {
+        finished = true
+        close()
+        chosen(path)
+    }
+
+    // The button at the bottom, or Enter in the name.
+    function submit() {
+        problem = ""
+        if (mode === "folder") {
+            const entry = fileList.currentEntry()
+            finish(entry.isFolder ? entry.path : browse.directory)
+            return
+        }
+        const name = nameField.text.trim()
+        if (!name) {
+            const entry = fileList.currentEntry()
+            if (mode === "open" && entry.path)
+                activate(entry)
+            return
+        }
+        let path = resolve(name)
+        if (listing.kindOf(path) === "folder") {
+            openFolder(path)
+            return
+        }
+        if (mode === "open") {
+            if (listing.kindOf(path) === "file")
+                finish(path)
+            else
+                problem = "Nothing is called " + name + " here."
+            return
+        }
+        if (typeOf(name) < 0) {
+            const named = withType(name, typeIndex)
+            path += named.substring(name.length)
+            nameField.text = named
+        }
+        const parentFolder = path.substring(0, path.lastIndexOf("/")) || "/"
+        const kind = listing.kindOf(path)
+        if (listing.kindOf(parentFolder) !== "folder") {
+            problem = "There is no folder " + parentFolder + "."
+        } else if (kind === "folder") {
+            openFolder(path)
+        } else if (kind === "file") {
+            replaceBox.path = path
+            replaceBox.open()
+        } else {
+            finish(path)
+        }
+    }
+
+    // A double click or Enter in the list.
+    function activate(entry) {
+        if (entry.isFolder) {
+            openFolder(entry.path)
+        } else if (mode === "save") {
+            nameField.text = entry.name
+            lastFileName = entry.name
+            submit()
+        } else if (mode === "open") {
+            finish(entry.path)
+        }
+    }
+
+    onTypeIndexChanged: typeBox.currentIndex = typeIndex
+    onOpened: {
+        if (mode === "save") {
+            nameField.forceActiveFocus()
+            const dot = nameField.text.lastIndexOf(".")
+            nameField.select(0, dot > 0 ? dot : nameField.text.length)
+        } else {
+            fileList.forceActiveFocus()
+        }
+    }
+    onClosed: {
+        if (!finished)
+            cancelled()
+    }
+
+    Settings {
+        category: "FileChooser"
+        property alias details: fileList.details
+    }
+
+    BrowseContext {
+        id: browse
+    }
+
+    FolderListing {
+        id: listing
+        path: browse.directory
+        showFiles: chooser.mode !== "folder"
+        extensions: chooser.mode === "folder" || chooser.typeIndex >= chooser.types.length ? []
+                                                                                          : chooser.types[chooser.typeIndex].extensions
+    }
+
+    contentItem: ColumnLayout {
+        spacing: 8
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 4
+            PathBar {
+                objectName: "chooserPathBar"
+                Layout.fillWidth: true
+                context: browse
+                recordVisits: false
+            }
+            ToolButton {
+                objectName: "briefButton"
+                text: "Brief"
+                checkable: true
+                checked: !fileList.details
+                onClicked: fileList.details = false
+            }
+            ToolButton {
+                objectName: "detailsButton"
+                text: "Details"
+                checkable: true
+                checked: fileList.details
+                onClicked: fileList.details = true
+            }
+        }
+
+        SplitView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            SplitView {
+                id: side
+                orientation: Qt.Vertical
+                SplitView.preferredWidth: 220
+                SplitView.minimumWidth: 120
+
+                ListView {
+                    id: placesView
+                    objectName: "placesView"
+                    SplitView.preferredHeight: parent.height * 0.45
+                    SplitView.minimumHeight: 60
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: AppScrollBar {}
+                    section.property: "section"
+                    section.delegate: Label {
+                        required property string section
+                        width: ListView.view.width
+                        topPadding: 6
+                        leftPadding: 6
+                        bottomPadding: 2
+                        text: section
+                        opacity: 0.6
+                        font.weight: Font.DemiBold
+                    }
+                    delegate: ItemDelegate {
+                        required property var modelData
+                        width: ListView.view.width
+                        height: 26
+                        leftPadding: 14
+                        text: modelData.name
+                        highlighted: modelData.path === browse.directory
+                        onClicked: chooser.openFolder(modelData.path)
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 800
+                        ToolTip.text: browse.nativePath(modelData.path)
+                    }
+                }
+
+                // Made only while shown, as each tree watches the file system.
+                Loader {
+                    SplitView.fillHeight: true
+                    SplitView.minimumHeight: 60
+                    active: chooser.visible
+                    sourceComponent: FolderTree {
+                        context: browse
+                    }
+                }
+            }
+
+            FileListView {
+                id: fileList
+                objectName: "fileList"
+                SplitView.fillWidth: true
+                listing: listing
+                onClicked: (index) => {
+                    const entry = listing.get(index)
+                    if (chooser.mode === "open") {
+                        chooser.nameField.text = entry.isFolder ? "" : entry.name
+                    } else if (chooser.mode === "save" && !entry.isFolder) {
+                        chooser.nameField.text = entry.name
+                        chooser.lastFileName = entry.name
+                        const type = chooser.typeOf(entry.name)
+                        if (type >= 0)
+                            chooser.typeIndex = type
+                    }
+                }
+                onActivated: (index) => chooser.activate(listing.get(index))
+                onUpRequested: browse.goUp()
+            }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            visible: chooser.problem !== ""
+            text: chooser.problem
+            color: "#e06c60"
+            wrapMode: Text.Wrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            GridLayout {
+                Layout.fillWidth: true
+                visible: chooser.mode !== "folder"
+                columns: 2
+                columnSpacing: 8
+                rowSpacing: 6
+
+                Label {
+                    text: "Name:"
+                }
+                TextField {
+                    id: nameField
+                    objectName: "nameField"
+                    Layout.fillWidth: true
+                    selectByMouse: true
+                    onTextEdited: {
+                        chooser.problem = ""
+                        if (chooser.mode !== "save")
+                            return
+                        const type = chooser.typeOf(text)
+                        if (type >= 0) {
+                            chooser.typeIndex = type
+                            chooser.lastFileName = text
+                        }
+                    }
+                    onAccepted: chooser.submit()
+                }
+
+                Label {
+                    text: "Type:"
+                    visible: chooser.types.length > 0
+                }
+                ComboBox {
+                    id: typeBox
+                    objectName: "typeBox"
+                    Layout.fillWidth: true
+                    visible: chooser.types.length > 0
+                    model: chooser.types.map(type => type.extensions.length === 0 ? type.label
+                                             : type.label + " (" + type.extensions.map(e => "*." + e).join(" ") + ")")
+                    onActivated: (index) => {
+                        chooser.typeIndex = index
+                        if (chooser.mode === "save") {
+                            nameField.text = chooser.withType(nameField.text, index)
+                            chooser.lastFileName = nameField.text
+                        }
+                    }
+                    Component.onCompleted: currentIndex = chooser.typeIndex
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                visible: chooser.mode === "folder"
+            }
+
+            GridLayout {
+                Layout.alignment: Qt.AlignBottom
+                columns: chooser.mode === "folder" ? 2 : 1
+                columnSpacing: 8
+                rowSpacing: 6
+
+                Button {
+                    id: acceptButton
+                    objectName: "acceptButton"
+                    Layout.fillWidth: true
+                    highlighted: true
+                    text: {
+                        if (chooser.mode !== "folder")
+                            return chooser.acceptText
+                        const entry = fileList.currentIndex >= 0 ? listing.get(fileList.currentIndex) : null
+                        return "Choose \u201c" + chooser.folderName(entry && entry.isFolder ? entry.path : browse.directory) + "\u201d"
+                    }
+                    enabled: chooser.mode !== "open" || nameField.text.trim() !== "" || fileList.currentIndex >= 0
+                    onClicked: chooser.submit()
+                }
+                Button {
+                    objectName: "cancelButton"
+                    Layout.fillWidth: true
+                    text: "Cancel"
+                    onClicked: chooser.close()
+                }
+            }
+        }
+    }
+
+    MessageBox {
+        id: replaceBox
+        objectName: "replaceBox"
+        property string path
+        kind: "warning"
+        title: "Replace the File?"
+        text: chooser.folderName(path) + " already exists in\n" + browse.nativePath(path.substring(0, path.lastIndexOf("/")))
+              + "\n\nDo you want to replace it?"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        focusedButton: Dialog.Cancel
+        onAboutToShow: standardButton(Dialog.Ok).text = "Replace"
+        onAccepted: chooser.finish(path)
+    }
+}
