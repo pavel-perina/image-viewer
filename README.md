@@ -46,6 +46,8 @@ openSUSE:
 
     sudo zypper in qt6-base-devel qt6-declarative-devel qt6-shadertools-devel libjpeg62-devel libtiff-devel liblcms2-devel sqlite3-devel libpng16-devel libwebp-devel libavif-devel libjxl-devel gtest
 
+Windows: see `doc/building-windows.md` (not built there yet).
+
 Build and test:
 
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
