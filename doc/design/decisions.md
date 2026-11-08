@@ -392,16 +392,15 @@ change nothing useful. The first press of a double click does this too, for that
   same pixel twice in a row. Clicking one shows its values and copies its hex.
 
 ## Editing
-Built so far: the edit list with undo, crop, and the question before leaving an edited image.
-Saving goes through Save As; the rest of this section is still the plan.
+Built so far: the edit list with undo, crop, resize, straighten, saving over the original and
+the question before leaving an edited image. Still planned lists the rest.
 
 * `Document` in core holds one page of an opened file and its edits. The page is decoded once
   at full size and turned upright, and edits apply to that, in coordinates of the upright
   picture. A crop is a view of it, so it costs no copy. Each change hands the view a new source
   of one upright page, with the original's metadata saying it is upright, so the view, the
   histogram and Save As work unchanged.
-* Until saving over the original exists, editing is allowed wherever Save As is: images small
-  enough to be saved whole. What a palette or alpha image loses is what Save As loses anyway.
+* Editing is allowed wherever Save As is: images small enough to be saved whole. What a palette or alpha image loses is what Save As loses anyway.
 * The view keeps the edits of the page shown. Moving to another image, page or folder, back to
   the browser, quitting, and the file operations that change the file on show (rename, trash,
   delete, move, the lossless JPEG tools) ask first: Save (as), Discard or Cancel. Saving to the
@@ -433,8 +432,7 @@ Saving goes through Save As; the rest of this section is still the plan.
   gives the keys back to the image, so a second Enter applies.
 * Handles stay a fixed size on screen and are computed per shape from a few stored values,
   rather than solving constraints, which is also how measuring tools would work.
-* Free rotation is to come as a separate edit before crop, with an automatic crop to the largest
-  rectangle of the ratio inside the turned picture.
+* Free rotation is part of Straighten, below.
 
 ### Resize
 * A dialog, as there is nothing to drag on the image. Width and height keep the image's ratio
@@ -448,6 +446,44 @@ Saving goes through Save As; the rest of this section is still the plan.
 * It uses the Magic Kernel Sharp resize of thumbnails, in linear light for 8-bit images, on
   the full-size picture. The edit keeps the size and whether to fill, so undo and replay give
   the same result. Sizes are limited to what can still be saved whole.
+
+### Straighten
+* Edit > Straighten (S) treats a crooked or keystoned picture as if the camera had been turned:
+  roll around the lens axis, pitch up or down, yaw left or right. The picture is redrawn as the
+  turned camera would have taken it, a homography K R K^-1 with R = Rz(roll) Rx(pitch) Ry(yaw),
+  scaled so that the centre keeps its size. One model covers a level horizon, converging
+  verticals of buildings and a board photographed from a little off to the side.
+* Typing angles is the fallback, not the way in. Lines along edges that should be vertical or
+  horizontal set them: one line levels the picture, two verticals set pitch, two horizontals set
+  yaw. Each line becomes vertical or horizontal by whichever it is closer to. The fit is
+  Levenberg-Marquardt over the free angles, minimising the sine of each line's lean after the
+  transform, weighted by the square root of its length. A mode limits the lines to rotation, or
+  to rotation and verticals, for pictures whose horizontals should keep converging.
+* Detect finds long straight edges on a reduced copy of about 1200 pixels: region growing over
+  pixels of similar gradient direction and a line fitted to each region. It is our own code,
+  written for this, not a port of an existing detector. Lines leaning more than 15 degrees from
+  both axes are dropped, as diagonal edges such as traces on a board would come in otherwise.
+  Found lines are fitted robustly: those that lean much more than the rest after the fit are
+  removed. Two of a kind always stay if there were two, since leaving out one of two horizontals
+  stops yaw being fitted, which made the other lean too and go as well. Lines drawn or moved by
+  hand are always used; when a later fit leaves out a found one, it is drawn dashed.
+* Perspective needs the focal length. It comes from the camera data as the 35mm equivalent,
+  converted to pixels through the picture's diagonal, and is assumed to be 28 mm otherwise. The
+  field can be changed. After a resize the conversion uses the scale of the edits before, so the
+  angles mean the same thing.
+* Applying keeps the largest rectangle with no empty corners, of the image's ratio or of any.
+  The largest rectangle inside the turned picture's outline is solved exactly, as a small linear
+  program over its four edges, rather than searched.
+* The outline of what will be kept follows the angles as they change. V shows the result,
+  warped from the reduced copy, with a grid to judge right angles; the full image is warped only
+  on Apply, with cubic interpolation in linear light for 8-bit images, in bands on several
+  threads.
+* The edit keeps the angles, the focal length in pixels and the ratio choice, so replay gives
+  the same result.
+* Planned: an amount below 100% for verticals, as fully parallel verticals in a tall building
+  can look wrong; a 4-corner mode that maps a chosen quadrilateral to a rectangle, for a document
+  or a painting; and the level data some cameras store (roll and pitch in maker notes, the
+  gravity vector of phones, gimbal angles of drones) as a starting point.
 
 ### Still planned
 * A document is a base image, an edit list, an optional file path and an unsaved flag.
@@ -546,10 +582,8 @@ Saving goes through Save As; the rest of this section is still the plan.
 * XML in XMP and OME-TIFF can use pugixml (MIT), which needs no Qt.
 
 ## Known limitations
-* An edited image can only be saved with Save As, not over the original in one step. Choosing
-  the same name in Save As replaces it.
-* Crop is the only edit so far. Rotating and flipping exist only as the lossless JPEG tools,
-  which change files rather than the image being edited.
+* Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
+  rather than the image being edited.
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
   they changed.

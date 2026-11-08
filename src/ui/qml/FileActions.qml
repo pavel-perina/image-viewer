@@ -20,6 +20,9 @@ Item {
     property ImageView editView: null
     // A tool that copies something of its own takes Ctrl+C meanwhile.
     property bool copyTakenByTool: false
+    // A tool in the view, such as crop or straighten, has the keys, Del among them, and the file
+    // is not to change under it.
+    property bool toolActive: false
     // Runs what would change or remove the file on show, once its edits are saved or given up.
     property var guard: (proceed) => proceed()
 
@@ -28,7 +31,7 @@ Item {
     // The large view shows one image, whatever was selected before entering it.
     readonly property var targetPaths: viewing ? (context.currentPath ? [context.currentPath] : []) : context.selectedPaths
     readonly property bool hasTargets: targetPaths.length > 0
-    readonly property bool idle: !context.busy
+    readonly property bool idle: !context.busy && !toolActive
     // The lossless JPEG tools work only when every target is a JPEG, and not on an image with
     // edits in effect, as they change the file rather than what is shown.
     readonly property bool jpegTargets: context.allJpeg(targetPaths) && !(editView && editView.canUndo)

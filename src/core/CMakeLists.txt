@@ -39,6 +39,8 @@ add_library(iv_core STATIC
     xmp.h
     overview_source.cpp
     overview_source.h
+    perspective.cpp
+    perspective.h
     pixel_probe.cpp
     pixel_probe.h
     save_image.cpp

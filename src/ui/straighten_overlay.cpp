@@ -1,0 +1,407 @@
+#include "ui/straighten_overlay.h"
+
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QQuickWindow>
+
+#include <algorithm>
+#include <cmath>
+
+namespace iv {
+
+namespace {
+
+constexpr double kReach = 8;       // how far from an end or a line grabs it, in item units
+constexpr double kDrawAfter = 4;   // how far the mouse moves before a new line is drawn
+constexpr double kMinLength = 12;  // shorter new lines, in item units, are dropped
+const QColor kVertical(79, 195, 247);
+const QColor kHorizontal(255, 183, 77);
+
+double distanceToSegment(QPointF p, QPointF a, QPointF b) {
+    const QPointF d = b - a;
+    const double lengthSquared = QPointF::dotProduct(d, d);
+    const double t = lengthSquared > 0 ? std::clamp(QPointF::dotProduct(p - a, d) / lengthSquared, 0.0, 1.0) : 0.0;
+    const QPointF nearest = a + t * d;
+    return std::hypot(p.x() - nearest.x(), p.y() - nearest.y());
+}
+
+}  // namespace
+
+StraightenOverlay::StraightenOverlay(QQuickItem* parent) : QQuickPaintedItem(parent) {
+    setAcceptedMouseButtons(Qt::LeftButton | Qt::MiddleButton | Qt::RightButton);
+    setAcceptHoverEvents(true);
+    setCursor(Qt::CrossCursor);
+}
+
+void StraightenOverlay::setView(ImageView* view) {
+    if (view == m_view) {
+        return;
+    }
+    if (m_view) {
+        disconnect(m_view, nullptr, this, nullptr);
+    }
+    m_view = view;
+    if (m_view) {
+        connect(m_view, &ImageView::zoomChanged, this, [this] { update(); });
+        connect(m_view, &ImageView::straightenReady, this, [this] {
+            m_previewValid = false;
+            update();
+        });
+    }
+    emit viewChanged();
+}
+
+QVariantList StraightenOverlay::lines() const {
+    QVariantList result;
+    for (const GuideLine& line : m_lines) {
+        result.append(QVariantMap{{QStringLiteral("x1"), line.a.x}, {QStringLiteral("y1"), line.a.y},
+                                  {QStringLiteral("x2"), line.b.x}, {QStringLiteral("y2"), line.b.y},
+                                  {QStringLiteral("drawn"), line.meant}});
+    }
+    return result;
+}
+
+void StraightenOverlay::setLines(const QVariantList& lines) {
+    m_lines.clear();
+    for (const QVariant& value : lines) {
+        const QVariantMap line = value.toMap();
+        m_lines.push_back({{line.value(QStringLiteral("x1")).toDouble(), line.value(QStringLiteral("y1")).toDouble()},
+                           {line.value(QStringLiteral("x2")).toDouble(), line.value(QStringLiteral("y2")).toDouble()},
+                           line.value(QStringLiteral("drawn")).toBool()});
+    }
+    m_used.clear();
+    select(-1);
+    m_drag = Drag::None;
+    update();
+    emit linesChanged();
+    emit usedChanged();
+}
+
+void StraightenOverlay::setUsed(const QVariantList& used) {
+    m_used = used;
+    update();
+    emit usedChanged();
+}
+
+void StraightenOverlay::setRoll(double value) {
+    if (value != m_tilt.roll) {
+        m_tilt.roll = value;
+        tiltChange();
+    }
+}
+
+void StraightenOverlay::setPitch(double value) {
+    if (value != m_tilt.pitch) {
+        m_tilt.pitch = value;
+        tiltChange();
+    }
+}
+
+void StraightenOverlay::setYaw(double value) {
+    if (value != m_tilt.yaw) {
+        m_tilt.yaw = value;
+        tiltChange();
+    }
+}
+
+void StraightenOverlay::setFocal35mm(double value) {
+    if (value != m_focal35mm) {
+        m_focal35mm = value;
+        tiltChange();
+    }
+}
+
+void StraightenOverlay::setKeepRatio(bool value) {
+    if (value != m_keepRatio) {
+        m_keepRatio = value;
+        tiltChange();
+    }
+}
+
+void StraightenOverlay::setShowResult(bool value) {
+    if (value != m_showResult) {
+        m_showResult = value;
+        update();
+        emit showResultChanged();
+    }
+}
+
+void StraightenOverlay::tiltChange() {
+    m_previewValid = false;
+    update();
+    emit tiltChanged();
+}
+
+void StraightenOverlay::removeSelected() {
+    if (m_selected < 0 || m_selected >= static_cast<int>(m_lines.size())) {
+        return;
+    }
+    m_lines.erase(m_lines.begin() + m_selected);
+    m_used.clear();
+    select(-1);
+    update();
+    emit linesChanged();
+    emit linesEdited();
+}
+
+void StraightenOverlay::select(int index) {
+    if (index != m_selected) {
+        m_selected = index;
+        update();
+        emit selectedChanged();
+    }
+}
+
+QPointF StraightenOverlay::toItem(PointD imagePoint) const {
+    return m_view ? mapFromItem(m_view, m_view->imageToItem({imagePoint.x, imagePoint.y})) : QPointF(imagePoint.x, imagePoint.y);
+}
+
+PointD StraightenOverlay::toImage(QPointF itemPoint) const {
+    const QPointF p = m_view ? m_view->itemToImage(mapToItem(m_view, itemPoint)) : itemPoint;
+    return {p.x(), p.y()};
+}
+
+// Ends before lines, and the line chosen before the others.
+StraightenOverlay::Hit StraightenOverlay::hitAt(QPointF itemPoint) const {
+    Hit best;
+    double nearest = kReach;
+    const auto consider = [&](int i) {
+        const QPointF a = toItem(m_lines[static_cast<std::size_t>(i)].a);
+        const QPointF b = toItem(m_lines[static_cast<std::size_t>(i)].b);
+        for (int end = 0; end < 2; ++end) {
+            const QPointF p = end == 0 ? a : b;
+            const double d = std::hypot(itemPoint.x() - p.x(), itemPoint.y() - p.y());
+            if (d <= nearest) {
+                nearest = d;
+                best = {i, end};
+            }
+        }
+    };
+    if (m_selected >= 0) {
+        consider(m_selected);
+    }
+    for (int i = 0; i < static_cast<int>(m_lines.size()) && best.line < 0; ++i) {
+        consider(i);
+    }
+    if (best.line >= 0) {
+        return best;
+    }
+    nearest = kReach * 0.75;
+    for (int i = 0; i < static_cast<int>(m_lines.size()); ++i) {
+        const double d = distanceToSegment(itemPoint, toItem(m_lines[static_cast<std::size_t>(i)].a),
+                                           toItem(m_lines[static_cast<std::size_t>(i)].b));
+        if (d <= nearest) {
+            nearest = d;
+            best = {i, -1};
+        }
+    }
+    return best;
+}
+
+void StraightenOverlay::mousePressEvent(QMouseEvent* event) {
+    if (!m_view || m_showResult) {
+        event->ignore();
+        return;
+    }
+    forceActiveFocus();  // for Space and Delete
+    m_lastItem = event->position();
+    if (event->button() != Qt::LeftButton || m_spaceHeld) {
+        m_drag = Drag::Pan;
+        setCursor(Qt::ClosedHandCursor);
+        return;
+    }
+    m_pressItem = event->position();
+    m_pressImage = toImage(event->position());
+    m_hit = hitAt(event->position());
+    if (m_hit.line >= 0) {
+        select(m_hit.line);
+        m_atPress = m_lines[static_cast<std::size_t>(m_hit.line)];
+        m_drag = m_hit.end >= 0 ? Drag::End : Drag::Line;
+    } else {
+        select(-1);
+        m_drag = Drag::Draw;
+    }
+}
+
+void StraightenOverlay::mouseMoveEvent(QMouseEvent* event) {
+    const QPointF item = event->position();
+    const PointD now = toImage(item);
+    const PointD delta{now.x - m_pressImage.x, now.y - m_pressImage.y};
+    switch (m_drag) {
+    case Drag::None:
+        return;
+    case Drag::Pan:
+        m_view->panBy(item.x() - m_lastItem.x(), item.y() - m_lastItem.y());
+        break;
+    case Drag::End: {
+        GuideLine& line = m_lines[static_cast<std::size_t>(m_hit.line)];
+        PointD& end = m_hit.end == 0 ? line.a : line.b;
+        const PointD from = m_hit.end == 0 ? m_atPress.a : m_atPress.b;
+        end = {from.x + delta.x, from.y + delta.y};
+        line.meant = true;
+        m_used.clear();
+        update();
+        emit linesChanged();
+        emit linesEdited();
+        break;
+    }
+    case Drag::Line: {
+        GuideLine& line = m_lines[static_cast<std::size_t>(m_hit.line)];
+        line = {{m_atPress.a.x + delta.x, m_atPress.a.y + delta.y}, {m_atPress.b.x + delta.x, m_atPress.b.y + delta.y}, true};
+        m_used.clear();
+        update();
+        emit linesChanged();
+        emit linesEdited();
+        break;
+    }
+    case Drag::Draw:
+        // A click, or a hand that shakes a little, draws nothing.
+        if (std::hypot(item.x() - m_pressItem.x(), item.y() - m_pressItem.y()) >= kDrawAfter) {
+            m_lines.push_back({m_pressImage, now, true});
+            m_atPress = m_lines.back();
+            m_hit = {static_cast<int>(m_lines.size()) - 1, 1};
+            m_drag = Drag::End;
+            select(m_hit.line);
+            m_used.clear();
+            update();
+            emit linesChanged();
+            emit linesEdited();
+        }
+        break;
+    }
+    m_lastItem = item;
+}
+
+void StraightenOverlay::mouseReleaseEvent(QMouseEvent*) {
+    // A new line too short to mean anything goes again.
+    if (m_drag == Drag::End && m_selected >= 0) {
+        const GuideLine& line = m_lines[static_cast<std::size_t>(m_selected)];
+        const QPointF a = toItem(line.a);
+        const QPointF b = toItem(line.b);
+        if (std::hypot(a.x() - b.x(), a.y() - b.y()) < kMinLength) {
+            removeSelected();
+        }
+    }
+    m_drag = Drag::None;
+    setCursor(m_spaceHeld ? Qt::OpenHandCursor : Qt::CrossCursor);
+}
+
+void StraightenOverlay::hoverMoveEvent(QHoverEvent* event) {
+    if (m_drag == Drag::None && m_view && !m_spaceHeld && !m_showResult) {
+        const Hit hit = hitAt(event->position());
+        setCursor(hit.line < 0 ? Qt::CrossCursor : hit.end >= 0 ? Qt::PointingHandCursor : Qt::SizeAllCursor);
+    }
+    event->ignore();  // the page underneath reveals its panel at the edge
+}
+
+void StraightenOverlay::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
+        m_spaceHeld = true;
+        setCursor(Qt::OpenHandCursor);
+        return;
+    }
+    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && m_selected >= 0) {
+        removeSelected();
+        return;
+    }
+    if (event->key() == Qt::Key_V && !event->isAutoRepeat()) {
+        setShowResult(!m_showResult);
+        return;
+    }
+    event->ignore();
+}
+
+void StraightenOverlay::keyReleaseEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
+        m_spaceHeld = false;
+        setCursor(Qt::CrossCursor);
+        return;
+    }
+    event->ignore();
+}
+
+void StraightenOverlay::paint(QPainter* painter) {
+    if (!m_view || m_view->imageWidth() <= 0) {
+        return;
+    }
+    const double dpr = window() ? window()->effectiveDevicePixelRatio() : 1.0;
+    const double thin = 1 / dpr;
+    painter->setRenderHint(QPainter::Antialiasing, true);
+
+    if (m_showResult) {
+        // The straightened picture over the whole view, fitted, with a grid to judge it by.
+        painter->fillRect(boundingRect(), QColor(32, 32, 32));
+        if (!m_previewValid) {
+            m_preview = m_view->straightenPreview(m_tilt, m_focal35mm, m_keepRatio);
+            m_previewValid = true;
+        }
+        if (m_preview.isNull()) {
+            return;
+        }
+        const QSizeF room = boundingRect().size() * 0.96;
+        const QSizeF size = QSizeF(m_preview.size()).scaled(room, Qt::KeepAspectRatio);
+        const QRectF target(QPointF((width() - size.width()) / 2, (height() - size.height()) / 2), size);
+        painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter->drawImage(target, m_preview);
+        painter->setPen(QPen(QColor(255, 255, 255, 70), thin));
+        constexpr int kCells = 8;
+        for (int i = 1; i < kCells; ++i) {
+            const double x = target.left() + target.width() * i / kCells;
+            const double y = target.top() + target.height() * i / kCells;
+            painter->drawLine(QPointF(x, target.top()), QPointF(x, target.bottom()));
+            painter->drawLine(QPointF(target.left(), y), QPointF(target.right(), y));
+        }
+        return;
+    }
+
+    // What will be kept, unless nothing is to change.
+    if (!m_tilt.isZero()) {
+        const auto kept = m_view->straightenKept(m_tilt, m_focal35mm, m_keepRatio);
+        QPolygonF outline;
+        for (const QPointF& p : kept) {
+            outline << toItem({p.x(), p.y()});
+        }
+        QPainterPath outside;
+        outside.addRect(boundingRect());
+        QPainterPath inside;
+        inside.addPolygon(outline);
+        inside.closeSubpath();
+        painter->fillPath(outside.subtracted(inside), QColor(0, 0, 0, 110));
+        QPen dashed(Qt::white, thin);
+        dashed.setDashPattern({4, 4});
+        painter->setPen(dashed);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawPolygon(outline);
+    }
+
+    // Dark under light, so that lines show on any picture. Those the fit left out are dashed,
+    // with hollow ends, still plain enough to find and drag into place or remove.
+    for (int i = 0; i < static_cast<int>(m_lines.size()); ++i) {
+        const GuideLine& line = m_lines[static_cast<std::size_t>(i)];
+        const QPointF a = toItem(line.a);
+        const QPointF b = toItem(line.b);
+        const bool left = i < m_used.size() && !m_used[i].toBool();
+        const QColor colour = line.isVertical() ? kVertical : kHorizontal;
+        const bool chosen = i == m_selected;
+        const Qt::PenStyle style = left ? Qt::DashLine : Qt::SolidLine;
+        painter->setPen(QPen(QColor(0, 0, 0, 170), chosen ? 4.5 : 3.0, Qt::SolidLine, Qt::RoundCap));
+        painter->drawLine(a, b);
+        painter->setPen(QPen(colour, chosen ? 2.5 : 1.5, style, Qt::FlatCap));
+        painter->drawLine(a, b);
+        painter->setPen(QPen(QColor(0, 0, 0, 200), 1));
+        painter->setBrush(chosen ? QColor(Qt::white) : left ? QColor(0, 0, 0, 120) : colour);
+        const double r = chosen ? 4.5 : 3.5;
+        painter->drawEllipse(a, r, r);
+        painter->drawEllipse(b, r, r);
+        if (left && !chosen) {
+            painter->setPen(QPen(colour, 1.5));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawEllipse(a, r - 1, r - 1);
+            painter->drawEllipse(b, r - 1, r - 1);
+        }
+    }
+}
+
+}  // namespace iv

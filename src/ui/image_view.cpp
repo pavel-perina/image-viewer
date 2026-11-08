@@ -28,6 +28,7 @@
 #include <optional>
 #include <memory>
 #include <new>
+#include <numbers>
 #include <set>
 #include <span>
 #include <utility>
@@ -39,6 +40,7 @@
 #include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
+#include "core/perspective.h"
 #include "core/pixel_probe.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
@@ -55,6 +57,12 @@ constexpr int kOpenPriority = 1000;
 constexpr int kTilePriority = 500;
 constexpr int kHistogramPriority = 100;
 constexpr int kProbePriority = 900;
+constexpr int kStraightenPriority = 800;
+constexpr int kStraightenBaseEdge = 1200;  // the long edge of the copy straightening works on
+constexpr double kDefaultFocal35mm = 28;
+// Degrees from vertical or horizontal for a line found. Pictures needing more are rare, and
+// diagonal edges, such as traces on a board, would otherwise come in.
+constexpr double kMaxLineLean = 15;
 constexpr double kZoomStep = 1.25;
 // Tile textures kept on the GPU. Past this, the least recently drawn ones are dropped.
 constexpr qint64 kTextureBudgetBytes = 768ll * 1024 * 1024;
@@ -218,6 +226,24 @@ struct ImageView::Impl {
     std::set<TileKey> failed;
     std::set<TileKey> rough;  // shown, but still to be read
     std::uint64_t probeRequest = 0;
+    // A reduced copy of the image as shown, ready to display, for straightening.
+    ImageBuffer straightenBase;
+    double straightenBaseScale = 1;  // its pixels per pixel of the image
+    std::uint64_t straightenRequest = 0;
+
+    Size shownSize() const { return source ? displaySize(fullSize, subimage().orientation) : Size{}; }
+
+    // In pixels of the image as shown, from the 35mm equivalent, which refers to the picture
+    // the camera took: the file's page before any edit, scaled by resizing since.
+    double focalPixelsFor(double focal35mm) const {
+        if (!fileSource) {
+            return 1;
+        }
+        const SubimageInfo& original = fileSource->subimages()[static_cast<std::size_t>(filePage)];
+        const double focal = focalPixels(displaySize(original.levels.front().size, original.orientation),
+                                         focal35mm > 0 ? focal35mm : kDefaultFocal35mm);
+        return focal * (edit ? edit->scale() : 1.0);
+    }
 
     double devicePixelRatio() const {
         return q->window() ? q->window()->effectiveDevicePixelRatio() : 1.0;
@@ -1110,6 +1136,164 @@ void ImageView::probe(QPointF point) {
             }
         });
     });
+}
+
+void ImageView::prepareStraighten() {
+    Impl& d = *m_impl;
+    d.straightenBase = {};
+    const std::uint64_t request = ++d.straightenRequest;
+    if (!d.source || d.status != Status::Ready) {
+        return;
+    }
+    // The smallest level that still has the size wanted, or the full one.
+    const auto levels = d.levels();
+    int level = 0;
+    for (int i = 0; i < static_cast<int>(levels.size()); ++i) {
+        const Size size = levels[static_cast<std::size_t>(i)].size;
+        if (std::max(size.width, size.height) >= kStraightenBaseEdge) {
+            level = i;
+        }
+    }
+    const double scale = static_cast<double>(levels[static_cast<std::size_t>(level)].size.width) / d.fullSize.width;
+    d.queue.submit(d.group, kStraightenPriority,
+                   [this, source = d.source, page = d.page, level, scale, orientation = d.subimage().orientation,
+                    range = d.displayRange, transform = d.colorTransform, request](std::stop_token stop) {
+        auto pixels = readLevel(*source, page, level, stop);
+        if (!pixels) {
+            return;
+        }
+        ImageBuffer base;
+        try {
+            ImageBuffer shown = toDisplay(applyOrientation(*pixels, orientation), range, transform.get());
+            // Larger levels than wanted, as a small file may have only its full size.
+            const int edge = std::max(shown.width(), shown.height());
+            if (edge > kStraightenBaseEdge * 2) {
+                const double reduced = static_cast<double>(kStraightenBaseEdge) / edge;
+                shown = resize(shown, {std::max(1, static_cast<int>(shown.width() * reduced)),
+                                       std::max(1, static_cast<int>(shown.height() * reduced))}, stop);
+                if (shown.isNull()) {
+                    return;
+                }
+            }
+            base = shown;
+        } catch (const std::bad_alloc&) {
+            return;
+        }
+        QMetaObject::invokeMethod(this, [this, base = std::move(base), scale, request] {
+            Impl& d = *m_impl;
+            if (request != d.straightenRequest) {
+                return;
+            }
+            d.straightenBase = base;
+            // Its pixels per pixel of the image as shown, whichever way it stands.
+            const Size shown = d.shownSize();
+            d.straightenBaseScale = shown.width > 0 ? static_cast<double>(base.width()) / shown.width : scale;
+            emit straightenReady();
+        });
+    });
+}
+
+namespace {
+
+std::vector<GuideLine> guideLines(const QVariantList& lines) {
+    std::vector<GuideLine> result;
+    for (const QVariant& value : lines) {
+        const QVariantMap line = value.toMap();
+        result.push_back({{line.value(QStringLiteral("x1")).toDouble(), line.value(QStringLiteral("y1")).toDouble()},
+                          {line.value(QStringLiteral("x2")).toDouble(), line.value(QStringLiteral("y2")).toDouble()},
+                          line.value(QStringLiteral("drawn")).toBool()});
+    }
+    return result;
+}
+
+}  // namespace
+
+QVariantList ImageView::detectStraightLines() const {
+    const Impl& d = *m_impl;
+    QVariantList result;
+    if (d.straightenBase.isNull()) {
+        return result;
+    }
+    const double scale = d.straightenBaseScale;
+    for (const GuideLine& line : detectLines(d.straightenBase)) {
+        const double degrees = std::atan2(line.b.y - line.a.y, line.b.x - line.a.x) * 180 / std::numbers::pi;
+        const double fromHorizontal = std::abs(std::remainder(degrees, 180.0));
+        if (std::min(fromHorizontal, 90 - fromHorizontal) > kMaxLineLean) {
+            continue;
+        }
+        result.append(QVariantMap{{QStringLiteral("x1"), line.a.x / scale}, {QStringLiteral("y1"), line.a.y / scale},
+                                  {QStringLiteral("x2"), line.b.x / scale}, {QStringLiteral("y2"), line.b.y / scale}});
+    }
+    return result;
+}
+
+QVariantMap ImageView::fitStraightLines(const QVariantList& lines, int mode, double focal35mm, bool robust) const {
+    const Impl& d = *m_impl;
+    const auto guides = guideLines(lines);
+    const TiltMode tiltMode = mode <= 0 ? TiltMode::Rotation : mode == 1 ? TiltMode::RotationAndVerticals : TiltMode::Full;
+    const TiltFit fit = fitTilt(guides, d.shownSize(), d.focalPixelsFor(focal35mm), tiltMode, robust);
+    QVariantList used;
+    for (const bool u : fit.used) {
+        used.append(u);
+    }
+    return {{QStringLiteral("roll"), fit.tilt.roll}, {QStringLiteral("pitch"), fit.tilt.pitch},
+            {QStringLiteral("yaw"), fit.tilt.yaw}, {QStringLiteral("used"), used}};
+}
+
+double ImageView::focalLength35mm() const {
+    const Impl& d = *m_impl;
+    if (!d.fileSource) {
+        return 0;
+    }
+    return d.fileSource->subimages()[static_cast<std::size_t>(d.filePage)].exif.focalLength35mm.value_or(0);
+}
+
+QSize ImageView::straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) const {
+    const Impl& d = *m_impl;
+    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), {roll, pitch, yaw}, keepRatio).size;
+    return {size.width, size.height};
+}
+
+void ImageView::straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) {
+    Impl& d = *m_impl;
+    const Tilt tilt{roll, pitch, yaw};
+    if (!editable() || d.status != Status::Ready || tilt.isZero()) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    d.edit->apply(TiltEdit{tilt, d.focalPixelsFor(focal35mm), keepRatio});
+    d.showEdit();
+}
+
+QImage ImageView::straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio) const {
+    const Impl& d = *m_impl;
+    if (d.straightenBase.isNull()) {
+        return {};
+    }
+    const ImageBuffer& base = d.straightenBase;
+    const TiltPlan plan = planTilt(base.size(), d.focalPixelsFor(focal35mm) * d.straightenBaseScale, tilt, keepRatio);
+    const Homography toSource = plan.transform.inverse() * Homography{{1, 0, plan.kept.x, 0, 1, plan.kept.y, 0, 0, 1}};
+    try {
+        return toQImage(warp(base, toSource.m, plan.size));
+    } catch (const std::bad_alloc&) {
+        return {};
+    }
+}
+
+std::array<QPointF, 4> ImageView::straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio) const {
+    const Impl& d = *m_impl;
+    const TiltPlan plan = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio);
+    const Homography back = plan.transform.inverse();
+    const RectD k = plan.kept;
+    std::array<QPointF, 4> corners;
+    const std::array<PointD, 4> kept{{{k.x, k.y}, {k.x + k.width, k.y}, {k.x + k.width, k.y + k.height}, {k.x, k.y + k.height}}};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const PointD p = back.apply(kept[i]);
+        corners[i] = {p.x, p.y};
+    }
+    return corners;
 }
 
 void ImageView::zoomIn() {

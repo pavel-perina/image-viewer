@@ -2,6 +2,7 @@
 
 #include <stop_token>
 
+#include <array>
 #include <span>
 
 #include "core/geometry.h"
@@ -37,6 +38,13 @@ void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const Image
 // the whole image, so use it for what has to be right, not for what has to be drawn quickly.
 // A stop request makes it give up between rows and return an empty buffer.
 ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& stop = {});
+
+// A picture of the given size whose pixel centres are taken from the source where a projective
+// transform of target pixel coordinates leads, row by row as 3 x 3, with a Catmull-Rom cubic.
+// 8-bit images are mixed in linear light. Points beyond the edge repeat it. A stop request gives
+// up between rows and returns an empty buffer.
+ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size,
+                 const std::stop_token& stop = {});
 
 // The pixels turned and mirrored the way an orientation shows them. Normal returns the same buffer.
 ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation);

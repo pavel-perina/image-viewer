@@ -27,12 +27,38 @@ Rectangle {
     // Reading pixels: the probe panel takes the same place.
     property bool probing: false
     readonly property bool probePanelShown: probing && (fullScreen ? panelRevealed : true)
-    readonly property bool toolActive: cropping || probing
+    // Straightening: its panel takes the same place.
+    property bool straightening: false
+    readonly property bool straightenPanelShown: straightening && (fullScreen ? panelRevealed : true)
+    readonly property bool straightenPanelEditing: straightenPanel.editing
+    readonly property bool toolActive: cropping || probing || straightening
+
+    function startStraighten() {
+        if (!view.editable || view.status !== ImageView.Ready)
+            return
+        probing = false
+        cropping = false
+        straightening = true
+        straightenPanel.start()
+        straightenOverlay.forceActiveFocus()
+    }
+
+    function applyStraighten() {
+        const p = straightenPanel
+        straightening = false
+        if (p.changes)
+            view.straighten(p.roll, p.pitch, p.yaw, p.focal, straightenOverlay.keepRatio)
+    }
+
+    function cancelStraighten() {
+        straightening = false
+    }
 
     function startProbe() {
         if (view.status !== ImageView.Ready)
             return
         cropping = false
+        straightening = false
         probing = true
         probeArea.forceActiveFocus()
     }
@@ -50,6 +76,7 @@ Rectangle {
         if (!view.editable || view.status !== ImageView.Ready)
             return
         probing = false
+        straightening = false
         cropping = true
         cropPanel.start()
         cropOverlay.forceActiveFocus()
@@ -81,7 +108,8 @@ Rectangle {
         anchors.bottom: parent.bottom
         // The panel takes room from the image, except at full screen where it comes and goes
         // with the mouse, and refitting the image each time would be restless.
-        anchors.right: page.fullScreen ? parent.right : page.cropping ? cropPanel.left : page.probing ? probePanel.left : panel.left
+        anchors.right: page.fullScreen ? parent.right : page.cropping ? cropPanel.left : page.probing ? probePanel.left
+                     : page.straightening ? straightenPanel.left : panel.left
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: page.panelShown && !page.toolActive
         sharp: settings.sharpResampling
@@ -204,18 +232,28 @@ Rectangle {
         enabled: page.cropping
     }
 
+    StraightenOverlay {
+        id: straightenOverlay
+        objectName: "straightenOverlay"
+        anchors.fill: surface
+        view: surface.view
+        visible: page.straightening
+        enabled: page.straightening
+    }
+
     // Leaving the image, or an edit that changes it, ends choosing a crop.
     Connections {
         target: surface.view
-        function onSourceChanged() { page.cropping = false; page.probing = false }
+        function onSourceChanged() { page.cropping = false; page.probing = false; page.straightening = false }
         function onStatusChanged() {
             if (surface.view.status !== ImageView.Ready) {
                 page.cropping = false
+                page.straightening = false
                 probePanel.probed = null  // its pixel may be elsewhere in what comes
             }
         }
     }
-    onActiveChanged: if (!active) { cropping = false; probing = false }
+    onActiveChanged: if (!active) { cropping = false; probing = false; straightening = false }
 
     Connections {
         target: page.context
@@ -250,7 +288,8 @@ Rectangle {
             const x = point.position.x
             if (x >= page.width - page.edgeMargin)
                 page.panelRevealed = true
-            else if (x < page.width - (page.cropping ? cropPanel.width : page.probing ? probePanel.width : panel.width) - page.edgeMargin)
+            else if (x < page.width - (page.cropping ? cropPanel.width : page.probing ? probePanel.width
+                                                  : page.straightening ? straightenPanel.width : panel.width) - page.edgeMargin)
                 page.panelRevealed = false
         }
     }
@@ -283,6 +322,25 @@ Rectangle {
         onApplyRequested: page.applyCrop()
         onCancelRequested: page.cancelCrop()
         onDoneEditing: cropOverlay.forceActiveFocus()
+
+        Behavior on x {
+            enabled: page.panelAnimated
+            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+        }
+    }
+
+    StraightenPanel {
+        id: straightenPanel
+        objectName: "straightenPanel"
+        overlay: straightenOverlay
+        view: surface.view
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        x: page.straightenPanelShown ? page.width - width : page.width
+        visible: x < page.width
+        onApplyRequested: page.applyStraighten()
+        onCancelRequested: page.cancelStraighten()
+        onDoneEditing: straightenOverlay.forceActiveFocus()
 
         Behavior on x {
             enabled: page.panelAnimated

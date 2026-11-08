@@ -9,6 +9,7 @@ add_executable(iv_core_tests
     crop_tests.cpp
     document_tests.cpp
     probe_tests.cpp
+    perspective_tests.cpp
     core_tests.cpp
     format_tests.cpp
     info_tests.cpp

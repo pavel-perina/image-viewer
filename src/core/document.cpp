@@ -21,9 +21,10 @@ struct Overloaded : Ts... {
     using Ts::operator()...;
 };
 
-Size sizeAfter(Size /*before*/, const Edit& edit) {
+Size sizeAfter(Size before, const Edit& edit) {
     return std::visit(Overloaded{[](const CropEdit& crop) { return Size{crop.rect.width, crop.rect.height}; },
-                                 [](const ResizeEdit& resize) { return resize.size; }},
+                                 [](const ResizeEdit& resize) { return resize.size; },
+                                 [&](const TiltEdit& tilt) { return planTilt(before, tilt.focalPixels, tilt.tilt, tilt.keepRatio).size; }},
                       edit);
 }
 
@@ -43,6 +44,17 @@ ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::st
                                          return from;
                                      }
                                      return resize(from, scale.size, stop);
+                                 },
+                                 [&](const TiltEdit& tilt) {
+                                     if (tilt.tilt.isZero()) {
+                                         return pixels;
+                                     }
+                                     const TiltPlan plan = planTilt(pixels.size(), tilt.focalPixels, tilt.tilt, tilt.keepRatio);
+                                     // From pixels of the result to those of the picture.
+                                     const Homography toSource =
+                                         plan.transform.inverse() *
+                                         Homography{{1, 0, plan.kept.x, 0, 1, plan.kept.y, 0, 0, 1}};
+                                     return warp(pixels, toSource.m, plan.size, stop);
                                  }},
                       edit);
 }
@@ -115,6 +127,23 @@ Size Document::size() const {
         size = sizeAfter(size, edit);
     }
     return size;
+}
+
+double Document::scale() const {
+    const SubimageInfo& info = m_base->subimages()[static_cast<std::size_t>(m_subimage)];
+    Size size = displaySize(info.levels.front().size, info.orientation);
+    double scale = 1;
+    for (const Edit& edit : edits()) {
+        if (const auto* resize = std::get_if<ResizeEdit>(&edit)) {
+            double width = size.width;
+            if (resize->fill) {
+                width = fitAspect({0, 0, size.width, size.height}, {resize->size.width, resize->size.height}).width;
+            }
+            scale *= resize->size.width / width;
+        }
+        size = sizeAfter(size, edit);
+    }
+    return scale;
 }
 
 Result<void> Document::canResizeTo(Size size) const {

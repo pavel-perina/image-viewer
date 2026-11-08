@@ -8,9 +8,13 @@
 #include <QString>
 #include <QVariant>
 #include <QVariantMap>
+#include <QImage>
 #include <QtQml/qqmlregistration.h>
 
+#include <array>
 #include <memory>
+
+#include "core/perspective.h"
 
 namespace iv {
 
@@ -139,6 +143,26 @@ public:
     // srgbValues when the colour profile makes them differ, and color for a swatch.
     Q_INVOKABLE void probe(QPointF point);
 
+    // Straightening the image as shown, as if the camera had been turned. prepareStraighten reads
+    // a reduced copy for previews and finding lines, and reports straightenReady; until then
+    // detectStraightLines and straightenPreview give nothing. Angles are in degrees, lines are
+    // {x1, y1, x2, y2} in pixels of the image as shown, and a focal length of 0 assumes 28 mm.
+    Q_INVOKABLE void prepareStraighten();
+    // Long straight edges near vertical or horizontal, longest first.
+    Q_INVOKABLE QVariantList detectStraightLines() const;
+    // roll, pitch and yaw that make the lines vertical or horizontal, and used, which of them
+    // were kept; robust leaves out the ones that disagree. mode: 0 rotation only, 1 with
+    // verticals, 2 with horizontals too.
+    Q_INVOKABLE QVariantMap fitStraightLines(const QVariantList& lines, int mode, double focal35mm, bool robust) const;
+    // From the camera data, or 0 when unknown.
+    Q_INVOKABLE double focalLength35mm() const;
+    Q_INVOKABLE QSize straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) const;
+    Q_INVOKABLE void straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio);
+    // The reduced copy straightened; null until it is ready.
+    QImage straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio) const;
+    // The corners of what straightening keeps, in pixels of the image as shown.
+    std::array<QPointF, 4> straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio) const;
+
 signals:
     void sourceChanged();
     void statusChanged();
@@ -150,6 +174,7 @@ signals:
     void wheelNavigatesChanged();
     void editChanged();
     void probed(const QVariantMap& pixel);
+    void straightenReady();
     void navigateRequested(int steps);  // positive towards the next image
 
 protected:

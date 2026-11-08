@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -624,6 +625,109 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
     case PixelFormat::Rgba16:  return resizeTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, size, stop);
     case PixelFormat::Gray32F: return resizeTyped<float, 1, PlainSamples<float>>(source, size, stop);
     case PixelFormat::Rgba32F: return resizeTyped<float, 4, PlainSamples<float>>(source, size, stop);
+    }
+    return {};
+}
+
+namespace {
+
+// Splits rows into bands run side by side, once there is enough work to pay for the threads.
+template <typename Band>
+void inBands(int rows, int width, const Band& band) {
+    constexpr std::uint64_t kPixelsPerThread = 256 * 1024;
+    const std::uint64_t pixels = static_cast<std::uint64_t>(std::max(rows, 0)) * static_cast<std::uint64_t>(width);
+    const auto wanted = static_cast<int>(std::min<std::uint64_t>(pixels / kPixelsPerThread, 8));
+    const int bands = std::clamp(std::min(wanted, static_cast<int>(std::thread::hardware_concurrency())), 1, std::max(rows, 1));
+    std::vector<std::exception_ptr> errors(static_cast<std::size_t>(bands));
+    {
+        std::vector<std::jthread> workers;
+        const auto run = [&](int index) {
+            try {
+                band(rows * index / bands, rows * (index + 1) / bands);
+            } catch (...) {
+                errors[static_cast<std::size_t>(index)] = std::current_exception();
+            }
+        };
+        for (int i = 1; i < bands; ++i) {
+            workers.emplace_back(run, i);
+        }
+        run(0);
+    }
+    for (const std::exception_ptr& error : errors) {
+        if (error) {
+            std::rethrow_exception(error);
+        }
+    }
+}
+
+template <typename Sample, int Channels, typename Samples>
+ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m, Size size, const std::stop_token& stop) {
+    const ImageBuffer target = ImageBuffer::create(size, source.format());
+    const int sw = source.width();
+    const int sh = source.height();
+    std::atomic<bool> stopped = false;
+    inBands(size.height, size.width, [&](int firstRow, int endRow) {
+        for (int y = firstRow; y < endRow; ++y) {
+            if (stop.stop_requested()) {
+                stopped = true;
+                return;
+            }
+            auto* out = reinterpret_cast<Sample*>(target.row(y));
+            const double ty = y + 0.5;
+            for (int x = 0; x < size.width; ++x) {
+                const double tx = x + 0.5;
+                const double w = m[6] * tx + m[7] * ty + m[8];
+                // Into coordinates where pixel i has its centre at i.
+                const double fx = (m[0] * tx + m[1] * ty + m[2]) / w - 0.5;
+                const double fy = (m[3] * tx + m[4] * ty + m[5]) / w - 0.5;
+                const double x0 = std::floor(fx);
+                const double y0 = std::floor(fy);
+                const auto weights = [](double t) {
+                    return std::array<float, 4>{static_cast<float>(((-t + 2) * t - 1) * t / 2),
+                                                static_cast<float>(((3 * t - 5) * t * t + 2) / 2),
+                                                static_cast<float>(((-3 * t + 4) * t + 1) * t / 2),
+                                                static_cast<float>((t - 1) * t * t / 2)};
+                };
+                const auto wx = weights(fx - x0);
+                const auto wy = weights(fy - y0);
+                std::array<int, 4> columns{};
+                for (int k = 0; k < 4; ++k) {
+                    columns[static_cast<std::size_t>(k)] = std::clamp(static_cast<int>(x0) - 1 + k, 0, sw - 1);
+                }
+                std::array<float, Channels> sum{};
+                for (int j = 0; j < 4; ++j) {
+                    const int row = std::clamp(static_cast<int>(y0) - 1 + j, 0, sh - 1);
+                    const auto* in = reinterpret_cast<const Sample*>(source.row(row));
+                    std::array<float, Channels> across{};
+                    for (int k = 0; k < 4; ++k) {
+                        const Sample* pixel = in + static_cast<std::size_t>(columns[static_cast<std::size_t>(k)]) * Channels;
+                        for (int c = 0; c < Channels; ++c) {
+                            across[static_cast<std::size_t>(c)] += wx[static_cast<std::size_t>(k)] * Samples::decode(pixel[c], c);
+                        }
+                    }
+                    for (int c = 0; c < Channels; ++c) {
+                        sum[static_cast<std::size_t>(c)] += wy[static_cast<std::size_t>(j)] * across[static_cast<std::size_t>(c)];
+                    }
+                }
+                for (int c = 0; c < Channels; ++c) {
+                    out[c] = Samples::encode(sum[static_cast<std::size_t>(c)], c);
+                }
+                out += Channels;
+            }
+        }
+    });
+    return stopped ? ImageBuffer{} : target;
+}
+
+}  // namespace
+
+ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size, const std::stop_token& stop) {
+    switch (source.format()) {
+    case PixelFormat::Bgrx8:   return warpTyped<std::uint8_t, 4, DisplaySamples>(source, targetToSource, size, stop);
+    case PixelFormat::Gray16:  return warpTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop);
+    case PixelFormat::Rgba16:  return warpTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop);
+    case PixelFormat::Gray32F: return warpTyped<float, 1, PlainSamples<float>>(source, targetToSource, size, stop);
+    case PixelFormat::Rgba32F: return warpTyped<float, 4, PlainSamples<float>>(source, targetToSource, size, stop);
     }
     return {};
 }

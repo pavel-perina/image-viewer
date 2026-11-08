@@ -17,16 +17,44 @@ ApplicationWindow {
     readonly property bool typing: browserPage.pathBar.editing
     readonly property bool cropping: viewerPage.cropping
     readonly property bool probing: viewerPage.probing
+    readonly property bool straightening: viewerPage.straightening
     // A tool of the large view has the mouse and keys, so moving to another image waits.
     readonly property bool toolActive: viewerPage.toolActive
     readonly property bool edited: window.viewing && viewerPage.view.modified
     // What was to happen when the unsaved changes were asked about, until they are saved.
     property var pendingLeave: null
+    // An edit started in the browser opens the image first and starts once it has loaded.
+    property var pendingTool: null
+    // Crop, straighten and resize work from the browser on the one image chosen there.
+    readonly property bool canEdit: window.viewing ? viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
+                                                   : context.currentPath !== "" && context.selectedPaths.length <= 1
 
     width: 1280
     height: 800
     visible: true
     title: (window.edited ? "*" : "") + (context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer")
+
+    function startTool(start) {
+        if (window.viewing) {
+            start()
+            return
+        }
+        window.pendingTool = start
+        window.viewing = true
+    }
+
+    Connections {
+        target: viewerPage.view
+        function onStatusChanged() {
+            const view = viewerPage.view
+            if (!window.pendingTool || view.status === ImageView.Loading || view.status === ImageView.Null)
+                return
+            const start = window.pendingTool
+            window.pendingTool = null
+            if (window.viewing && view.status === ImageView.Ready && view.editable)
+                start()
+        }
+    }
 
     // Leaving an edited image asks first: save, discard or stay.
     function leaveImage(proceed) {
@@ -65,6 +93,7 @@ ApplicationWindow {
         editView: window.viewing ? viewerPage.view : null
         guard: window.leaveImage
         copyTakenByTool: window.probing
+        toolActive: window.toolActive
         onSaveCancelled: window.pendingLeave = null
     }
 
@@ -133,6 +162,8 @@ ApplicationWindow {
     function leaveCurrentMode() {
         if (window.cropping)
             viewerPage.cancelCrop()
+        else if (window.straightening)
+            viewerPage.cancelStraighten()
         else if (window.probing)
             viewerPage.stopProbe()
         else if (window.visibility === Window.FullScreen)
@@ -171,15 +202,22 @@ ApplicationWindow {
         id: cropAction
         text: "&Crop..."
         shortcut: "X"
-        enabled: window.viewing && !window.cropping && viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
-        onTriggered: viewerPage.startCrop()
+        enabled: window.canEdit && !window.cropping
+        onTriggered: window.startTool(() => viewerPage.startCrop())
+    }
+    Action {
+        id: straightenAction
+        text: "&Straighten..."
+        shortcut: "S"
+        enabled: window.canEdit && !window.straightening
+        onTriggered: window.startTool(() => viewerPage.startStraighten())
     }
     Action {
         id: resizeAction
         text: "&Resize..."
         shortcut: "Ctrl+R"
-        enabled: window.viewing && !window.toolActive && viewerPage.view.editable && viewerPage.view.status === ImageView.Ready
-        onTriggered: resizeDialog.open()
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => resizeDialog.open())
     }
     Action {
         id: probeAction
@@ -195,14 +233,14 @@ ApplicationWindow {
         id: undoAction
         text: "&Undo"
         shortcut: StandardKey.Undo
-        enabled: window.viewing && !window.cropping && viewerPage.view.canUndo
+        enabled: window.viewing && !window.cropping && !window.straightening && viewerPage.view.canUndo
         onTriggered: viewerPage.view.undo()
     }
     Action {
         id: redoAction
         text: "&Redo"
         shortcut: StandardKey.Redo
-        enabled: window.viewing && !window.cropping && viewerPage.view.canRedo
+        enabled: window.viewing && !window.cropping && !window.straightening && viewerPage.view.canRedo
         onTriggered: viewerPage.view.redo()
     }
     Action {
@@ -259,6 +297,7 @@ ApplicationWindow {
     Shortcut { sequence: "Shift+PgDown"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(1) }
     Shortcut { sequence: "Shift+PgUp"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(-1) }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: window.straightening && !viewerPage.straightenPanelEditing; onActivated: viewerPage.applyStraighten() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Up"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(-1) }
@@ -310,6 +349,7 @@ ApplicationWindow {
             AppMenuItem { action: redoAction }
             MenuSeparator {}
             AppMenuItem { action: cropAction }
+            AppMenuItem { action: straightenAction }
             AppMenuItem { action: resizeAction }
             AppMenuItem { action: probeAction }
             MenuSeparator {}
@@ -400,6 +440,7 @@ ApplicationWindow {
             ToolButton { action: infoAction; visible: window.viewing }
             ToolSeparator { visible: window.viewing }
             ToolButton { action: cropAction; visible: window.viewing }
+            ToolButton { action: straightenAction; visible: window.viewing }
             ToolButton { action: probeAction; text: "Probe"; visible: window.viewing }
             Item { Layout.fillWidth: true }
         }

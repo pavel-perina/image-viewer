@@ -32,6 +32,7 @@
 
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <functional>
 #include <memory>
 
@@ -3845,6 +3846,199 @@ TEST(Editing, SaveOverwritesTheFileAfterAWarning) {
     const QString copy = dir.filePath(QStringLiteral("small.png"));
     ASSERT_TRUE(waitUntil([&] { return !context->busy() && QImage(copy).size() == QSize(8, 8); }));
     EXPECT_EQ(jpegSize(path), QSize(16, 24)) << "the file stays as it was";
+}
+
+namespace {
+
+// 400 x 300, light with a dark rectangle turned 4 degrees clockwise around the middle.
+QString writeTiltedJpeg(const QTemporaryDir& dir) {
+    const QString path = dir.filePath(QStringLiteral("tilted.jpg"));
+    writeJpeg(path, {.width = 400, .height = 300, .pixel = [](int x, int y) {
+                         const double a = 4 * std::numbers::pi / 180;
+                         const double dx = x + 0.5 - 200;
+                         const double dy = y + 0.5 - 150;
+                         const double u = dx * std::cos(a) + dy * std::sin(a);
+                         const double v = -dx * std::sin(a) + dy * std::cos(a);
+                         const std::uint8_t value = std::abs(u) < 140 && std::abs(v) < 90 ? 30 : 220;
+                         return Rgb{value, value, value};
+                     }});
+    return path;
+}
+
+}  // namespace
+
+TEST(Straighten, FindsTheEdgesFitsTheAnglesAndApplies) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTiltedJpeg(dir)));
+    QSignalSpy ready(f.view, &ImageView::straightenReady);
+    EXPECT_TRUE(f.view->detectStraightLines().isEmpty()) << "nothing before it is prepared";
+    f.view->prepareStraighten();
+    ASSERT_TRUE(waitUntil([&] { return ready.count() == 1; }));
+
+    const QVariantList lines = f.view->detectStraightLines();
+    ASSERT_GE(lines.size(), 4);
+    const QVariantMap fit = f.view->fitStraightLines(lines, 0, 0, true);
+    EXPECT_NEAR(fit.value(QStringLiteral("roll")).toDouble(), -4, 0.3);
+    EXPECT_EQ(fit.value(QStringLiteral("pitch")).toDouble(), 0) << "rotation only";
+
+    const double roll = fit.value(QStringLiteral("roll")).toDouble();
+    const QSize size = f.view->straightenedSize(roll, 0, 0, 0, true);
+    EXPECT_LT(size.width(), 400);
+    EXPECT_NEAR(static_cast<double>(size.width()) / size.height(), 4.0 / 3, 0.02);
+    EXPECT_FALSE(f.view->straightenPreview({roll, 0, 0}, 0, true).isNull());
+
+    f.view->straighten(roll, 0, 0, 0, true);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), size.width());
+    EXPECT_EQ(f.view->imageHeight(), size.height());
+    EXPECT_TRUE(f.view->modified());
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), 400);
+}
+
+TEST(Straighten, ALineDrawnOnTheImageSetsTheRotation) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(900, 600);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 400; }));
+
+    QMetaObject::invokeMethod(page, "startStraighten");
+    EXPECT_TRUE(page->property("straightening").toBool());
+    auto* panel = page->findChild<QObject*>(QStringLiteral("straightenPanel"));
+    auto* overlay = page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(panel, nullptr);
+    ASSERT_NE(overlay, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return panel->property("ready").toBool() && image->width() < 700; }));
+    waitUntil([] { return false; }, 300);
+
+    // Along a line that falls 21 pixels over 300: levelled by turning 4 degrees anticlockwise.
+    const auto at = [&](double x, double y) { return image->mapToScene(image->imageToItem(QPointF(x, y))).toPoint(); };
+    QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, at(50, 100));
+    QTest::mouseMove(&view, at(200, 110));
+    QTest::mouseMove(&view, at(350, 121));
+    QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, at(350, 121));
+    ASSERT_EQ(overlay->property("lines").toList().size(), 1);
+    EXPECT_NEAR(panel->property("roll").toDouble(), -4, 0.3);
+    EXPECT_EQ(panel->property("pitch").toDouble(), 0);
+
+    // A click draws nothing.
+    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, at(200, 250));
+    EXPECT_EQ(overlay->property("lines").toList().size(), 1);
+
+    QMetaObject::invokeMethod(page, "applyStraighten");
+    EXPECT_FALSE(page->property("straightening").toBool());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() < 400; }));
+    EXPECT_TRUE(image->modified());
+}
+
+TEST(Straighten, TheFocalLengthComesFromTheCameraData) {
+    QTemporaryDir dir;
+    iv::test::JpegOptions options;
+    options.exif = iv::test::exampleExifBlock(true);  // 50 mm, 75 mm in 35mm
+    const QString path = dir.filePath(QStringLiteral("camera.jpg"));
+    iv::test::writeFile(QFileInfo(path).filesystemFilePath(), encodeJpeg(options));
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(900, 600);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready; }));
+    ASSERT_EQ(image->focalLength35mm(), 75);
+
+    QMetaObject::invokeMethod(page, "startStraighten");
+    auto* panel = page->findChild<QObject*>(QStringLiteral("straightenPanel"));
+    auto* field = page->findChild<QObject*>(QStringLiteral("straightenFocal"));
+    ASSERT_NE(panel, nullptr);
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(panel->property("focal").toDouble(), 75);
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("75"));
+}
+
+TEST(Main, StraightenFromTheBrowserOpensTheImageFirst) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    QFile::copy(dir.filePath(QStringLiteral("tilted.jpg")), dir.filePath(QStringLiteral("tilted2.jpg")));
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
+    engine.loadFromModule("ImageViewer", "Main");
+    ASSERT_EQ(engine.rootObjects().size(), 1);
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    ASSERT_NE(window, nullptr);
+    window->requestActivate();
+    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    auto* context = window->findChild<BrowseContext*>();
+    ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 2; }));
+    ASSERT_FALSE(window->property("viewing").toBool());
+
+    // Two chosen: nothing to straighten.
+    context->selectAll();
+    QTest::keyClick(window, Qt::Key_S);
+    EXPECT_FALSE(window->property("viewing").toBool());
+
+    context->clickFile(1, false, false);
+    ASSERT_EQ(context->selectedPaths().size(), 1);
+    QTest::keyClick(window, Qt::Key_S);
+    EXPECT_TRUE(window->property("viewing").toBool());
+    auto* image = window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return window->property("straightening").toBool(); }));
+    EXPECT_TRUE(image->source().endsWith(QStringLiteral("tilted2.jpg")));
+    EXPECT_EQ(image->status(), ImageView::Status::Ready);
+}
+
+TEST(Main, DeleteWhileStraighteningRemovesTheLineNotTheFile) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    const QString path = dir.filePath(QStringLiteral("tilted.jpg"));
+    ASSERT_TRUE(QFile::exists(path));
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    engine.setInitialProperties({{QStringLiteral("initialPath"), path}});
+    engine.loadFromModule("ImageViewer", "Main");
+    ASSERT_EQ(engine.rootObjects().size(), 1);
+    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+    ASSERT_NE(window, nullptr);
+    window->requestActivate();
+    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    auto* image = window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 400; }));
+
+    QTest::keyClick(window, Qt::Key_S);
+    ASSERT_TRUE(window->property("straightening").toBool());
+    auto* overlay = window->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    waitUntil([] { return false; }, 300);
+    const auto at = [&](double x, double y) { return image->mapToScene(image->imageToItem(QPointF(x, y))).toPoint(); };
+    QTest::mousePress(window, Qt::LeftButton, Qt::NoModifier, at(50, 100));
+    QTest::mouseMove(window, at(200, 110));
+    QTest::mouseMove(window, at(350, 121));
+    QTest::mouseRelease(window, Qt::LeftButton, Qt::NoModifier, at(350, 121));
+    ASSERT_EQ(overlay->property("lines").toList().size(), 1);
+    ASSERT_EQ(overlay->property("selected").toInt(), 0);
+
+    QTest::keyClick(window, Qt::Key_Delete);
+    EXPECT_EQ(overlay->property("lines").toList().size(), 0);
+    waitUntil([] { return false; }, 300);
+    EXPECT_TRUE(QFile::exists(path));
+    EXPECT_TRUE(window->property("straightening").toBool());
 }
 
 TEST(Main, LeavingAnEditedImageAsksFirst) {

@@ -173,3 +173,26 @@ TEST(Document, ResizeHasToStaySavable) {
     EXPECT_FALSE(document.canResizeTo({0, 10}));
     EXPECT_FALSE(document.canResizeTo({100000, 100000}));
 }
+
+TEST(Document, TiltTurnsAndKeepsTheLargestRectangle) {
+    Document document(turnedJpeg(), 0);
+    const TiltEdit edit{{8, 0, 0}, focalPixels({40, 80}, 28), true};
+    document.apply(edit);
+    const Size expected = planTilt({40, 80}, edit.focalPixels, edit.tilt, true).size;
+    EXPECT_EQ(document.size(), expected);
+    EXPECT_LT(expected.height, 80);
+    const ImageBuffer pixels = pixelsOf(document);
+    ASSERT_EQ(pixels.size(), expected);
+    EXPECT_TRUE(isRed(pixels, expected.width / 2, 4));
+    EXPECT_TRUE(isBlue(pixels, expected.width / 2, expected.height - 5));
+}
+
+TEST(Document, ScaleFollowsResizing) {
+    Document document(turnedJpeg(), 0);
+    document.apply(CropEdit{{0, 0, 40, 40}});
+    EXPECT_DOUBLE_EQ(document.scale(), 1);
+    document.apply(ResizeEdit{{20, 20}});
+    EXPECT_DOUBLE_EQ(document.scale(), 0.5);
+    document.apply(ResizeEdit{{30, 10}, true});  // the middle 20 x 6.67 to 30 x 10
+    EXPECT_DOUBLE_EQ(document.scale(), 0.75);
+}

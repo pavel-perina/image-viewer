@@ -8,6 +8,7 @@
 
 #include "core/crop.h"
 #include "core/image_source.h"
+#include "core/perspective.h"
 
 namespace iv {
 
@@ -25,7 +26,17 @@ struct ResizeEdit {
     bool operator==(const ResizeEdit&) const = default;
 };
 
-using Edit = std::variant<CropEdit, ResizeEdit>;
+// Straightens as if the camera had been turned, then keeps the largest rectangle with no empty
+// corners, of the picture's ratio or of any. The focal length is in pixels of the picture the
+// edit is applied to.
+struct TiltEdit {
+    Tilt tilt;
+    double focalPixels = 0;
+    bool keepRatio = true;
+    bool operator==(const TiltEdit&) const = default;
+};
+
+using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.
@@ -58,6 +69,9 @@ public:
 
     // The size of the picture with the edits in effect, upright.
     Size size() const;
+
+    // How many pixels of the picture now one pixel of the original became, through resizing.
+    double scale() const;
 
     // Whether the picture can be resized to a size: it has to stay small enough to be saved.
     Result<void> canResizeTo(Size size) const;

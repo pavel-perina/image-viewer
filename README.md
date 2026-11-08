@@ -15,7 +15,10 @@ location can be removed.
 Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a fixed ratio
 including that of each screen, with undo and redo (Ctrl+Z, Ctrl+Shift+Z). Edit > Resize (Ctrl+R)
 scales to an exact size, with presets for the screens, long edges and percentages; a size of
-another ratio fits inside, crops the middle or stretches. File > Save (Ctrl+S) overwrites the file
+another ratio fits inside, crops the middle or stretches. Edit > Straighten (S) levels a picture
+and corrects perspective from lines drawn along edges that should be vertical or horizontal, or
+found by Detect; the angles can be typed too, and the result keeps the largest rectangle inside.
+File > Save (Ctrl+S) overwrites the file
 after a warning that offers a new name instead, and Save As writes another file;
 leaving an edited image asks first.
 

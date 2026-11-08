@@ -5,6 +5,8 @@ qt_add_library(iv_ui STATIC
     color_settings.h
     crop_overlay.cpp
     crop_overlay.h
+    straighten_overlay.cpp
+    straighten_overlay.h
     directory_tree_model.cpp
     directory_tree_model.h
     edited_image.h
@@ -54,6 +56,7 @@ qt_add_qml_module(iv_ui
         qml/PreviewPanel.qml
         qml/ProbePanel.qml
         qml/ResizeDialog.qml
+        qml/StraightenPanel.qml
         qml/ResampledView.qml
         qml/SaveOptionsDialog.qml
         qml/Theme.qml
