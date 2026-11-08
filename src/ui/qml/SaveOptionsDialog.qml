@@ -61,6 +61,20 @@ AppDialog {
         return common
     }
 
+    // The options last chosen for a format, for saving without asking.
+    function storedOptions(format) {
+        const common = {keepMetadata: settings.keepMetadata, removeLocation: settings.removeLocation}
+        switch (format) {
+        case "jpeg": return Object.assign(common, {quality: settings.jpegQuality, chroma: settings.jpegChroma, progressive: settings.jpegProgressive})
+        case "png": return Object.assign(common, {compressionLevel: settings.pngLevel})
+        case "tiff": return Object.assign(common, {compression: settings.tiffCompression})
+        case "webp": return Object.assign(common, {lossless: settings.webpLossless, quality: settings.webpQuality, effort: settings.webpEffort})
+        case "avif": return Object.assign(common, {quality: settings.avifQuality, speed: settings.avifSpeed, chroma: settings.avifChroma})
+        case "jxl": return Object.assign(common, {lossless: settings.jxlLossless, quality: settings.jxlQuality, effort: settings.jxlEffort})
+        }
+        return common
+    }
+
     function remember() {
         settings.keepMetadata = metadataCheck.checked
         settings.removeLocation = locationCheck.checked
@@ -248,8 +262,8 @@ AppDialog {
             Layout.fillWidth: true
             visible: dialog.format === "jpeg" && dialog.context.allJpeg([dialog.source])
             wrapMode: Text.Wrap
-            text: "Saving a JPEG as JPEG compresses it again and loses a little quality each time. "
-                  + "To rotate or flip without loss, use Lossless JPEG in the Edit menu."
+            text: "Saving a JPEG as JPEG compresses it again and loses a little quality each time."
+                  + (dialog.edited ? "" : " To rotate or flip without loss, use Lossless JPEG in the Edit menu.")
         }
 
         ColumnLayout {

@@ -54,6 +54,7 @@ Item {
     readonly property alias convertToJxlAction: convertToJxlAction
     readonly property alias askBeforeEditingAction: askBeforeEditingAction
     readonly property alias trimEdgesAction: trimEdgesAction
+    readonly property alias saveAction: saveAction
     readonly property alias saveAsAction: saveAsAction
 
     function showFolderMenu(path) {
@@ -123,6 +124,44 @@ Item {
         editDialog.open()
     }
 
+    // The edited image over its file, after a warning that offers another name instead, with the
+    // options last chosen for the format. A file that cannot be written back whole, in a format
+    // there is no writer for or with more pages than the one edited, goes to Save As instead.
+    function save() {
+        const path = targetPaths[0]
+        if (!editView || !context.saveFormat(path) || editView.pageCount > 1) {
+            saveAs()
+            return
+        }
+        overwriteDialog.path = path
+        overwriteDialog.text = folderName(path) + " will be replaced by the edited image. The original cannot be "
+                               + "brought back.\n\nRename saves the edited image as a new file next to it instead."
+        overwriteDialog.open()
+    }
+
+    function saveEditedTo(target) {
+        context.saveAs(targetPaths[0], page, target, saveOptionsDialog.storedOptions(context.saveFormat(target)),
+                       editView.editedImage())
+    }
+
+    // Asks for a name in the same folder, suggesting one beside the original.
+    function saveEditedAsNew(path) {
+        const slash = path.lastIndexOf("/")
+        const folder = path.substring(0, slash)
+        const name = path.substring(slash + 1)
+        const dot = name.lastIndexOf(".")
+        const suggested = dot > 0 ? name.substring(0, dot) + "-edited" + name.substring(dot) : name + "-edited"
+        askName("Save As New File", suggested, (newName) => {
+            const problem = context.newFileProblem(folder, newName)
+            if (problem)
+                return problem
+            if (!context.saveFormat(newName))
+                return "Choose a name ending in .jpg, .png, .tif, .webp, .avif or .jxl."
+            saveEditedTo(folder + "/" + newName)
+            return ""
+        }, () => saveCancelled())
+    }
+
     // Asks for the new file in the native dialog, then for the format's options.
     function saveAs() {
         const path = targetPaths[0]
@@ -159,10 +198,12 @@ Item {
         return paths.length === 1 ? root.folderName(paths[0]) : "these " + paths.length + " " + what
     }
 
-    function askName(title, text, accept) {
+    // Accept returns why a name cannot be used, or nothing; cancel, if given, runs when no name was.
+    function askName(title, text, accept, cancel) {
         nameDialog.title = title
         nameDialog.initialText = text
         nameDialog.accept = accept
+        nameDialog.cancel = cancel ?? null
         nameDialog.open()
     }
 
@@ -329,6 +370,14 @@ Item {
     }
 
     Action {
+        id: saveAction
+        text: "&Save"
+        shortcut: StandardKey.Save
+        enabled: root.idle && root.viewing && root.targetPaths.length === 1 && !!root.editView && root.editView.modified
+        onTriggered: root.save()
+    }
+
+    Action {
         id: saveAsAction
         text: "Save &As..."
         shortcut: "Ctrl+Shift+S"
@@ -347,6 +396,7 @@ Item {
         AppMenuItem { action: trashAction }
         AppMenuItem { action: deleteAction }
         MenuSeparator {}
+        AppMenuItem { action: saveAction }
         AppMenuItem { action: saveAsAction }
         JpegMenu { actions: root; enabled: root.idle && root.jpegTargets }
         MenuSeparator {}
@@ -445,6 +495,26 @@ Item {
         }
     }
 
+    MessageBox {
+        id: overwriteDialog
+        objectName: "overwriteDialog"
+        property string path
+        kind: "warning"
+        title: "Overwrite the Original?"
+        standardButtons: Dialog.Ok | Dialog.Apply | Dialog.Cancel
+        focusedButton: Dialog.Cancel
+        onAboutToShow: {
+            standardButton(Dialog.Ok).text = "Overwrite"
+            standardButton(Dialog.Apply).text = "Rename..."
+        }
+        onAccepted: root.saveEditedTo(path)
+        onApplied: {
+            close()
+            root.saveEditedAsNew(path)
+        }
+        onRejected: root.saveCancelled()
+    }
+
     SaveOptionsDialog {
         id: saveOptionsDialog
         context: root.context
@@ -463,16 +533,23 @@ Item {
 
     AppDialog {
         id: nameDialog
+        objectName: "nameDialog"
         property string initialText
         property var accept: null
+        property var cancel: null
+        property bool named: false
         width: Math.min(480, parent.width - 32)
 
         function submit() {
             const problem = nameDialog.accept(nameField.text)
             nameProblem.text = problem
-            if (!problem)
+            if (!problem) {
+                named = true
                 nameDialog.close()
+            }
         }
+        onAboutToShow: named = false
+        onClosed: if (!named && cancel) cancel()
 
         // Closed by submit, because a name that cannot be used keeps the dialog open.
         closePolicy: Popup.CloseOnEscape
@@ -503,11 +580,13 @@ Item {
             anchors.right: parent.right
             TextField {
                 id: nameField
+                objectName: "nameField"
                 Layout.fillWidth: true
                 onAccepted: nameDialog.submit()
             }
             Label {
                 id: nameProblem
+                objectName: "nameProblem"
                 Layout.fillWidth: true
                 visible: text !== ""
                 wrapMode: Text.Wrap

@@ -125,6 +125,8 @@ public:
     Q_INVOKABLE int conflictCount(const QStringList& paths, const QString& folder) const;
     // These return why the name cannot be used, or an empty string if the job has started.
     Q_INVOKABLE QString rename(const QString& path, const QString& newName);
+    // Why a new file of that name cannot be made in the folder, or empty.
+    Q_INVOKABLE QString newFileProblem(const QString& folder, const QString& name) const;
     Q_INVOKABLE QString createFolder(const QString& parent, const QString& name);
     Q_INVOKABLE void trashFolder(const QString& path);
     // Whether every path names a JPEG file, judging by the extension. False for none.

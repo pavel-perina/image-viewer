@@ -3779,6 +3779,74 @@ TEST(Editing, LosslessJpegToolsWaitUntilTheEditsAreGone) {
     EXPECT_TRUE(rotate->property("enabled").toBool());
 }
 
+TEST(Editing, SaveOverwritesTheFileAfterAWarning) {
+    QTemporaryDir dir;
+    const QString path = writeTurnedJpeg(dir);
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 500; visible: true
+            property alias context: context
+            property alias actions: actions
+            property alias view: image
+            BrowseContext { id: context; onEditedImageSaved: (image) => view.markSaved(image) }
+            ImageView { id: image; anchors.fill: parent; source: context.currentPath }
+            FileActions { id: actions; context: context; viewing: true; editView: image }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* context = root->property("context").value<BrowseContext*>();
+    auto* actions = root->property("actions").value<QObject*>();
+    auto* image = root->property("view").value<ImageView*>();
+    context->openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 64; }));
+    auto* save = actions->property("saveAction").value<QObject*>();
+    EXPECT_FALSE(save->property("enabled").toBool()) << "nothing to save";
+
+    image->crop(QRect(0, 0, 16, 24));
+    ASSERT_TRUE(settled(image));
+    ASSERT_TRUE(save->property("enabled").toBool());
+    auto* dialog = actions->findChild<QObject*>(QStringLiteral("overwriteDialog"));
+    ASSERT_NE(dialog, nullptr);
+    QMetaObject::invokeMethod(save, "trigger");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    EXPECT_TRUE(dialog->property("text").toString().startsWith(QStringLiteral("turned.jpg will be replaced")));
+    EXPECT_EQ(jpegSize(path), QSize(64, 32)) << "nothing happens before the answer";
+
+    QMetaObject::invokeMethod(dialog, "accept");
+    // Stored upright now, as it was shown.
+    ASSERT_TRUE(waitUntil([&] { return !context->busy() && jpegSize(path) == QSize(16, 24); }));
+    ASSERT_TRUE(waitUntil([&] { return !image->modified() && image->status() == ImageView::Status::Ready; }));
+    EXPECT_EQ(image->imageHeight(), 24);
+
+    // Rename keeps the file and saves beside it, under a name not taken.
+    image->crop(QRect(0, 0, 8, 8));
+    ASSERT_TRUE(settled(image));
+    QMetaObject::invokeMethod(save, "trigger");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(dialog, "applied");
+    auto* names = actions->findChild<QObject*>(QStringLiteral("nameDialog"));
+    ASSERT_TRUE(waitUntil([&] { return names->property("opened").toBool(); }));
+    auto* content = names->property("contentItem").value<QQuickItem*>();
+    QQuickItem* field = findNamed(content, QStringLiteral("nameField"));
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("turned-edited.jpg"));
+    field->setProperty("text", QStringLiteral("turned.jpg"));
+    QMetaObject::invokeMethod(names, "submit");
+    EXPECT_TRUE(names->property("visible").toBool()) << "that name is taken";
+    EXPECT_FALSE(findNamed(content, QStringLiteral("nameProblem"))->property("text").toString().isEmpty());
+    field->setProperty("text", QStringLiteral("small.png"));
+    QMetaObject::invokeMethod(names, "submit");
+    const QString copy = dir.filePath(QStringLiteral("small.png"));
+    ASSERT_TRUE(waitUntil([&] { return !context->busy() && QImage(copy).size() == QSize(8, 8); }));
+    EXPECT_EQ(jpegSize(path), QSize(16, 24)) << "the file stays as it was";
+}
+
 TEST(Main, LeavingAnEditedImageAsksFirst) {
     QTemporaryDir dir;
     writeTurnedJpeg(dir, QStringLiteral("a.jpg"));

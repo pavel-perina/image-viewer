@@ -515,9 +515,17 @@ Saving goes through Save As; the rest of this section is still the plan.
 * Plugins load only from folders the user configures, with no paths built into the app.
 * Plugins run inside the application process, so a crash takes the application down.
 
-### Open question
-* How to keep the original on the first overwrite. Proposed: send it to the system trash,
-  and ask first where there is no trash. The alternative is a `.original` file beside it.
+### Saving over the original
+* File > Save (Ctrl+S) overwrites the file with the edited image; no copy of the original is
+  kept, neither in the trash nor beside it. Each save warns first, with Overwrite, Rename and
+  Cancel, and Cancel has the focus, so Enter does not overwrite. Rename asks for a name in the
+  same folder, suggesting `name-edited.ext`, and saves there, leaving the file as it was.
+* It saves in the file's format with the options last chosen for that format in Save As, so it
+  is one question rather than two. A JPEG is compressed again, as with Save As.
+* A file in a format there is no writer for, or with more pages than the one edited, goes to
+  Save As instead, as writing it back would lose what cannot be written. Stored lower levels of
+  a pyramid are not written back; editing is limited to images small enough not to need them.
+* Save in the question asked before leaving an edited image is this Save, warning included.
 
 ## Metadata (planned, not built)
 * To be built with the info panel, starting with EXIF. XMP, OME-TIFF and other schemas are

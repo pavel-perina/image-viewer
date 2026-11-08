@@ -15,7 +15,8 @@ location can be removed.
 Edit > Crop (X) in the large view chooses a rectangle to the pixel, free or at a fixed ratio
 including that of each screen, with undo and redo (Ctrl+Z, Ctrl+Shift+Z). Edit > Resize (Ctrl+R)
 scales to an exact size, with presets for the screens, long edges and percentages; a size of
-another ratio fits inside, crops the middle or stretches. The result is saved with Save As;
+another ratio fits inside, crops the middle or stretches. File > Save (Ctrl+S) overwrites the file
+after a warning that offers a new name instead, and Save As writes another file;
 leaving an edited image asks first.
 
 Edit > Probe Colours (P) reads single pixels at full size: hex, the values as stored (16-bit and

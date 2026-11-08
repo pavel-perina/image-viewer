@@ -830,6 +830,16 @@ void BrowseContext::moveTo(const QStringList& paths, const QString& folder, Conf
 
 int BrowseContext::conflictCount(const QStringList& paths, const QString& folder) const { return countConflicts(paths, folder); }
 
+QString BrowseContext::newFileProblem(const QString& folder, const QString& name) const {
+    if (QString problem = fileNameProblem(name); !problem.isEmpty()) {
+        return problem;
+    }
+    if (QFileInfo::exists(QDir(folder).filePath(name))) {
+        return tr("%1 already exists.").arg(name);
+    }
+    return {};
+}
+
 QString BrowseContext::rename(const QString& path, const QString& newName) {
     const QFileInfo info(path);
     if (newName == info.fileName()) {

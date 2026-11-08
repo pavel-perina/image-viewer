@@ -92,7 +92,7 @@ ApplicationWindow {
         title: "Unsaved Changes"
         standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
         focusedButton: Dialog.Save
-        onAccepted: fileActions.saveAs()
+        onAccepted: fileActions.save()
         onDiscarded: {
             close()
             const proceed = window.pendingLeave
@@ -290,6 +290,7 @@ ApplicationWindow {
         AppMenu {
             title: "&File"
             AppMenuItem { action: openAction }
+            AppMenuItem { action: fileActions.saveAction }
             AppMenuItem { action: fileActions.saveAsAction }
             MenuSeparator {}
             AppMenuItem { action: fileActions.renameAction }

@@ -181,6 +181,23 @@ AppDialog {
 
     Component.onCompleted: standardButton(Dialog.Ok).enabled = Qt.binding(() => dialog.problem === "")
 
+    // Enter resizes from anywhere in the dialog, with what a field holds taken first.
+    Shortcut {
+        sequences: ["Return", "Enter"]
+        enabled: dialog.opened
+        onActivated: {
+            for (const box of [widthBox, heightBox]) {
+                if (box.contentItem.activeFocus) {
+                    const value = box.valueFromText(box.contentItem.text, box.locale)
+                    if (!isNaN(value))
+                        box.value = Math.max(box.from, Math.min(box.to, value))
+                }
+            }
+            if (dialog.problem === "")
+                dialog.accept()
+        }
+    }
+
     component SizeBox: SpinBox {
         editable: true
         from: 1
