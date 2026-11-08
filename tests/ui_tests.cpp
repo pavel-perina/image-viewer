@@ -2855,6 +2855,41 @@ TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     QSettings().remove(QStringLiteral("Folders"));
 }
 
+TEST(PathBar, TheStarListsPlacesThatFoldAway) {
+    BrowserPageFixture f;
+    QSettings().remove(QStringLiteral("FolderButton"));
+    QQuickItem* bar = f.view.rootObject()->property("pathBar").value<QQuickItem*>();
+    QQuickItem* star = findNamed(bar, QStringLiteral("folderButton"));
+    ASSERT_NE(star, nullptr);
+    const auto placesRow = [&] {
+        const QVariantList rows = star->property("menuRows").toList();
+        const auto found = std::ranges::find_if(rows, [](const QVariant& row) { return row.toMap().value(QStringLiteral("kind")) == QStringLiteral("places"); });
+        return found == rows.end() ? QVariant() : *found;
+    };
+    const auto hasHome = [&] {
+        const QString home = QDir::homePath();
+        const QVariantList rows = star->property("menuRows").toList();
+        return std::ranges::any_of(rows, [&](const QVariant& row) { return row.toMap().value(QStringLiteral("path")).toString() == home; });
+    };
+
+    QMetaObject::invokeMethod(star, "activated");
+    ASSERT_TRUE(placesRow().isValid());
+    EXPECT_TRUE(hasHome());
+
+    QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, placesRow()));
+    EXPECT_TRUE(star->property("menuOpen").toBool()) << "folding keeps the menu open";
+    EXPECT_FALSE(hasHome());
+    QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, placesRow()));
+    EXPECT_TRUE(hasHome());
+
+    QVariantList rows = star->property("menuRows").toList();
+    const auto toHome = std::ranges::find_if(rows, [](const QVariant& row) { return row.toMap().value(QStringLiteral("path")).toString() == QDir::homePath(); });
+    QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, *toHome));
+    EXPECT_FALSE(star->property("menuOpen").toBool());
+    EXPECT_EQ(f.context.directory(), QDir::homePath());
+    QSettings().remove(QStringLiteral("FolderButton"));
+}
+
 TEST(PathBar, AClickInItsListsDoesNotReachTheThumbnailsBelow) {
     TreeFixture f;
     QSettings().remove(QStringLiteral("Folders"));
@@ -4491,6 +4526,8 @@ struct ComparePage {
         view.resize(900, 600);
         view.loadFromModule("ImageViewer", "ViewerPage");
         view.show();
+        // Laid out first, as zooming a view of no size yet does nothing to see.
+        EXPECT_TRUE(waitUntil([&] { return view.isExposed(); }));
         page = view.rootObject();
         image = page->property("view").value<ImageView*>();
         other = page->findChild<QQuickItem*>(QStringLiteral("otherSurface"))->property("view").value<ImageView*>();
@@ -4523,8 +4560,11 @@ TEST(Compare, TwoFilesZoomAndScrollTogether) {
     ASSERT_TRUE(waitUntil([&] { return f.active(); }));
     EXPECT_EQ(f.splitter->property("firstLabel").toString(), QStringLiteral("b.jpg"));
 
-    f.image->zoomIn();
-    f.image->zoomIn();
+    // Far enough to scroll, from whatever fit the layout gave so far.
+    for (int i = 0; i < 8 && f.image->visibleArea().width() >= 0.8; ++i) {
+        f.image->zoomIn();
+    }
+    ASSERT_LT(f.image->visibleArea().width(), 0.8);
     EXPECT_DOUBLE_EQ(f.other->zoom(), f.image->zoom());
     EXPECT_EQ(f.other->visibleArea(), f.image->visibleArea());
     f.other->panBy(-40, -30);

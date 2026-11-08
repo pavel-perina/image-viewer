@@ -402,6 +402,8 @@ change nothing useful. The first press of a double click does this too, for that
   for a name typed or the entry selected. Choosing a folder chooses the folder selected, else the
   one shown, and the button names it.
 * Types are given as `{label, extensions}` rather than filter strings, so nothing parses labels.
+* The browser has the same places at the end of the star menu in the path bar, under a heading
+  that folds them away and is remembered, rather than as a panel of their own.
 * Not yet: selecting several files, typing to jump to a name, icons other than a drawn folder,
   and `~` for the home folder in a typed name.
 

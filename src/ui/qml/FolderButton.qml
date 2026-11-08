@@ -1,10 +1,12 @@
 pragma ComponentBehavior: Bound
 
+import QtCore
 import QtQuick
 import QtQuick.Controls
 import ImageViewer
 
-// One icon for the folders worth returning to: favourites and those visited lately.
+// One icon for the folders worth returning to: favourites, those visited lately and the places
+// (home, its usual folders and the disks), which fold away under their heading.
 BarButton {
     id: button
 
@@ -28,11 +30,17 @@ BarButton {
             for (const path of recent)
                 list.push({ kind: "folder", text: context.nativePath(path), path: path })
         }
+        list.push({ kind: "places", text: (settings.placesShown ? "\u25be  " : "\u25b8  ") + "Places" })
+        if (settings.placesShown) {
+            for (const place of FolderLists.places())
+                list.push({ kind: "folder", text: place.name, detail: context.nativePath(place.path), path: place.path })
+        }
         return list
     }
 
     function choose(row) {
-        menu.close()
+        if (row.kind !== "places")
+            menu.close()
         if (row.kind === "toggle") {
             if (isFavorite)
                 FolderLists.removeFavorite(context.directory)
@@ -40,9 +48,19 @@ BarButton {
                 FolderLists.addFavorite(context.directory)
         } else if (row.kind === "organize") {
             organizer.open()
+        } else if (row.kind === "places") {
+            settings.placesShown = !settings.placesShown
+            menu.rows = rows()
+            return
         } else if (row.kind === "folder") {
             context.openPath(row.path)
         }
+    }
+
+    Settings {
+        id: settings
+        category: "FolderButton"
+        property bool placesShown: true
     }
 
     icon: "star"
@@ -86,15 +104,28 @@ BarButton {
             delegate: Rectangle {
                 id: row
                 required property var modelData
-                readonly property bool heading: modelData.kind === "heading"
-                readonly property bool usable: !heading && (modelData.kind !== "folder" || FolderLists.exists(modelData.path))
+                readonly property bool heading: modelData.kind === "heading" || modelData.kind === "places"
+                readonly property bool usable: modelData.kind === "places"
+                                               || (!heading && (modelData.kind !== "folder" || FolderLists.exists(modelData.path)))
                 width: ListView.view.width
                 height: 26
                 radius: 2
                 color: rowHover.hovered && usable ? Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12) : "transparent"
                 Label {
-                    anchors.left: parent.left
+                    id: detail
                     anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width * 0.55)
+                    visible: text !== ""
+                    elide: Text.ElideMiddle
+                    text: row.modelData.detail ?? ""
+                    color: palette.text
+                    opacity: 0.5
+                }
+                Label {
+                    anchors.left: parent.left
+                    anchors.right: detail.visible ? detail.left : parent.right
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter

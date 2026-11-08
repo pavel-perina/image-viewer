@@ -108,7 +108,7 @@ shaders is skipped there, so run it by hand on a display:
 | Click a caret in the path bar | List the subfolders of that folder |
 | Ctrl+L, click the empty end of the path bar | Edit or paste the path |
 | Right-click the back arrow | Choose from the folders visited |
-| Star in the path bar | Favorite and recent folders |
+| Star in the path bar | Favorite and recent folders, and places (home, its usual folders, disks); a click on Places folds them |
 | View > Clear Thumbnail Cache | Remove the thumbnails kept on disk, after asking |
 | Enter, Esc, Ctrl+C in a message | Press the highlighted button, cancel, copy the message |
 | Mouse wheel | Previous or next image in the large view; zoom in the preview |
