@@ -16,6 +16,8 @@ qt_add_library(iv_ui STATIC
     file_operations.h
     folder_lists.cpp
     folder_lists.h
+    key_hold.cpp
+    key_hold.h
     key_names.cpp
     key_names.h
     histogram_handle.h
@@ -46,6 +48,7 @@ qt_add_qml_module(iv_ui
         qml/BarButton.qml
         qml/BrowserPage.qml
         qml/Caret.qml
+        qml/CompareSplitter.qml
         qml/CropPanel.qml
         qml/FileActions.qml
         qml/FolderButton.qml

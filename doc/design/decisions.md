@@ -388,6 +388,29 @@ change nothing useful. The first press of a double click does this too, for that
 * Cut is not implemented. Files cut in another application are copied on paste, leaving the
   originals in place.
 
+## Comparing
+* Two pictures of the same size are shown one each side of a vertical line that can be
+  dragged: View > Before and After (B) for an edited image, and View > Compare Two Images for
+  two images chosen in the browser, the one shown against the other. Holding O, or the toolbar's
+  Original, shows the picture before editing alone while held.
+* The line is a fraction of the view's width, so it stays where it is while zooming and
+  scrolling. Both views zoom and scroll together whichever one is used: `ImageView.linkedView`
+  copies the viewport each way while both show pictures of the same size, and a view that
+  loads takes its partner's zoom and place instead of fitting.
+* Each side is a whole `ImageSurface`: the second is clipped left of the line
+  (`ImageSurface.clipLeft`) but keeps its full size, so its geometry, resampling and colour
+  preview are unchanged, and the mouse left of the line reaches the picture under it.
+  `CompareSplitter` does the linking, clipping, handle and labels for any two surfaces.
+* Before is the file's page without edits, read from the same decoded source as the view
+  (`ImageView.showPictureOf`), so nothing is read again. While adjusting colours it is the
+  picture without the preview instead, which is always the same size and is what the sliders
+  change; after applying, the comparison goes on against the result. Cancelling ends it.
+* Pictures of different sizes are refused with a message, as cropping, resizing or
+  straightening make them, and so are two files of different sizes. Comparing ends on another
+  image, and when Crop or Straighten starts. It is not a tool, so it works with Adjust Colours.
+* Holding a key needs its release, which `Shortcut` does not give, so `KeyHold` watches the
+  window's key events without taking them.
+
 ## Probe
 * A mode of the large view, like crop, with its panel in the same place. It reads one pixel at
   a time; averaging an area can come later if it is missed.

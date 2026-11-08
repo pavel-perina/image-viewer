@@ -35,6 +35,77 @@ Rectangle {
     property bool adjusting: false
     readonly property bool adjustPanelShown: adjusting && (fullScreen ? panelRevealed : true)
     readonly property bool toolActive: cropping || probing || straightening || adjusting
+    // Comparing two pictures of the same size, one each side of a line: "edit" for before and
+    // after editing, "files" for the image shown against another file. Not a tool, so it goes
+    // with Adjust Colours.
+    property string comparing: ""
+    // Shows the picture before editing alone while it is true, as while holding a key.
+    property bool holdingOriginal: false
+    property bool comparingForHold: false  // started by holding, so letting go ends it
+    property string compareNotice: ""
+    // Before is the picture as it was before the colour preview while adjusting, otherwise the
+    // file without edits.
+    readonly property bool canCompareEdit: view.status === ImageView.Ready && (view.modified || adjusting)
+                                           && !cropping && !straightening
+
+    function startBeforeAfter() {
+        if (!canCompareEdit)
+            return false
+        probing = false
+        otherSurface.view.showPictureOf(view, !adjusting)
+        compareSplitter.firstLabel = "Before"
+        compareSplitter.secondLabel = "After"
+        comparing = "edit"
+        return true
+    }
+
+    function toggleBeforeAfter() {
+        if (comparing === "edit")
+            stopCompare()
+        else
+            startBeforeAfter()
+    }
+
+    // The image shown against another file, which has to be the same size.
+    function compareWith(path) {
+        if (view.status !== ImageView.Ready || path === "" || path === view.source)
+            return
+        cropping = false
+        straightening = false
+        probing = false
+        otherSurface.source = path
+        compareSplitter.firstLabel = path.substring(path.lastIndexOf("/") + 1)
+        compareSplitter.secondLabel = page.context.currentName
+        comparing = "files"
+    }
+
+    function stopCompare() {
+        comparing = ""
+        comparingForHold = false
+        otherSurface.source = ""
+    }
+
+    onHoldingOriginalChanged: {
+        if (holdingOriginal && comparing === "")
+            comparingForHold = startBeforeAfter()
+        else if (!holdingOriginal && comparingForHold)
+            stopCompare()
+    }
+
+    // Pictures of different sizes cannot be lined up, which shows only once both have loaded.
+    function checkCompareSizes() {
+        const a = surface.view
+        const b = otherSurface.view
+        if (comparing === "" || a.status === ImageView.Loading || b.status === ImageView.Loading)
+            return
+        if (a.status !== ImageView.Ready || b.status !== ImageView.Ready) {
+            stopCompare()
+        } else if (a.imageWidth !== b.imageWidth || a.imageHeight !== b.imageHeight) {
+            compareNotice = comparing === "edit" ? "The edited picture differs in size from the original, so they cannot be compared."
+                                                 : "The pictures differ in size, so they cannot be compared."
+            stopCompare()
+        }
+    }
 
     function startAdjust() {
         if (!view.editable || view.status !== ImageView.Ready)
@@ -55,6 +126,8 @@ Rectangle {
     }
 
     function cancelAdjust() {
+        if (adjusting && comparing === "edit")
+            stopCompare()  // before and after would be the same
         adjusting = false
         view.endColorPreview()
     }
@@ -62,6 +135,7 @@ Rectangle {
     function startStraighten() {
         if (!view.editable || view.status !== ImageView.Ready)
             return
+        stopCompare()
         probing = false
         cropping = false
         cancelAdjust()
@@ -103,6 +177,7 @@ Rectangle {
     function startCrop() {
         if (!view.editable || view.status !== ImageView.Ready)
             return
+        stopCompare()
         probing = false
         straightening = false
         cancelAdjust()
@@ -130,6 +205,17 @@ Rectangle {
         onTapped: page.fileMenuRequested()
     }
 
+    // The other picture of a comparison, under the image and shown left of the line.
+    ImageSurface {
+        id: otherSurface
+        objectName: "otherSurface"
+        anchors.fill: surface
+        visible: page.comparing !== ""
+        scrollBarsVisible: false
+        wheelNavigates: false
+        sharp: settings.sharpResampling
+    }
+
     ImageSurface {
         id: surface
         anchors.left: parent.left
@@ -142,7 +228,46 @@ Rectangle {
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: (page.panelShown && !page.toolActive) || page.adjusting
         sharp: settings.sharpResampling
-        wheelNavigates: !page.toolActive
+        wheelNavigates: !page.toolActive && page.comparing === ""
+    }
+
+    CompareSplitter {
+        id: compareSplitter
+        objectName: "compareSplitter"
+        anchors.fill: surface
+        first: otherSurface
+        second: surface
+        active: page.comparing !== "" && otherSurface.view.status === ImageView.Ready
+                && surface.view.status === ImageView.Ready
+                && otherSurface.view.imageWidth === surface.view.imageWidth
+                && otherSurface.view.imageHeight === surface.view.imageHeight
+        firstOnly: page.holdingOriginal
+    }
+
+    Connections {
+        target: surface.view
+        function onStatusChanged() { page.checkCompareSizes() }
+    }
+    Connections {
+        target: otherSurface.view
+        function onStatusChanged() { page.checkCompareSizes() }
+    }
+
+    Label {
+        objectName: "compareNotice"
+        anchors.horizontalCenter: surface.horizontalCenter
+        anchors.top: surface.top
+        anchors.topMargin: 12
+        visible: page.compareNotice !== ""
+        text: page.compareNotice
+        color: "#f0f0f0"
+        padding: 8
+        background: Rectangle { color: "#d0181818"; radius: 4 }
+        Timer {
+            running: page.compareNotice !== ""
+            interval: 4000
+            onTriggered: page.compareNotice = ""
+        }
     }
 
     // Reads the pixel under a press and while dragging; arrow keys step by a pixel. The right or
@@ -273,7 +398,13 @@ Rectangle {
     // Leaving the image, or an edit that changes it, ends choosing a crop.
     Connections {
         target: surface.view
-        function onSourceChanged() { page.cropping = false; page.probing = false; page.straightening = false; page.adjusting = false }
+        function onSourceChanged() {
+            page.cropping = false
+            page.probing = false
+            page.straightening = false
+            page.adjusting = false
+            page.stopCompare()
+        }
         function onStatusChanged() {
             if (surface.view.status !== ImageView.Ready) {
                 page.cropping = false
@@ -284,7 +415,7 @@ Rectangle {
             }
         }
     }
-    onActiveChanged: if (!active) { cropping = false; probing = false; straightening = false; cancelAdjust() }
+    onActiveChanged: if (!active) { cropping = false; probing = false; straightening = false; cancelAdjust(); stopCompare() }
 
     Connections {
         target: page.context

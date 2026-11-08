@@ -12,6 +12,7 @@
 #include <QtMath>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
 #include <QPixmap>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
@@ -240,6 +241,31 @@ struct ImageView::Impl {
     std::optional<ColorEdit> colorPreview;
     QImage colorPreviewLut;
 
+    // Comparing: the view that follows this one's zoom and scroll, and back.
+    QPointer<ImageView> linked;
+    bool following = false;  // taking the linked view's state, so not to send it back
+
+    // The linked view, when it shows a picture of the same size as this one.
+    Impl* matchingLink() const {
+        if (!linked || !source || status != Status::Ready) {
+            return nullptr;
+        }
+        Impl& other = *linked->m_impl;
+        return other.source && other.status == Status::Ready && other.shownSize() == shownSize() ? &other : nullptr;
+    }
+
+    void follow(const Viewport::State& state) {
+        const Viewport::State mine = viewport.state();
+        if (mine.fitMode == state.fitMode && mine.zoom == state.zoom && mine.offsetX == state.offsetX &&
+            mine.offsetY == state.offsetY) {
+            return;
+        }
+        following = true;
+        viewport.restore(state);
+        viewChanged();
+        following = false;
+    }
+
     // The same edit for previewing and applying.
     ColorEdit colorEditFor(const QVariantMap& settings) const {
         const auto value = [&](const char* key, double fallback) {
@@ -373,6 +399,9 @@ struct ImageView::Impl {
             requestVisibleTiles();
         }
         q->update();
+        if (Impl* other = following ? nullptr : matchingLink()) {
+            other->follow(viewport.state());
+        }
     }
 
     std::vector<TileKey> visibleTiles(int level, const RectD& storedRect) const {
@@ -628,6 +657,10 @@ struct ImageView::Impl {
             viewport.setFitMode(FitMode::ShrinkToFit);
         }
         viewport.setImageSize(displaySize(fullSize, info.orientation));
+        // Joining a comparison takes the other picture's zoom and place rather than refitting it.
+        if (const Impl* other = matchingLink()) {
+            viewport.restore(other->viewport.state());
+        }
         startDisplaying();
         setStatus(Status::Ready);
         emit q->pageChanged();
@@ -1086,6 +1119,39 @@ QVector4D ImageView::colorPreviewDomainMax() const {
 }
 
 QString ImageView::colorCubeName() const { return m_impl->colorCubeName; }
+
+ImageView* ImageView::linkedView() const { return m_impl->linked; }
+
+void ImageView::setLinkedView(ImageView* view) {
+    if (view == m_impl->linked || view == this) {
+        return;
+    }
+    m_impl->linked = view;
+    emit linkedViewChanged();
+    // The newly linked view takes this one's zoom and place.
+    if (Impl* other = m_impl->matchingLink()) {
+        other->follow(m_impl->viewport.state());
+    }
+}
+
+void ImageView::showPictureOf(ImageView* other, bool original) {
+    Impl& d = *m_impl;
+    if (!other || other == this) {
+        return;
+    }
+    const Impl& o = *other->m_impl;
+    std::shared_ptr<ImageSource> from = original ? o.fileSource : o.source;
+    const int page = original ? o.filePage : o.page;
+    if (!from) {
+        setSource({});
+        return;
+    }
+    d.path = o.path;
+    emit sourceChanged();
+    d.setColorPreview(std::nullopt);
+    d.fileSource = std::move(from);
+    d.loadFilePage(page);
+}
 
 void ImageView::previewColors(const QVariantMap& settings) {
     Impl& d = *m_impl;

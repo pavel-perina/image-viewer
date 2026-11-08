@@ -49,6 +49,7 @@
 #include "ui/color_settings.h"
 #include "ui/directory_tree_model.h"
 #include "ui/folder_lists.h"
+#include "ui/key_hold.h"
 #include "ui/key_names.h"
 #include "ui/file_operations.h"
 #include "ui/histogram_handle.h"
@@ -1655,6 +1656,58 @@ TEST(ColorPreview, TheShaderShowsWhatApplyingGives) {
     compare({{QStringLiteral("black"), 0.05}, {QStringLiteral("gamma"), 0.8}, {QStringLiteral("outBlack"), 0.1},
              {QStringLiteral("outWhite"), 0.9}, {QStringLiteral("brightness"), 0.1}, {QStringLiteral("lightness"), 1.2},
              {QStringLiteral("saturation"), 0.3}});
+}
+
+// Needs a GPU, like the tests above.
+TEST(ColorPreview, BeforeAndAfterSplitTheShaderAtTheLine) {
+    QTemporaryDir dir;
+    TiffImage image;
+    image.width = 300;
+    image.height = 200;
+    image.pixel = [](int x, int y) { return Rgb{200, static_cast<std::uint8_t>(60 + y / 2), static_cast<std::uint8_t>(40 + x / 4)}; };
+    const QString path = dir.filePath(QStringLiteral("a.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
+    BrowseContext context;
+    QQuickView window;
+    window.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                 {QStringLiteral("active"), true},
+                                 {QStringLiteral("fullScreen"), true}});
+    window.setResizeMode(QQuickView::SizeRootObjectToView);
+    window.resize(400, 400);
+    window.loadFromModule("ImageViewer", "ViewerPage");
+    window.show();
+    ASSERT_TRUE(waitUntil([&] { return window.isExposed(); }));
+    QCoreApplication::processEvents();
+    if (window.rendererInterface()->graphicsApi() == QSGRendererInterface::Software) {
+        GTEST_SKIP() << "needs a GPU";
+    }
+    QObject* page = window.rootObject();
+    auto* view = page->property("view").value<ImageView*>();
+    auto* splitter = page->findChild<QObject*>(QStringLiteral("compareSplitter"));
+    context.openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+    view->actualSize();
+    QMetaObject::invokeMethod(page, "startAdjust");
+    page->findChild<QObject*>(QStringLiteral("adjustPanel"))->setProperty("saturation", 0);
+    ASSERT_TRUE(view->colorPreviewActive());
+    QMetaObject::invokeMethod(page, "toggleBeforeAfter");
+    ASSERT_TRUE(waitUntil([&] { return splitter->property("active").toBool(); }));
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 500) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    }
+    const QImage shot = grabIfShown(window);
+    ASSERT_FALSE(shot.isNull()) << "the window was closed";
+    const double line = splitter->property("lineX").toDouble();
+    const auto at = [&](double itemX) {
+        const QPointF imagePoint(std::clamp(view->itemToImage(QPointF(itemX, 0)).x(), 0.0, 299.0), 100);
+        return shot.pixelColor((view->mapToScene(view->imageToItem(imagePoint)) * window.devicePixelRatio()).toPoint());
+    };
+    const QColor left = at(line - 20);
+    const QColor right = at(line + 20);
+    EXPECT_GT(left.red() - left.blue(), 60) << "the picture as it was";
+    EXPECT_NEAR(right.red(), right.blue(), 3) << "through the preview, without colour";
 }
 
 TEST(BrowserPage, ClicksWithModifiersReachTheSelection) {
@@ -4414,6 +4467,147 @@ TEST(Adjust, LevelsHandlesDragOnTheGradients) {
 
     QTest::mouseDClick(&view, Qt::LeftButton, Qt::NoModifier, at(output, 64));
     EXPECT_EQ(panel->property("outBlack").toDouble(), 0) << "a double click puts it back";
+}
+
+namespace {
+
+// The large view on a folder, for comparing.
+struct ComparePage {
+    BrowseContext context;
+    QQuickView view;
+    QObject* page = nullptr;
+    ImageView* image = nullptr;
+    ImageView* other = nullptr;
+    QObject* splitter = nullptr;
+
+    explicit ComparePage(const QString& open) {
+        view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.resize(900, 600);
+        view.loadFromModule("ImageViewer", "ViewerPage");
+        view.show();
+        page = view.rootObject();
+        image = page->property("view").value<ImageView*>();
+        other = page->findChild<QQuickItem*>(QStringLiteral("otherSurface"))->property("view").value<ImageView*>();
+        splitter = page->findChild<QObject*>(QStringLiteral("compareSplitter"));
+        context.openPath(open);
+    }
+    QString comparing() const { return page->property("comparing").toString(); }
+    bool active() const { return splitter->property("active").toBool(); }
+};
+
+QString writeGradient(const QTemporaryDir& dir, const QString& name, int width, int height, bool gray) {
+    const QString path = dir.filePath(name);
+    writeJpeg(path, {.width = width, .height = height, .pixel = [=](int x, int y) {
+                         const auto v = static_cast<std::uint8_t>(x * 255 / width);
+                         return gray ? Rgb{v, v, v} : Rgb{v, static_cast<std::uint8_t>(y * 255 / height), 200};
+                     }});
+    return path;
+}
+
+}  // namespace
+
+TEST(Compare, TwoFilesZoomAndScrollTogether) {
+    QTemporaryDir dir;
+    const QString a = writeGradient(dir, QStringLiteral("a.jpg"), 400, 300, false);
+    const QString b = writeGradient(dir, QStringLiteral("b.jpg"), 400, 300, true);
+    ComparePage f(a);
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "compareWith", Q_ARG(QVariant, b));
+    EXPECT_EQ(f.comparing(), QStringLiteral("files"));
+    ASSERT_TRUE(waitUntil([&] { return f.active(); }));
+    EXPECT_EQ(f.splitter->property("firstLabel").toString(), QStringLiteral("b.jpg"));
+
+    f.image->zoomIn();
+    f.image->zoomIn();
+    EXPECT_DOUBLE_EQ(f.other->zoom(), f.image->zoom());
+    EXPECT_EQ(f.other->visibleArea(), f.image->visibleArea());
+    f.other->panBy(-40, -30);
+    EXPECT_EQ(f.image->visibleArea(), f.other->visibleArea()) << "either one leads";
+
+    // A drag left of the line reaches the picture under it, and both follow.
+    const QRectF before = f.image->visibleArea();
+    const QPoint start = f.image->mapToScene(QPointF(f.image->width() * 0.2, f.image->height() / 2)).toPoint();
+    QTest::mousePress(&f.view, Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(&f.view, start + QPoint(30, 20));
+    QTest::mouseMove(&f.view, start + QPoint(60, 40));
+    QTest::mouseRelease(&f.view, Qt::LeftButton, Qt::NoModifier, start + QPoint(60, 40));
+    EXPECT_NE(f.image->visibleArea(), before);
+    EXPECT_EQ(f.image->visibleArea(), f.other->visibleArea());
+
+    // Another image ends it.
+    f.image->setSource(b);
+    EXPECT_EQ(f.comparing(), QString());
+    EXPECT_EQ(f.image->linkedView(), nullptr);
+}
+
+TEST(Compare, PicturesOfDifferentSizesAreRefused) {
+    QTemporaryDir dir;
+    const QString a = writeGradient(dir, QStringLiteral("a.jpg"), 400, 300, false);
+    const QString b = writeGradient(dir, QStringLiteral("b.jpg"), 300, 300, false);
+    ComparePage f(a);
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "compareWith", Q_ARG(QVariant, b));
+    ASSERT_TRUE(waitUntil([&] { return f.comparing().isEmpty(); }));
+    EXPECT_FALSE(f.page->property("compareNotice").toString().isEmpty());
+    EXPECT_FALSE(f.active());
+}
+
+TEST(Compare, BeforeAndAfterShowTheOriginalLeftOfTheLine) {
+    QTemporaryDir dir;
+    const QString a = writeGradient(dir, QStringLiteral("a.jpg"), 400, 300, false);
+    ComparePage f(a);
+    ASSERT_TRUE(settled(f.image));
+    EXPECT_FALSE(f.page->property("canCompareEdit").toBool()) << "nothing to compare yet";
+    f.image->grayscale(0);
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "toggleBeforeAfter");
+    ASSERT_TRUE(waitUntil([&] { return f.active(); }));
+    waitUntil([] { return false; }, 200);
+    const QImage shot = f.view.grabWindow();
+    const auto colourAt = [&](double x) {
+        return shot.pixelColor(f.image->mapToScene(f.image->imageToItem(QPointF(x, 150))).toPoint() * f.view.devicePixelRatio());
+    };
+    const double line = f.splitter->property("lineX").toDouble();
+    const double leftX = f.image->itemToImage(QPointF(line - 40, 0)).x();
+    const double rightX = f.image->itemToImage(QPointF(line + 40, 0)).x();
+    const QColor left = colourAt(leftX);
+    const QColor right = colourAt(rightX);
+    EXPECT_GT(left.blue() - left.red(), 40) << "the original, in colour";
+    EXPECT_NEAR(right.red(), right.blue(), 3) << "the edit, gray";
+
+    QMetaObject::invokeMethod(f.page, "toggleBeforeAfter");
+    EXPECT_EQ(f.comparing(), QString());
+
+    // Holding shows the original alone, for as long as it is held.
+    f.page->setProperty("holdingOriginal", true);
+    EXPECT_EQ(f.comparing(), QStringLiteral("edit"));
+    ASSERT_TRUE(waitUntil([&] { return f.active(); }));
+    EXPECT_GE(f.splitter->property("lineX").toDouble(), f.image->width() - 1);
+    f.page->setProperty("holdingOriginal", false);
+    EXPECT_EQ(f.comparing(), QString());
+}
+
+TEST(KeyHold, TellsWhileAKeyIsHeldAndIgnoresRepeats) {
+    QQuickWindow window;
+    iv::KeyHold hold;
+    hold.setWindow(&window);
+    hold.setKey(Qt::Key_O);
+    QKeyEvent press(QEvent::KeyPress, Qt::Key_O, Qt::NoModifier, QStringLiteral("o"));
+    QKeyEvent repeat(QEvent::KeyRelease, Qt::Key_O, Qt::NoModifier, QStringLiteral("o"), true);
+    QKeyEvent release(QEvent::KeyRelease, Qt::Key_O, Qt::NoModifier, QStringLiteral("o"));
+    QKeyEvent other(QEvent::KeyPress, Qt::Key_P, Qt::NoModifier, QStringLiteral("p"));
+    QCoreApplication::sendEvent(&window, &press);
+    EXPECT_TRUE(hold.held());
+    QCoreApplication::sendEvent(&window, &repeat);
+    EXPECT_TRUE(hold.held()) << "an auto-repeated release is not letting go";
+    QCoreApplication::sendEvent(&window, &other);
+    EXPECT_TRUE(hold.held());
+    QCoreApplication::sendEvent(&window, &release);
+    EXPECT_FALSE(hold.held());
+    hold.setEnabled(false);
+    QCoreApplication::sendEvent(&window, &press);
+    EXPECT_FALSE(hold.held());
 }
 
 int main(int argc, char** argv) {

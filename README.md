@@ -25,6 +25,11 @@ File > Save (Ctrl+S) overwrites the file
 after a warning that offers a new name instead, and Save As writes another file;
 leaving an edited image asks first.
 
+View > Before and After (B) shows the original and the edited picture either side of a line that
+can be dragged, zoomed and scrolled together, also while adjusting colours; holding O shows the
+original alone. View > Compare Two Images does the same for two images of the same size chosen in
+the browser.
+
 Edit > Probe Colours (P) reads single pixels at full size: hex, the values as stored (16-bit and
 float too), fractions from 0 to 1, and sRGB when the file has a colour profile. Each value copies
 with a click, Ctrl+C copies the hex, and remembered colours show as a list or as swatches.

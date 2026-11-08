@@ -82,6 +82,9 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(QVector4D colorPreviewDomainMax READ colorPreviewDomainMax NOTIFY colorPreviewChanged)
     // The name of the loaded .cube file, empty without one.
     Q_PROPERTY(QString colorCubeName READ colorCubeName NOTIFY colorPreviewChanged)
+    // Another view that zooms and scrolls with this one while both show pictures of the same size,
+    // for comparing them. Set it on both.
+    Q_PROPERTY(iv::ImageView* linkedView READ linkedView WRITE setLinkedView NOTIFY linkedViewChanged)
 
 public:
     enum class Status { Null, Loading, Ready, Error };
@@ -138,6 +141,8 @@ public:
     QVector4D colorPreviewDomainMin() const;
     QVector4D colorPreviewDomainMax() const;
     QString colorCubeName() const;
+    ImageView* linkedView() const;
+    void setLinkedView(ImageView* view);
 
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
@@ -172,6 +177,10 @@ public:
     Q_INVOKABLE void adjustColors(const QVariantMap& settings);
     Q_INVOKABLE QString loadColorCube(const QUrl& file);
     Q_INVOKABLE void clearColorCube();
+    // Shows what another view shows, sharing its decoded file rather than reading it again: with
+    // original, the file's page without edits; otherwise its picture as it is now, without a
+    // colour preview. Nothing is shown if the other view has no picture.
+    Q_INVOKABLE void showPictureOf(iv::ImageView* other, bool original);
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
     // Back to the page as it is in the file.
@@ -217,6 +226,7 @@ signals:
     void wheelNavigatesChanged();
     void editChanged();
     void colorPreviewChanged();
+    void linkedViewChanged();
     void probed(const QVariantMap& pixel);
     void straightenReady();
     void navigateRequested(int steps);  // positive towards the next image

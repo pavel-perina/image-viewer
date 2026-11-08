@@ -35,13 +35,24 @@ ApplicationWindow {
     visible: true
     title: (window.edited ? "*" : "") + (context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer")
 
-    function startTool(start) {
+    // needsEdit: the tool edits the image, so it starts only on one that can be edited.
+    function startTool(start, needsEdit = true) {
         if (window.viewing) {
             start()
             return
         }
         window.pendingTool = start
+        window.pendingToolNeedsEdit = needsEdit
         window.viewing = true
+    }
+    property bool pendingToolNeedsEdit: true
+
+    // Of two images chosen in the browser, the one not shown.
+    readonly property string compareTarget: {
+        const paths = context.selectedPaths
+        if (paths.length !== 2)
+            return ""
+        return paths[0] === context.currentPath ? paths[1] : paths[1] === context.currentPath ? paths[0] : ""
     }
 
     Connections {
@@ -52,7 +63,7 @@ ApplicationWindow {
                 return
             const start = window.pendingTool
             window.pendingTool = null
-            if (window.viewing && view.status === ImageView.Ready && view.editable)
+            if (window.viewing && view.status === ImageView.Ready && (view.editable || !window.pendingToolNeedsEdit))
                 start()
         }
     }
@@ -167,6 +178,8 @@ ApplicationWindow {
             viewerPage.cancelStraighten()
         else if (window.adjusting)
             viewerPage.cancelAdjust()
+        else if (viewerPage.comparing !== "")
+            viewerPage.stopCompare()
         else if (window.probing)
             viewerPage.stopProbe()
         else if (window.visibility === Window.FullScreen)
@@ -221,6 +234,42 @@ ApplicationWindow {
         shortcut: "A"
         enabled: window.canEdit && !window.adjusting
         onTriggered: window.startTool(() => viewerPage.startAdjust())
+    }
+    Action {
+        id: beforeAfterAction
+        text: "&Before and After"
+        shortcut: "B"
+        checkable: true
+        checked: viewerPage.comparing === "edit"
+        enabled: window.viewing && (viewerPage.canCompareEdit || viewerPage.comparing === "edit")
+        onTriggered: viewerPage.toggleBeforeAfter()
+    }
+    Action {
+        id: compareAction
+        text: "Compare T&wo Images"
+        checkable: true
+        checked: viewerPage.comparing === "files"
+        enabled: viewerPage.comparing === "files" || (window.compareTarget !== "" && !window.toolActive)
+        onTriggered: {
+            if (viewerPage.comparing === "files") {
+                viewerPage.stopCompare()
+                return
+            }
+            const other = window.compareTarget
+            window.startTool(() => viewerPage.compareWith(other), false)
+        }
+    }
+    // Holding O, or the toolbar's Original, shows the picture before editing.
+    KeyHold {
+        id: originalKey
+        window: window
+        key: Qt.Key_O
+        enabled: window.viewing && !window.typing
+    }
+    Binding {
+        target: viewerPage
+        property: "holdingOriginal"
+        value: originalKey.held || originalButton.pressed
     }
     Action {
         id: resizeAction
@@ -412,6 +461,9 @@ ApplicationWindow {
                 }
             }
             MenuSeparator {}
+            AppMenuItem { action: beforeAfterAction }
+            AppMenuItem { action: compareAction }
+            MenuSeparator {}
             AppMenuItem { action: previousAction }
             AppMenuItem { action: nextAction }
             MenuSeparator {}
@@ -473,6 +525,17 @@ ApplicationWindow {
             ToolButton { action: cropAction; visible: window.viewing }
             ToolButton { action: straightenAction; visible: window.viewing }
             ToolButton { action: adjustAction; text: "Adjust"; visible: window.viewing }
+            ToolSeparator { visible: window.viewing }
+            ToolButton { action: beforeAfterAction; text: "Before/After"; visible: window.viewing }
+            // Shows the original while held down.
+            ToolButton {
+                id: originalButton
+                objectName: "originalButton"
+                text: "Original"
+                visible: window.viewing
+                enabled: viewerPage.canCompareEdit || viewerPage.comparing === "edit"
+                focusPolicy: Qt.NoFocus
+            }
             ToolButton { action: probeAction; text: "Probe"; visible: window.viewing }
             Item { Layout.fillWidth: true }
         }
