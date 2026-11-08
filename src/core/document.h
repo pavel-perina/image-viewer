@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include "core/color_edit.h"
 #include "core/crop.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
@@ -43,7 +44,7 @@ struct GrayEdit {
     bool operator==(const GrayEdit&) const = default;
 };
 
-using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit>;
+using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.

@@ -31,13 +31,40 @@ Rectangle {
     property bool straightening: false
     readonly property bool straightenPanelShown: straightening && (fullScreen ? panelRevealed : true)
     readonly property bool straightenPanelEditing: straightenPanel.editing
-    readonly property bool toolActive: cropping || probing || straightening
+    // Adjusting colours: its panel takes the same place too.
+    property bool adjusting: false
+    readonly property bool adjustPanelShown: adjusting && (fullScreen ? panelRevealed : true)
+    readonly property bool toolActive: cropping || probing || straightening || adjusting
+
+    function startAdjust() {
+        if (!view.editable || view.status !== ImageView.Ready)
+            return
+        probing = false
+        cropping = false
+        straightening = false
+        adjusting = true
+        adjustPanel.start()
+    }
+
+    function applyAdjust() {
+        adjusting = false
+        if (adjustPanel.changes)
+            adjustPanel.apply()
+        else
+            view.endColorPreview()
+    }
+
+    function cancelAdjust() {
+        adjusting = false
+        view.endColorPreview()
+    }
 
     function startStraighten() {
         if (!view.editable || view.status !== ImageView.Ready)
             return
         probing = false
         cropping = false
+        cancelAdjust()
         straightening = true
         straightenPanel.start()
         straightenOverlay.forceActiveFocus()
@@ -59,6 +86,7 @@ Rectangle {
             return
         cropping = false
         straightening = false
+        cancelAdjust()
         probing = true
         probeArea.forceActiveFocus()
     }
@@ -77,6 +105,7 @@ Rectangle {
             return
         probing = false
         straightening = false
+        cancelAdjust()
         cropping = true
         cropPanel.start()
         cropOverlay.forceActiveFocus()
@@ -109,9 +138,9 @@ Rectangle {
         // The panel takes room from the image, except at full screen where it comes and goes
         // with the mouse, and refitting the image each time would be restless.
         anchors.right: page.fullScreen ? parent.right : page.cropping ? cropPanel.left : page.probing ? probePanel.left
-                     : page.straightening ? straightenPanel.left : panel.left
+                     : page.straightening ? straightenPanel.left : page.adjusting ? adjustPanel.left : panel.left
         source: page.active ? page.context.currentPath : ""
-        histogramEnabled: page.panelShown && !page.toolActive
+        histogramEnabled: (page.panelShown && !page.toolActive) || page.adjusting
         sharp: settings.sharpResampling
         wheelNavigates: !page.toolActive
     }
@@ -244,16 +273,18 @@ Rectangle {
     // Leaving the image, or an edit that changes it, ends choosing a crop.
     Connections {
         target: surface.view
-        function onSourceChanged() { page.cropping = false; page.probing = false; page.straightening = false }
+        function onSourceChanged() { page.cropping = false; page.probing = false; page.straightening = false; page.adjusting = false }
         function onStatusChanged() {
             if (surface.view.status !== ImageView.Ready) {
                 page.cropping = false
                 page.straightening = false
+                if (page.adjusting)
+                    page.cancelAdjust()
                 probePanel.probed = null  // its pixel may be elsewhere in what comes
             }
         }
     }
-    onActiveChanged: if (!active) { cropping = false; probing = false; straightening = false }
+    onActiveChanged: if (!active) { cropping = false; probing = false; straightening = false; cancelAdjust() }
 
     Connections {
         target: page.context
@@ -289,7 +320,8 @@ Rectangle {
             if (x >= page.width - page.edgeMargin)
                 page.panelRevealed = true
             else if (x < page.width - (page.cropping ? cropPanel.width : page.probing ? probePanel.width
-                                                  : page.straightening ? straightenPanel.width : panel.width) - page.edgeMargin)
+                                                  : page.straightening ? straightenPanel.width
+                                                  : page.adjusting ? adjustPanel.width : panel.width) - page.edgeMargin)
                 page.panelRevealed = false
         }
     }
@@ -341,6 +373,24 @@ Rectangle {
         onApplyRequested: page.applyStraighten()
         onCancelRequested: page.cancelStraighten()
         onDoneEditing: straightenOverlay.forceActiveFocus()
+
+        Behavior on x {
+            enabled: page.panelAnimated
+            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+        }
+    }
+
+    AdjustPanel {
+        id: adjustPanel
+        objectName: "adjustPanel"
+        view: surface.view
+        active: page.adjusting
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        x: page.adjustPanelShown ? page.width - width : page.width
+        visible: x < page.width
+        onApplyRequested: page.applyAdjust()
+        onCancelRequested: page.cancelAdjust()
 
         Behavior on x {
             enabled: page.panelAnimated

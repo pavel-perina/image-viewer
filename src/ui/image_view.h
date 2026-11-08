@@ -8,6 +8,8 @@
 #include <QString>
 #include <QVariant>
 #include <QVariantMap>
+#include <QUrl>
+#include <QVector4D>
 #include <QImage>
 #include <QtQml/qqmlregistration.h>
 
@@ -65,6 +67,21 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(bool modified READ modified NOTIFY editChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY editChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY editChanged)
+    // Whether the page shown is gray, which only takes the curves of a colour edit.
+    Q_PROPERTY(bool grayImage READ grayImage NOTIFY statusChanged)
+    // A colour edit drawn over the picture by a shader while it is adjusted: the lookup image
+    // from colorLutImage and how to read it.
+    Q_PROPERTY(bool colorPreviewActive READ colorPreviewActive NOTIFY colorPreviewChanged)
+    Q_PROPERTY(QImage colorPreviewLut READ colorPreviewLut NOTIFY colorPreviewChanged)
+    Q_PROPERTY(int colorPreviewCubeSize READ colorPreviewCubeSize NOTIFY colorPreviewChanged)
+    Q_PROPERTY(double colorPreviewChroma READ colorPreviewChroma NOTIFY colorPreviewChanged)
+    Q_PROPERTY(bool colorPreviewTone READ colorPreviewTone NOTIFY colorPreviewChanged)
+    Q_PROPERTY(bool colorPreviewLightness READ colorPreviewLightness NOTIFY colorPreviewChanged)
+    Q_PROPERTY(bool colorPreviewGamutMap READ colorPreviewGamutMap NOTIFY colorPreviewChanged)
+    Q_PROPERTY(QVector4D colorPreviewDomainMin READ colorPreviewDomainMin NOTIFY colorPreviewChanged)
+    Q_PROPERTY(QVector4D colorPreviewDomainMax READ colorPreviewDomainMax NOTIFY colorPreviewChanged)
+    // The name of the loaded .cube file, empty without one.
+    Q_PROPERTY(QString colorCubeName READ colorCubeName NOTIFY colorPreviewChanged)
 
 public:
     enum class Status { Null, Loading, Ready, Error };
@@ -110,6 +127,17 @@ public:
     bool modified() const;
     bool canUndo() const;
     bool canRedo() const;
+    bool grayImage() const;
+    bool colorPreviewActive() const;
+    QImage colorPreviewLut() const;
+    int colorPreviewCubeSize() const;
+    double colorPreviewChroma() const;
+    bool colorPreviewTone() const;
+    bool colorPreviewLightness() const;
+    bool colorPreviewGamutMap() const;
+    QVector4D colorPreviewDomainMin() const;
+    QVector4D colorPreviewDomainMax() const;
+    QString colorCubeName() const;
 
     Q_INVOKABLE void zoomIn();
     Q_INVOKABLE void zoomOut();
@@ -131,6 +159,19 @@ public:
     Q_INVOKABLE QString resizeProblem(int width, int height) const;
     // Turns the picture gray: 0 weighs R, G and B as JPEG does, 1 keeps Oklab lightness.
     Q_INVOKABLE void grayscale(int method);
+    // Colour adjustment, from a map in which every key is optional. Levels: black and white, from
+    // 0 to 1 of the samples as stored, gamma above 1 lightening their midtones, and outBlack and
+    // outWhite, the range they map to. In Oklab, keeping colours: brightness added to lightness,
+    // contrast scaling it about the middle, lightness a gamma for it, and saturation scaling
+    // chroma, 1 leaving it; gamutMap, true unless given, fits colours beyond the range by
+    // chroma instead of clipping them. A loaded cube comes last. previewColors shows them by the shader until
+    // endColorPreview or another picture is shown; adjustColors applies them, and the preview
+    // stays until the result replaces it.
+    Q_INVOKABLE void previewColors(const QVariantMap& settings);
+    Q_INVOKABLE void endColorPreview();
+    Q_INVOKABLE void adjustColors(const QVariantMap& settings);
+    Q_INVOKABLE QString loadColorCube(const QUrl& file);
+    Q_INVOKABLE void clearColorCube();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
     // Back to the page as it is in the file.
@@ -175,6 +216,7 @@ signals:
     void resampleChanged();
     void wheelNavigatesChanged();
     void editChanged();
+    void colorPreviewChanged();
     void probed(const QVariantMap& pixel);
     void straightenReady();
     void navigateRequested(int steps);  // positive towards the next image

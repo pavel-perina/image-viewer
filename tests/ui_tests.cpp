@@ -8,6 +8,9 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTextStream>
 #include <QGuiApplication>
 #include <QImage>
 #include <QMouseEvent>
@@ -1544,6 +1547,114 @@ TEST(ResampledView, MatchesTheKernelComputedOnTheCpu) {
     const Rgb inside = pattern(width / 2, height / 2);
     const QColor c = shown.pixelColor(middle.toPoint());
     EXPECT_NEAR(c.green(), inside.g, 40) << "the picture, not the background";
+}
+
+// Needs a GPU, like the test above:
+//   QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl iv_ui_tests --gtest_filter='ColorPreview.*'
+TEST(ColorPreview, TheShaderShowsWhatApplyingGives) {
+    QTemporaryDir dir;
+    TiffImage image;
+    image.width = 300;
+    image.height = 200;
+    image.pixel = [](int x, int y) {
+        return Rgb{static_cast<std::uint8_t>(x * 255 / 299), static_cast<std::uint8_t>(y * 255 / 199),
+                   static_cast<std::uint8_t>((x + y) % 256)};
+    };
+    const QString path = dir.filePath(QStringLiteral("a.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
+    // A 9-point cube that warms the picture and swaps green and blue a little.
+    const QString cubePath = dir.filePath(QStringLiteral("look.cube"));
+    {
+        QFile cube(cubePath);
+        ASSERT_TRUE(cube.open(QIODevice::WriteOnly));
+        QTextStream out(&cube);
+        out << "LUT_3D_SIZE 9\n";
+        for (int b = 0; b < 9; ++b) {
+            for (int g = 0; g < 9; ++g) {
+                for (int r = 0; r < 9; ++r) {
+                    const double rr = r / 8.0;
+                    const double gg = g / 8.0;
+                    const double bb = b / 8.0;
+                    out << std::min(1.0, rr * 1.1 + 0.02) << ' ' << 0.7 * gg + 0.3 * bb << ' ' << 0.3 * gg + 0.6 * bb << '\n';
+                }
+            }
+        }
+    }
+
+    BrowseContext context;
+    QQuickView window;
+    window.engine()->addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    window.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                 {QStringLiteral("active"), true},
+                                 {QStringLiteral("fullScreen"), true}});
+    window.setResizeMode(QQuickView::SizeRootObjectToView);
+    window.resize(400, 400);
+    window.loadFromModule("ImageViewer", "ViewerPage");
+    window.show();
+    ASSERT_TRUE(waitUntil([&] { return window.isExposed(); }));
+    QCoreApplication::processEvents();
+    if (window.rendererInterface()->graphicsApi() == QSGRendererInterface::Software) {
+        GTEST_SKIP() << "needs a GPU";
+    }
+    auto* view = window.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(view, nullptr);
+    context.openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+    view->actualSize();
+    const auto grab = [&] {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 500) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        }
+        return grabIfShown(window);
+    };
+    ASSERT_EQ(view->loadColorCube(QUrl::fromLocalFile(cubePath)), QString());
+
+    const QPointF topLeft = view->imageToItem({0, 0}) * window.devicePixelRatio();
+    const auto compare = [&](const QVariantMap& settings) {
+        view->previewColors(settings);
+        const QImage preview = grab();
+        view->adjustColors(settings);
+        EXPECT_TRUE(view->colorPreviewActive()) << "until the result shows";
+        EXPECT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+        EXPECT_FALSE(view->colorPreviewActive());
+        const QImage applied = grab();
+        view->undo();
+        EXPECT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+        if (preview.isNull() || applied.isNull()) {
+            ADD_FAILURE() << "the window was closed";
+            return;
+        }
+        int worst = 0;
+        int changed = 0;
+        for (int y = 2; y < 198; y += 3) {
+            for (int x = 2; x < 298; x += 3) {
+                const int px = static_cast<int>(topLeft.x()) + x;
+                const int py = static_cast<int>(topLeft.y()) + y;
+                const QColor a = preview.pixelColor(px, py);
+                const QColor b = applied.pixelColor(px, py);
+                const Rgb original = image.pixel(x, y);
+                const QColor c(original.r, original.g, original.b);
+                worst = std::max({worst, std::abs(a.red() - b.red()), std::abs(a.green() - b.green()), std::abs(a.blue() - b.blue())});
+                changed += (b != c) ? 1 : 0;
+            }
+        }
+        EXPECT_GT(changed, 1000) << "the edit shows";
+        EXPECT_LE(worst, 2) << QJsonDocument(QJsonObject::fromVariantMap(settings)).toJson(QJsonDocument::Compact).toStdString();
+    };
+    // Levels and the cube.
+    compare({{QStringLiteral("black"), 0.1}, {QStringLiteral("white"), 0.9}, {QStringLiteral("gamma"), 1.4}});
+    // Oklab lightness and chroma, then the cube.
+    compare({{QStringLiteral("lightness"), 0.7}, {QStringLiteral("saturation"), 1.6}, {QStringLiteral("contrast"), 1.3}});
+    // Colours pushed far beyond the range, fitted by chroma and clipped.
+    compare({{QStringLiteral("saturation"), 2.0}, {QStringLiteral("brightness"), 0.05}});
+    compare({{QStringLiteral("saturation"), 2.0}, {QStringLiteral("brightness"), 0.05}, {QStringLiteral("gamutMap"), false}});
+    view->clearColorCube();
+    // Everything but a cube, with blacks lifted twice over.
+    compare({{QStringLiteral("black"), 0.05}, {QStringLiteral("gamma"), 0.8}, {QStringLiteral("outBlack"), 0.1},
+             {QStringLiteral("outWhite"), 0.9}, {QStringLiteral("brightness"), 0.1}, {QStringLiteral("lightness"), 1.2},
+             {QStringLiteral("saturation"), 0.3}});
 }
 
 TEST(BrowserPage, ClicksWithModifiersReachTheSelection) {
@@ -4158,6 +4269,153 @@ TEST(Main, LeavingAnEditedImageAsksFirst) {
     EXPECT_FALSE(image->modified());
 }
 
+TEST(Adjust, ThePanelPreviewsCancelsAndApplies) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(900, 600);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(settled(image));
+    EXPECT_FALSE(image->grayImage()) << "gray pixels in a colour JPEG are still colour";
+    auto* panel = page->findChild<QObject*>(QStringLiteral("adjustPanel"));
+    ASSERT_NE(panel, nullptr);
+
+    QMetaObject::invokeMethod(page, "startAdjust");
+    ASSERT_TRUE(page->property("adjusting").toBool());
+    EXPECT_TRUE(page->property("toolActive").toBool());
+    EXPECT_TRUE(image->colorPreviewActive());
+    EXPECT_FALSE(panel->property("changes").toBool());
+    panel->setProperty("saturation", 50);
+    EXPECT_DOUBLE_EQ(image->colorPreviewChroma(), 0.5);
+    EXPECT_TRUE(panel->property("changes").toBool());
+    // Without shaders there is no preview, but the picture stays.
+    waitUntil([] { return false; }, 300);
+    const QPoint corner = image->mapToScene(image->imageToItem(QPointF(10, 10))).toPoint() * view.devicePixelRatio();
+    EXPECT_GT(view.grabWindow().pixelColor(corner).red(), 180);
+
+    QMetaObject::invokeMethod(page, "cancelAdjust");
+    EXPECT_FALSE(image->colorPreviewActive());
+    EXPECT_FALSE(image->modified());
+
+    // Opening it again starts afresh.
+    QMetaObject::invokeMethod(page, "startAdjust");
+    EXPECT_DOUBLE_EQ(panel->property("saturation").toDouble(), 100);
+    panel->setProperty("black", 40);
+    EXPECT_TRUE(image->colorPreviewTone());
+    QMetaObject::invokeMethod(page, "applyAdjust");
+    EXPECT_FALSE(page->property("adjusting").toBool());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
+    EXPECT_FALSE(image->colorPreviewActive());
+    image->undo();
+    ASSERT_TRUE(settled(image));
+    EXPECT_FALSE(image->modified());
+
+    // Another image ends the tool.
+    QMetaObject::invokeMethod(page, "startAdjust");
+    image->setSource({});
+    EXPECT_FALSE(page->property("adjusting").toBool());
+    EXPECT_FALSE(image->colorPreviewActive());
+}
+
+TEST(Adjust, AGrayPictureTakesLevelsAndLightnessOnly) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("gray.png"));
+    const iv::ImageBuffer gray = iv::ImageBuffer::create({60, 40}, iv::PixelFormat::Gray8);
+    for (int y = 0; y < 40; ++y) {
+        std::memset(gray.row(y), 30 + y * 4, 60);
+    }
+    ASSERT_TRUE(iv::writeImage(QFileInfo(path).filesystemFilePath(), gray, {}, iv::PngWriteOptions{}, true));
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(900, 600);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(path);
+    ASSERT_TRUE(settled(image));
+    ASSERT_TRUE(image->grayImage());
+    auto* panel = page->findChild<QObject*>(QStringLiteral("adjustPanel"));
+    auto* saturation = page->findChild<QQuickItem*>(QStringLiteral("adjustSaturation"));
+    auto* load = page->findChild<QQuickItem*>(QStringLiteral("adjustLoadCube"));
+    ASSERT_NE(saturation, nullptr);
+    ASSERT_NE(load, nullptr);
+
+    QMetaObject::invokeMethod(page, "startAdjust");
+    EXPECT_FALSE(saturation->isEnabled());
+    EXPECT_FALSE(load->isEnabled());
+    panel->setProperty("saturation", 0);
+    EXPECT_DOUBLE_EQ(image->colorPreviewChroma(), 1) << "the preview leaves chroma alone";
+    EXPECT_FALSE(panel->property("changes").toBool());
+
+    panel->setProperty("midtones", 1.5);
+    EXPECT_TRUE(image->colorPreviewLightness());
+    QMetaObject::invokeMethod(page, "applyAdjust");
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
+    EXPECT_TRUE(image->grayImage()) << "still one channel";
+}
+
+TEST(Adjust, LevelsHandlesDragOnTheGradients) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(900, 700);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    auto* image = page->property("view").value<ImageView*>();
+    context.openPath(dir.path());
+    ASSERT_TRUE(settled(image));
+    QMetaObject::invokeMethod(page, "startAdjust");
+    auto* panel = page->findChild<QObject*>(QStringLiteral("adjustPanel"));
+    auto* input = page->findChild<QQuickItem*>(QStringLiteral("levelsInput"));
+    auto* output = page->findChild<QQuickItem*>(QStringLiteral("levelsOutput"));
+    ASSERT_NE(input, nullptr);
+    ASSERT_NE(output, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return image->histogram().isValid(); })) << "the histogram is on while adjusting";
+    waitUntil([] { return false; }, 300);  // the panel slides in
+
+    // Positions on a bar for a level, on the row of the handles.
+    const auto at = [&](QQuickItem* bar, double level) {
+        const double inset = 5.5;
+        return bar->mapToScene(QPointF(inset + level / 255 * (bar->width() - 2 * inset), bar->height() - 4)).toPoint();
+    };
+    const auto drag = [&](QQuickItem* bar, double from, double to) {
+        QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, at(bar, from));
+        QTest::mouseMove(&view, at(bar, (from + to) / 2));
+        QTest::mouseMove(&view, at(bar, to));
+        QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, at(bar, to));
+    };
+    drag(input, 0, 51);
+    EXPECT_NEAR(panel->property("black").toDouble(), 51, 1);
+    // The gamma handle stands halfway between black and white; a quarter of the way is gamma 2.
+    const double black = panel->property("black").toDouble();
+    drag(input, (black + 255) / 2, black + (255 - black) / 4);
+    EXPECT_NEAR(panel->property("gamma").toDouble(), 2, 0.05);
+    drag(input, 255, 200);
+    EXPECT_NEAR(panel->property("white").toDouble(), 200, 1);
+    EXPECT_NEAR(panel->property("gamma").toDouble(), 2, 0.05) << "gamma stays when white moves";
+    drag(output, 0, 64);
+    EXPECT_NEAR(panel->property("outBlack").toDouble(), 64, 1);
+    EXPECT_TRUE(image->colorPreviewTone());
+
+    QTest::mouseDClick(&view, Qt::LeftButton, Qt::NoModifier, at(output, 64));
+    EXPECT_EQ(panel->property("outBlack").toDouble(), 0) << "a double click puts it back";
+}
+
 int main(int argc, char** argv) {
     // Tests run side by side, and must neither see each other's settings nor touch the user's.
     // The same goes for the trash: Qt uses the one in the home folder for files on the same
@@ -4175,3 +4433,4 @@ int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+

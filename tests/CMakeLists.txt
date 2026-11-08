@@ -11,6 +11,7 @@ add_executable(iv_core_tests
     probe_tests.cpp
     perspective_tests.cpp
     gray_tests.cpp
+    color_edit_tests.cpp
     core_tests.cpp
     format_tests.cpp
     info_tests.cpp

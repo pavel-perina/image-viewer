@@ -12,7 +12,9 @@
 #include <type_traits>
 #include <vector>
 
+#include "core/bands.h"
 #include "core/color.h"
+#include "core/oklab.h"
 
 namespace iv {
 
@@ -638,35 +640,6 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
 
 namespace {
 
-// Splits rows into bands run side by side, once there is enough work to pay for the threads.
-template <typename Band>
-void inBands(int rows, int width, const Band& band) {
-    constexpr std::uint64_t kPixelsPerThread = 256 * 1024;
-    const std::uint64_t pixels = static_cast<std::uint64_t>(std::max(rows, 0)) * static_cast<std::uint64_t>(width);
-    const auto wanted = static_cast<int>(std::min<std::uint64_t>(pixels / kPixelsPerThread, 8));
-    const int bands = std::clamp(std::min(wanted, static_cast<int>(std::thread::hardware_concurrency())), 1, std::max(rows, 1));
-    std::vector<std::exception_ptr> errors(static_cast<std::size_t>(bands));
-    {
-        std::vector<std::jthread> workers;
-        const auto run = [&](int index) {
-            try {
-                band(rows * index / bands, rows * (index + 1) / bands);
-            } catch (...) {
-                errors[static_cast<std::size_t>(index)] = std::current_exception();
-            }
-        };
-        for (int i = 1; i < bands; ++i) {
-            workers.emplace_back(run, i);
-        }
-        run(0);
-    }
-    for (const std::exception_ptr& error : errors) {
-        if (error) {
-            std::rethrow_exception(error);
-        }
-    }
-}
-
 template <typename Sample, int Channels, typename Samples>
 ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m, Size size, const std::stop_token& stop) {
     const ImageBuffer target = ImageBuffer::create(size, source.format());
@@ -742,24 +715,10 @@ ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetT
 
 namespace {
 
-// The sRGB curve both ways, for samples from 0 to 1, mirrored below 0 for floats.
-double srgbDecode(double c) {
-    const double a = std::abs(c);
-    return std::copysign(a <= 0.04045 ? a / 12.92 : std::pow((a + 0.055) / 1.055, 2.4), c);
-}
-
-double srgbEncode(double c) {
-    const double a = std::abs(c);
-    return std::copysign(a <= 0.0031308 ? a * 12.92 : 1.055 * std::pow(a, 1 / 2.4) - 0.055, c);
-}
-
 // Oklab lightness of linear sRGB, cubed: with a and b at zero, Oklab goes back to equal linear
-// R, G and B of this value, as both its matrices keep white.
+// R, G and B of this value.
 double oklabGray(double r, double g, double b) {
-    const double l = std::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-    const double m = std::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-    const double s = std::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-    const double lightness = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+    const double lightness = linearToOklab(r, g, b).L;
     return lightness * lightness * lightness;
 }
 

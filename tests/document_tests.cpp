@@ -200,6 +200,19 @@ TEST(Document, GrayKeepsTheSizeAndUndoBringsTheColourBack) {
     EXPECT_TRUE(isRed(pixelsOf(document), 20, 4));
 }
 
+TEST(Document, ColourEditsApplyAndUndo) {
+    Document document(turnedJpeg(), 0);
+    ColorEdit edit;
+    edit.chroma = 0;
+    document.apply(edit);
+    EXPECT_EQ(document.size(), (Size{40, 80}));
+    const ImageBuffer pixels = pixelsOf(document);
+    const auto* p = reinterpret_cast<const std::uint8_t*>(pixels.row(4)) + 20 * 4;
+    EXPECT_NEAR(p[0], p[2], 1);
+    document.undo();
+    EXPECT_TRUE(isRed(pixelsOf(document), 20, 4));
+}
+
 TEST(Document, ScaleFollowsResizing) {
     Document document(turnedJpeg(), 0);
     document.apply(CropEdit{{0, 0, 40, 40}});

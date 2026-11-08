@@ -25,7 +25,8 @@ Size sizeAfter(Size before, const Edit& edit) {
     return std::visit(Overloaded{[](const CropEdit& crop) { return Size{crop.rect.width, crop.rect.height}; },
                                  [](const ResizeEdit& resize) { return resize.size; },
                                  [&](const TiltEdit& tilt) { return planTilt(before, tilt.focalPixels, tilt.tilt, tilt.keepRatio).size; },
-                                 [&](const GrayEdit&) { return before; }},
+                                 [&](const GrayEdit&) { return before; },
+                                 [&](const ColorEdit&) { return before; }},
                       edit);
 }
 
@@ -57,7 +58,8 @@ ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::st
                                          Homography{{1, 0, plan.kept.x, 0, 1, plan.kept.y, 0, 0, 1}};
                                      return warp(pixels, toSource.m, plan.size, stop);
                                  },
-                                 [&](const GrayEdit& gray) { return toGray(pixels, gray.method, stop); }},
+                                 [&](const GrayEdit& gray) { return toGray(pixels, gray.method, stop); },
+                                 [&](const ColorEdit& color) { return applyColor(pixels, color, stop); }},
                       edit);
 }
 

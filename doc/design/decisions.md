@@ -591,6 +591,54 @@ the question before leaving an edited image. Still planned lists the rest.
   a pyramid are not written back; editing is limited to images small enough not to need them.
 * Save in the question asked before leaving an edited image is this Save, warning included.
 
+### Colour adjustment
+* Edit > Adjust Colours (A) is one edit, `ColorEdit` in `core/color_edit.h`, with stages in a
+  fixed order: a tone curve on the samples as stored, the same for R, G and B (levels: input
+  black and white, gamma, and the output range, which can lift black to gray); a lightness curve
+  and a chroma gain in Oklab; a colour cube; then encoding back.
+* Levels are set as in other editors: handles on a gray gradient under the histogram of the
+  picture as it was, black, gamma and white for the input and two more for the output range.
+  Gamma applies between the two linear maps, on the input range scaled to 0 to 1, so it does
+  not depend on the output range. Its handle stands where the output reaches half, at
+  0.5^gamma of the way from black to white, and keeps that place when they move.
+* The lightness curve combines a gamma (Midtones), contrast about the middle of the scale and
+  brightness added to every value. The gamma keeps black and white where they are; brightness
+  moves blacks and highlights alike and clips at white, which is what people expect from it.
+  An empty stage costs nothing, and an edit with every stage empty returns the image as it was.
+* Curves are tables of 16385 samples from 0 to 1, read with linear interpolation, so 16-bit
+  images keep neighbouring values apart. A gamma is a curve too, not a separate stage.
+* The Oklab stages work on planes of L, a and b for a chunk of rows at a time, inside the usual
+  bands. That is where later operations on lightness or chroma alone go, including spatial ones
+  such as local contrast, which will need a margin of rows around each chunk. Hue is left alone
+  on purpose: shifting hues, protecting skin tones and grading shadows, midtones and highlights
+  belong to a grading tool of their own.
+* The cube is any size from 2 to 129 points a side, read with tetrahedral interpolation, which
+  keeps grays gray when the cube does. `.cube` files are read: `LUT_3D_SIZE`, `DOMAIN_MIN` and
+  `DOMAIN_MAX`, and `LUT_1D_SIZE` tables, which become a 33-point cube. They apply to the
+  encoded samples, as such files expect.
+* Colours the Oklab stages push beyond the range of an integer image are gamut mapped by
+  default: lightness is clamped, then chroma reduced at the same hue until the colour fits,
+  found by halving in 12 steps, in the shader too. Clipping each channel instead, which the
+  panel offers for comparison, turns hues (sky towards cyan or purple, reds to orange) and
+  flattens detail in strong colours. The cut is hard, so smooth gradients of extreme colours
+  show a crease where mapping starts; a soft knee would need the largest chroma for every
+  pixel's lightness and hue, not only for those beyond the range.
+* After that, integer images are clipped to their range in linear light; float images are not
+  clipped anywhere.
+* Gray images take the curves only: the lightness curve works on L of the gray value, and
+  saturation and the cube are disabled in the panel and ignored by the edit, so the result stays
+  one channel. As in other editors, colour-only tools have nothing to do on gray.
+* While adjusting, the view draws the picture through a shader (`shaders/color_preview.frag`)
+  instead of computing the edit: the same stages in the same order from one half-float lookup
+  image, the cube's slices side by side and a row per curve (`ui/color_lut.cpp`). Curves have 256
+  samples there. Applying computes the edit on the CPU at full precision; the preview stays up
+  until the result replaces it, so nothing flashes.
+* The shader works on the picture as displayed, after the colour transform to the screen, so the
+  preview is exact for sRGB images and close for others; for images with more than 8 bits the
+  curves apply to what the display range made of them. Applying is always exact.
+* It needs GLSL ES 3 or GLSL 1.30 for `texelFetch`. The software renderer has no shaders and
+  shows no preview; applying still works.
+
 ## Metadata (planned, not built)
 * To be built with the info panel, starting with EXIF. XMP, OME-TIFF and other schemas are
   added as blocks, so new ones need no changes elsewhere.
@@ -636,3 +684,24 @@ the question before leaving an edited image. Still planned lists the rest.
 * Opening a JPEG decodes it twice: scaled to the smallest level as a quick rough preview, then
   whole, as both need the same entropy decoding. The rough preview averages gamma-encoded
   values, so fine detail may brighten a little when the halved level replaces it.
+* Adjust Colours, low priority:
+  * Gamut mapping keeps lightness, so a saturated mid blue that contrast or brightness lifts
+    can turn almost gray: vivid blue exists only at low lightness (pure sRGB blue is near L 0.45),
+    and at the lifted lightness little chroma fits. Clipping happens to keep such a sky bluer.
+    The known remedy (Ottosson's gamut clipping with a projection towards L 0.5 or the cusp)
+    trades a little lightness for chroma and leaves near-white colours almost as they are. It is
+    a change to `intoGamut` in `core/color_edit.cpp` and its copy in the preview shader.
+  * The mapping cuts chroma hard, so smooth gradients of extreme colours show a crease where it
+    starts. A soft knee would need the largest chroma for every pixel's lightness and hue.
+  * The preview is approximate for images with more than 8 bits shown with auto contrast: the
+    shader applies levels to the stretched display values, and the display range is worked out
+    again after applying. Composing the preview's tone curve with the display range would fix it.
+  * Levels handles step in 1/255 of the full stored range, coarse for 12-bit data in 16-bit
+    samples. The bars could follow the histogram's fit range.
+  * The preview is exact only for sRGB or unmanaged images, as it runs after the display
+    transform. Applying is exact for all.
+  * Many film-look `.cube` files expect camera log footage and look too bright and contrasty on
+    ordinary photos; lowering saturation first helps. Converting to a chosen log curve before
+    the cube is not offered.
+  * The loaded `.cube` is cleared each time the tool opens, so a look has to be loaded again for
+    each image.

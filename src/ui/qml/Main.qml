@@ -18,6 +18,7 @@ ApplicationWindow {
     readonly property bool cropping: viewerPage.cropping
     readonly property bool probing: viewerPage.probing
     readonly property bool straightening: viewerPage.straightening
+    readonly property bool adjusting: viewerPage.adjusting
     // A tool of the large view has the mouse and keys, so moving to another image waits.
     readonly property bool toolActive: viewerPage.toolActive
     readonly property bool edited: window.viewing && viewerPage.view.modified
@@ -164,6 +165,8 @@ ApplicationWindow {
             viewerPage.cancelCrop()
         else if (window.straightening)
             viewerPage.cancelStraighten()
+        else if (window.adjusting)
+            viewerPage.cancelAdjust()
         else if (window.probing)
             viewerPage.stopProbe()
         else if (window.visibility === Window.FullScreen)
@@ -213,6 +216,13 @@ ApplicationWindow {
         onTriggered: window.startTool(() => viewerPage.startStraighten())
     }
     Action {
+        id: adjustAction
+        text: "&Adjust Colours..."
+        shortcut: "A"
+        enabled: window.canEdit && !window.adjusting
+        onTriggered: window.startTool(() => viewerPage.startAdjust())
+    }
+    Action {
         id: resizeAction
         text: "&Resize..."
         shortcut: "Ctrl+R"
@@ -246,14 +256,14 @@ ApplicationWindow {
         id: undoAction
         text: "&Undo"
         shortcut: StandardKey.Undo
-        enabled: window.viewing && !window.cropping && !window.straightening && viewerPage.view.canUndo
+        enabled: window.viewing && !window.cropping && !window.straightening && !window.adjusting && viewerPage.view.canUndo
         onTriggered: viewerPage.view.undo()
     }
     Action {
         id: redoAction
         text: "&Redo"
         shortcut: StandardKey.Redo
-        enabled: window.viewing && !window.cropping && !window.straightening && viewerPage.view.canRedo
+        enabled: window.viewing && !window.cropping && !window.straightening && !window.adjusting && viewerPage.view.canRedo
         onTriggered: viewerPage.view.redo()
     }
     Action {
@@ -311,6 +321,7 @@ ApplicationWindow {
     Shortcut { sequence: "Shift+PgUp"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(-1) }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.straightening && !viewerPage.straightenPanelEditing; onActivated: viewerPage.applyStraighten() }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: window.adjusting; onActivated: viewerPage.applyAdjust() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Up"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(-1) }
@@ -370,6 +381,7 @@ ApplicationWindow {
                 AppMenuItem { action: grayLumaAction }
                 AppMenuItem { action: grayLightnessAction }
             }
+            AppMenuItem { action: adjustAction }
             AppMenuItem { action: probeAction }
             MenuSeparator {}
             AppMenuItem { action: fileActions.copyAction }
@@ -460,6 +472,7 @@ ApplicationWindow {
             ToolSeparator { visible: window.viewing }
             ToolButton { action: cropAction; visible: window.viewing }
             ToolButton { action: straightenAction; visible: window.viewing }
+            ToolButton { action: adjustAction; text: "Adjust"; visible: window.viewing }
             ToolButton { action: probeAction; text: "Probe"; visible: window.viewing }
             Item { Layout.fillWidth: true }
         }

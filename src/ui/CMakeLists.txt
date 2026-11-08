@@ -1,6 +1,8 @@
 qt_add_library(iv_ui STATIC
     browse_context.cpp
     browse_context.h
+    color_lut.cpp
+    color_lut.h
     color_settings.cpp
     color_settings.h
     crop_overlay.cpp
@@ -36,6 +38,7 @@ qt_add_qml_module(iv_ui
     VERSION 1.0
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewer
     QML_FILES
+        qml/AdjustPanel.qml
         qml/AppDialog.qml
         qml/AppMenu.qml
         qml/AppMenuItem.qml
@@ -49,6 +52,7 @@ qt_add_qml_module(iv_ui
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
         qml/JpegMenu.qml
+        qml/LevelsControl.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/MessageBox.qml
@@ -69,6 +73,14 @@ qt_add_shaders(iv_ui "iv_shaders"
     FILES
         shaders/mks_horizontal.frag
         shaders/mks_vertical.frag
+)
+
+# texelFetch needs GLSL ES 3 or GLSL 1.30.
+qt_add_shaders(iv_ui "iv_color_shaders"
+    PREFIX "/"
+    GLSL "300es,330"
+    FILES
+        shaders/color_preview.frag
 )
 
 target_include_directories(iv_ui

@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QImage>
 #include <QLocale>
@@ -35,12 +36,14 @@
 #include <vector>
 
 #include "core/color.h"
+#include "core/color_edit.h"
 #include "core/document.h"
 #include "core/histogram.h"
 #include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/perspective.h"
+#include "ui/color_lut.h"
 #include "core/pixel_probe.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
@@ -230,6 +233,39 @@ struct ImageView::Impl {
     ImageBuffer straightenBase;
     double straightenBaseScale = 1;  // its pixels per pixel of the image
     std::uint64_t straightenRequest = 0;
+
+    // Colour adjustment: the cube loaded for it, and the edit the shader shows, if any.
+    std::shared_ptr<const ColorCube> colorCube;
+    QString colorCubeName;
+    std::optional<ColorEdit> colorPreview;
+    QImage colorPreviewLut;
+
+    // The same edit for previewing and applying.
+    ColorEdit colorEditFor(const QVariantMap& settings) const {
+        const auto value = [&](const char* key, double fallback) {
+            return settings.value(QLatin1StringView(key), fallback).toDouble();
+        };
+        ColorEdit edit;
+        edit.tone = levelsCurve(value("black", 0), value("white", 1), value("gamma", 1), value("outBlack", 0), value("outWhite", 1));
+        edit.lightness = lightnessCurve(value("brightness", 0), value("contrast", 1), value("lightness", 1));
+        edit.chroma = value("saturation", 1);
+        edit.gamutMap = settings.value(QStringLiteral("gamutMap"), true).toBool();
+        edit.cube = colorCube;
+        return edit;
+    }
+
+    void setColorPreview(std::optional<ColorEdit> edit) {
+        if (edit == colorPreview) {
+            return;
+        }
+        const bool newLut = !edit || !colorPreview || edit->tone != colorPreview->tone ||
+                            edit->lightness != colorPreview->lightness || edit->cube != colorPreview->cube;
+        colorPreview = std::move(edit);
+        if (newLut) {
+            colorPreviewLut = colorPreview ? colorLutImage(*colorPreview) : QImage();
+        }
+        emit q->colorPreviewChanged();
+    }
 
     Size shownSize() const { return source ? displaySize(fullSize, subimage().orientation) : Size{}; }
 
@@ -478,6 +514,7 @@ struct ImageView::Impl {
 
     void open(const QString& newPath) {
         const std::uint64_t request = ++latestRequest;
+        setColorPreview(std::nullopt);
         queue.cancelGroup(group);
         inFlight.clear();
 
@@ -552,6 +589,9 @@ struct ImageView::Impl {
         if (request != latestRequest) {
             return;
         }
+        // A colour preview belongs to the picture it was drawn over. Applying one keeps it up
+        // until the edited picture takes its place, so the change does not flash.
+        setColorPreview(std::nullopt);
         if (!loaded) {
             closeDocument();
             setStatus(Status::Error, QString::fromStdString(loaded.error()));
@@ -993,6 +1033,117 @@ QString ImageView::notEditableReason() const {
 bool ImageView::modified() const { return m_impl->edit && m_impl->edit->modified(); }
 bool ImageView::canUndo() const { return m_impl->edit && m_impl->edit->canUndo(); }
 bool ImageView::canRedo() const { return m_impl->edit && m_impl->edit->canRedo(); }
+
+bool ImageView::grayImage() const {
+    if (!m_impl->source) {
+        return false;
+    }
+    const PixelFormat format = m_impl->subimage().format;
+    return format == PixelFormat::Gray8 || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F;
+}
+
+bool ImageView::colorPreviewActive() const { return m_impl->colorPreview.has_value(); }
+QImage ImageView::colorPreviewLut() const { return m_impl->colorPreviewLut; }
+
+int ImageView::colorPreviewCubeSize() const {
+    const auto& preview = m_impl->colorPreview;
+    return preview && preview->cube && !grayImage() ? preview->cube->size : 0;
+}
+
+double ImageView::colorPreviewChroma() const {
+    const auto& preview = m_impl->colorPreview;
+    return preview && !grayImage() ? preview->chroma : 1.0;
+}
+
+bool ImageView::colorPreviewTone() const {
+    return m_impl->colorPreview && !m_impl->colorPreview->tone.isIdentity();
+}
+
+bool ImageView::colorPreviewLightness() const {
+    return m_impl->colorPreview && !m_impl->colorPreview->lightness.isIdentity();
+}
+
+bool ImageView::colorPreviewGamutMap() const {
+    return !m_impl->colorPreview || m_impl->colorPreview->gamutMap;
+}
+
+QVector4D ImageView::colorPreviewDomainMin() const {
+    const auto& preview = m_impl->colorPreview;
+    if (!preview || !preview->cube) {
+        return {0, 0, 0, 0};
+    }
+    const auto& d = preview->cube->domainMin;
+    return {d[0], d[1], d[2], 0};
+}
+
+QVector4D ImageView::colorPreviewDomainMax() const {
+    const auto& preview = m_impl->colorPreview;
+    if (!preview || !preview->cube) {
+        return {1, 1, 1, 1};
+    }
+    const auto& d = preview->cube->domainMax;
+    return {d[0], d[1], d[2], 1};
+}
+
+QString ImageView::colorCubeName() const { return m_impl->colorCubeName; }
+
+void ImageView::previewColors(const QVariantMap& settings) {
+    Impl& d = *m_impl;
+    if (d.status != Status::Ready) {
+        return;
+    }
+    d.setColorPreview(d.colorEditFor(settings));
+}
+
+void ImageView::endColorPreview() { m_impl->setColorPreview(std::nullopt); }
+
+void ImageView::adjustColors(const QVariantMap& settings) {
+    Impl& d = *m_impl;
+    ColorEdit color = d.colorEditFor(settings);
+    if (grayImage()) {
+        color.chroma = 1;
+        color.cube.reset();
+    }
+    if (!editable() || d.status != Status::Ready || color.isIdentity()) {
+        d.setColorPreview(std::nullopt);
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    d.edit->apply(std::move(color));
+    d.showEdit();
+}
+
+QString ImageView::loadColorCube(const QUrl& file) {
+    constexpr qint64 kLargestFile = 256LL << 20;
+    QFile in(file.isLocalFile() ? file.toLocalFile() : file.toString());
+    if (!in.open(QIODevice::ReadOnly)) {
+        return QStringLiteral("Cannot open the file: %1.").arg(in.errorString());
+    }
+    if (in.size() > kLargestFile) {
+        return QStringLiteral("The file is too large for a colour table.");
+    }
+    const QByteArray text = in.readAll();
+    auto cube = parseCube(std::string_view(text.constData(), static_cast<std::size_t>(text.size())));
+    if (!cube) {
+        QString reason = QString::fromStdString(cube.error());
+        if (!reason.isEmpty()) {
+            reason[0] = reason[0].toUpper();
+        }
+        return reason + QLatin1Char('.');
+    }
+    m_impl->colorCube = std::make_shared<const ColorCube>(std::move(*cube));
+    m_impl->colorCubeName = QFileInfo(in.fileName()).completeBaseName();
+    emit colorPreviewChanged();
+    return {};
+}
+
+void ImageView::clearColorCube() {
+    m_impl->colorCube.reset();
+    m_impl->colorCubeName.clear();
+    emit colorPreviewChanged();
+}
 
 void ImageView::panBy(double dx, double dy) {
     const double dpr = m_impl->devicePixelRatio();
