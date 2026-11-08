@@ -115,8 +115,9 @@ change nothing useful. The first press of a double click does this too, for that
   20 megapixels. Levels stored in a file stay as they are.
 * Levels go down to 1024 pixels on the long edge. Without sharp resampling the view moves to the
   next level earlier (a reduction of at most 1.6), as bilinear filtering skips pixels beyond that.
-* Sharp resampling is optional and off by default, until a settings dialog exists. It uses
-  Magic Kernel Sharp 2013 in linear light, in two separable passes. That kernel already
+* Sharp resampling is on by default and can be turned off in the menu. Bilinear enlarges a level
+  by up to 1.25, which shows as blur just above each level's scale. Sharp resampling uses Magic
+  Kernel Sharp 2013 in linear light, in two separable passes. That kernel already
   contains the post-sharpening step, stretched along when minifying, so no separate pass
   follows, and another would sharpen twice.
 * It is built from `ShaderEffect` and layers, public API only. Tiles cannot be filtered one by

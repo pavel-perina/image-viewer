@@ -62,8 +62,8 @@ The tests also need Qt on `PATH`, for Qt Test:
     set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%PATH%
     ctest --test-dir build\release -j 8 --timeout 120 --output-on-failure
 
-The GPU shader tests are skipped under `ctest`, which uses the software renderer. They have not
-been run on Windows yet. To run them by hand:
+The GPU shader tests are skipped under `ctest`, which uses the software renderer. They pass on
+`d3d11`, `opengl` and `vulkan`. To run them by hand, opening real windows:
 
     set QSG_RHI_BACKEND=d3d11
     build\release\iv_ui_tests --gtest_filter=ResampledView.*:ColorPreview.*

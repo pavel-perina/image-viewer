@@ -80,7 +80,8 @@ void main() {
         const float w = kernel((float(i) + 0.5 - centre) / spacing);
         // The edge pixel continues outwards, as nothing lies beyond the image.
         const float texel = clamp(float(i), boundLow, boundHigh - 1.0);
-        sum += w * toLinear(texture(source, vec2((texel + 0.5) / texSize, qt_TexCoord0.y)).rgb);
+        // With an explicit level, as Direct3D cannot compile texture() in a loop of this length.
+        sum += w * toLinear(textureLod(source, vec2((texel + 0.5) / texSize, qt_TexCoord0.y), 0.0).rgb);
         weights += w;
     }
     fragColor = vec4(sum / weights, 1.0);

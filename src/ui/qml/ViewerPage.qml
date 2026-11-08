@@ -437,7 +437,7 @@ Rectangle {
         category: "InfoPanel"
         property bool panelPinned: false
         property bool panelAnimated: true
-        property bool sharpResampling: false
+        property bool sharpResampling: true
         property alias logScale: panel.logScale
         property alias fitRange: panel.fitRange
     }
