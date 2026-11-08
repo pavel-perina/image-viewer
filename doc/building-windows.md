@@ -1,145 +1,147 @@
 # Building on Windows
 
-Written on 2026-11-08 from the Linux build, before anyone has built on Windows. Treat it as a plan
-and correct it where reality differs.
+Conan is used on Windows only. Linux builds against the system `-devel` packages (see `README.md`)
+and never reads `conanfile.txt`.
 
-## Toolchain
+Last built on 2026-11-08 with the versions below. The app builds and starts, but some tests still
+fail: see "Test status".
 
-| Tool | Version | Notes |
+## What you need
+
+| Tool | Version used | Notes |
 | --- | --- | --- |
-| Visual Studio 2022 (MSVC v143), "Desktop development with C++" | latest | C++23 (`/std:c++latest` comes from `CMAKE_CXX_STANDARD 23`). The project already sets `/W4 /permissive- /utf-8`. |
-| CMake | 3.28 or newer | Developed with 4.4. |
-| Ninja | any recent | Use the generator `-G Ninja` from a "x64 Native Tools" prompt. |
-| Git | any | vcpkg needs it. |
+| Visual Studio 2026, "Desktop development with C++" | 18.11, MSVC 14.51 | Conan finds and loads the compiler itself, so no Native Tools prompt is needed. |
+| CMake | 4.4.2 | 3.28 or newer. |
+| Ninja | 1.13.2 | On `PATH`. |
+| Conan | 2.24.0 | Must be Conan 2. `uv tool install conan` works if it isn't installed. |
+| Qt | 6.12.0, `msvc2022_64` | 6.8 or newer, from the Qt Online Installer. The MSVC 2022 kit works with VS 2026. |
 
-Clang-cl should also work, but MSVC is the first target.
+**Qt must include Shader Tools.** Don't take it from Conan, whose Qt has no Shader Tools. The
+installer doesn't always select it: in `C:\Qt\MaintenanceTool.exe`, add Qt 6.12.0 > Additional
+Libraries > Qt Shader Tools. To check, `C:\Qt\6.12.0\msvc2022_64\bin\qsb.exe` must exist.
+
+If Conan has never run on this machine, create a profile with `conan profile detect`. The profile
+used here:
+
+    [settings]
+    arch=x86_64
+    build_type=Release
+    compiler=msvc
+    compiler.cppstd=23
+    compiler.runtime=dynamic
+    compiler.runtime_type=Release
+    compiler.version=195
+    os=Windows
+
+## Building
+
+Run these in **cmd**, not PowerShell, because `conanbuild.bat` has to set the variables in the
+shell that runs CMake. From the repository root:
+
+    conan install . -of build/conan -s build_type=Release -c tools.cmake.cmaketoolchain:generator=Ninja --build=missing
+    build\conan\conanbuild.bat
+    cmake -S . -B build\release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=%CD%/build/conan/conan_toolchain.cmake -DCMAKE_PREFIX_PATH=C:/Qt/6.12.0/msvc2022_64
+    cmake --build build\release
+
+The first `conan install` compiles every library from source, since Conan Center had no binaries
+for this compiler and settings. Later runs reuse them from `~/.conan2`. `build\conan\conanbuild.bat`
+puts the compiler and `pkgconf` on `PATH`, and needs running once per cmd window.
+
+The libraries are linked statically, so only the Qt DLLs are needed at run time.
+
+## Running
+
+Each time `imageviewer.exe` is linked, a post-build step runs `windeployqt`, which copies the Qt
+DLLs, plugins and QML modules into `build\release`. So the app starts from there without Qt on
+`PATH`, by double-click too. Compiler runtime DLLs aren't copied, as Visual Studio installs them.
+
+    build\release\imageviewer.exe
+
+    ctest --test-dir build\release -j 8 --timeout 120 --output-on-failure
+
+The GPU shader tests are skipped under `ctest`, which uses the software renderer. They have not
+been run on Windows yet. To run them by hand:
+
+    set QSG_RHI_BACKEND=d3d11
+    build\release\iv_ui_tests --gtest_filter=ResampledView.*:ColorPreview.*
+
+## Making the installer
+
+Needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
+After building as above, from the repository root:
+
+    powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+
+It writes `build\installer\ImageViewer-<version>-setup.exe`, about 24 MB. The version is the one
+in the top-level `CMakeLists.txt`. Build first, as the script only packages what is already built.
+
+The script runs `cmake --install` into `build\stage`, which is the exact content of the installer:
+the app, a `windeployqt` copy of Qt without the plugins it doesn't need or the software OpenGL
+renderer, the Visual C++ runtime DLLs, and the licence texts of the project, the Conan packages
+and Qt (taken from Qt's `Src\LICENSES`, so the Qt sources must be installed).
+
+The installer is per-user, so it needs no admin rights. It installs to
+`%LOCALAPPDATA%\Programs\Image Viewer`, adds a Start Menu shortcut and optionally a desktop one,
+and registers no file types. `AppId` in `installer/imageviewer.iss` must never change, as it's how
+a new version finds the old one to upgrade.
+
+Before distributing it: the app has no icon yet, the LGPL's source-availability obligation still
+has to be met (see the Qt licensing section), and Inno Setup asks commercial users to buy a licence.
+
+## Project licence
+
+The project is MIT licensed (`LICENSE`). Qt stays under the LGPL as separate DLLs, and the other
+libraries are permissive.
+
+## Messages you can ignore when configuring
+
+* `Could NOT find WrapVulkanHeaders`. The Vulkan headers matter only to code that uses Qt's Vulkan
+  classes, and this project has none. To silence it, install the Vulkan SDK from
+  <https://vulkan.lunarg.com/>, open a new shell so `VULKAN_SDK` is set, and configure again.
+  Direct3D 11 is Qt Quick's default on Windows, so the app doesn't need the SDK.
+* `Could NOT find Qt6TaskTree`. An optional dependency of one of Qt's own QML plugins, which this
+  project doesn't use.
 
 ## Dependencies
 
-The versions in the table are the ones the Linux build uses and the tests pass with. Older ones
-will probably do, but these are known to work.
+All come from Conan Center, pinned in `conanfile.txt`: libjpeg-turbo, libtiff, SQLite 3, Little
+CMS 2, libpng, libwebp, libavif, libjxl, GoogleTest, and pkgconf as a build tool.
 
-| Library | Used for | Linux version | Licence | vcpkg port | Conan Center |
-| --- | --- | --- | --- | --- | --- |
-| Qt 6 (Core, Gui, Qml, Quick, QuickControls2, ShaderTools; Test for the tests) | everything UI | 6.11.2, needs 6.8+ | LGPLv3 / commercial | see below | see below |
-| libjpeg-turbo | JPEG read/write, lossless JPEG tools | 3.2.1 | IJG + BSD-3 | `libjpeg-turbo` | `libjpeg-turbo` |
-| libtiff | TIFF incl. BigTIFF, pyramids | 4.7.2 | libtiff (BSD-like) | `tiff` | `libtiff` |
-| SQLite 3 | thumbnail cache on disk | 3.53.2 | public domain | `sqlite3` | `sqlite3` |
-| Little CMS 2 | colour management | 2.19 | MIT | `lcms` | `lcms` |
-| libpng (optional) | PNG | 1.6.59 | libpng | `libpng` | `libpng` |
-| libwebp with demux and mux (optional) | WebP | 1.6.0 | BSD-3 | `libwebp` (check the mux/demux features) | `libwebp` |
-| libavif (optional) | AVIF read and **write** | 1.4.2 | BSD-2 | `libavif[aom,dav1d]` | `libavif` (check codec options) |
-| libjxl with libjxl_threads (optional) | JPEG XL, also lossless JPEG repacking | 0.12.0 | BSD-3 | `libjxl` | `libjxl` |
-| GoogleTest (tests only) | tests | 1.18.0 | BSD-3 | `gtest` | `gtest` |
-| Google Benchmark (optional) | `iv_benchmarks` | — | Apache-2.0 | `benchmark` | `benchmark` |
-| pkgconf | see "CMake changes" | — | ISC | `pkgconf` | `pkgconf` |
+* **No GPL libraries.** Don't add any, including as transitive dependencies of an optional feature.
+  Exiv2 was ruled out for this reason. jbig-kit is GPL, so `conanfile.txt` turns it off in libtiff.
+* **One libjpeg-turbo for everything.** libtiff and libyuv default to IJG libjpeg on Conan, so
+  `conanfile.txt` points them at libjpeg-turbo.
+* **AVIF needs an encoder**, because Save As writes AVIF. The Conan recipe uses libaom for encoding
+  and dav1d for decoding. `conanfile.txt` turns on libaom's assembly.
+* Google Benchmark is optional and not in `conanfile.txt`. Without it `iv_benchmarks` isn't built.
+* lcms2, WebP, AVIF and JPEG XL are found through `pkg_check_modules`, as on Linux. On Windows the
+  `.pc` files come from Conan's `PkgConfigDeps`, so the CMake files need no Windows branch.
 
-Notes on them:
+## Test status
 
-* **No GPL libraries.** Don't add any, including as transitive dependencies of a port's optional
-  features. Exiv2 was ruled out for this reason.
-* **AVIF needs an encoder**, because Save As writes AVIF. Use aom for encoding (and decoding);
-  add dav1d for faster decoding. rav1e and SVT-AV1 also work but aren't needed. On Linux all four
-  happen to be present.
-* **One libjpeg-turbo for everything.** On Linux, libtiff links a different libjpeg than the app
-  does, and the linker warns about it. On Windows, make sure libtiff is built against the same
-  libjpeg-turbo, which vcpkg and Conan do by default.
-* libtiff pulls in zlib, liblzma, zstd, libdeflate, Lerc and jbig depending on its features. The
-  defaults are fine. jbig-kit is GPL, so leave it out if a port offers it as a feature.
-* libjxl pulls in brotli and highway. libavif pulls in libyuv and sharpyuv.
+On 2026-11-08: 486 tests, of which 448 passed, 3 were skipped (the GPU tests) and 35 failed. The
+causes below are read from the failure messages and have not been confirmed. None has been fixed.
 
-## Recommended way to get them
+| Tests | Count | What happens |
+| --- | --- | --- |
+| `JpegTransform.*` (6), `LosslessJpeg.*` (4) | 10 | Lossless edits don't give the expected result, for example the dimensions don't swap after a rotation. |
+| `Probe.*` | 6 | The test process dies with no assertion message. |
+| `Histogram.*` (2), `Details.*` (2) | 4 | Mostly "file is being used by another process" when deleting a temporary file, so a file stays open. One is "cannot write test TIFF data". |
+| `BrowserPage.Tree*`, `BrowserPage.DoubleClickingAFolder*` | 4 | The folder tree doesn't reach the expected rows in time. |
+| `FileOperations.*` (2), `LosslessJpeg.ConvertsToJxl*` | 3 | `isInTrash` is false after moving to the Recycle Bin. The helper may be looking in the freedesktop Trash. |
+| `SubfolderList.*`, `FolderListing.*` | 2 | A folder named `.hidden` is listed, as a leading dot doesn't mean hidden on Windows. |
+| `TiffFormats…/Gray16Zstd` | 1 | Probably because the Conan libtiff recipe defaults to `zstd=False`, unlike Linux. |
+| `ThumbnailProvider`, `FileOperations.Conflicts…`, `ThumbnailStore`, `MessageBox`, `Compare` | 5 | One each, not looked into. |
 
-**Qt: the official binaries, not a package manager.** Building Qt through vcpkg or Conan builds
-it from source, which takes hours and is easy to get wrong for Qt Quick and Shader Tools. Get the
-prebuilt MSVC 2022 64-bit binaries in one of two ways:
+## Compiler warnings
 
-* the Qt Online Installer (needs a Qt account). Select "MSVC 2022 64-bit" for 6.8 or newer. The
-  extra modules aren't needed: Shader Tools, Qt Quick and Controls are in the base set.
-* or [aqtinstall](https://github.com/miurahr/aqtinstall), which fetches the same binaries without
-  an account. It's handy for CI:
-  `aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -m qtshadertools`
-  (pick the newest 6.x it lists; `aqt list-qt windows desktop` shows them, and some versions name
-  Shader Tools differently).
-
-Then pass `-DCMAKE_PREFIX_PATH=C:/Qt/6.x.y/msvc2022_64`.
-
-**Everything else: vcpkg in manifest mode.** It's the least work for a plain CMake project. Put
-this `vcpkg.json` in the repository root:
-
-```json
-{
-  "name": "image-viewer",
-  "version-string": "0.1.0",
-  "dependencies": [
-    "libjpeg-turbo",
-    "tiff",
-    "sqlite3",
-    "lcms",
-    "libpng",
-    { "name": "libwebp", "features": ["libwebpmux"] },
-    { "name": "libavif", "features": ["aom", "dav1d"] },
-    "libjxl",
-    "gtest",
-    "pkgconf"
-  ]
-}
-```
-
-Port feature names change over time. Check them with `vcpkg search <port>`, or the port's
-`vcpkg.json` in the vcpkg repository, and fix the list above. Conan works too: all the libraries
-are on Conan Center under the names in the table. Use the `CMakeDeps` and `PkgConfigDeps`
-generators.
-
-Configure and build from an "x64 Native Tools Command Prompt for VS 2022":
-
-    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-          -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake ^
-          -DCMAKE_PREFIX_PATH=C:/Qt/6.x.y/msvc2022_64
-    cmake --build build
-    ctest --test-dir build
-
-## CMake changes that will probably be needed
-
-`src/core/CMakeLists.txt` and `tests/CMakeLists.txt` find lcms2, WebP, AVIF and JPEG XL with
-`pkg_check_modules`. A stock Windows setup has no pkg-config. There are two ways to deal with it:
-
-1. Quick: vcpkg's `pkgconf` port (or Conan's `PkgConfigDeps`) provides `pkg-config` and the `.pc`
-   files. Point CMake at it if it isn't found, with
-   `-DPKG_CONFIG_EXECUTABLE=<vcpkg_installed>/x64-windows/tools/pkgconf/pkgconf.exe`.
-2. Better, and it keeps Linux working: try the libraries' own CMake packages first and fall back
-   to pkg-config:
-   * WebP: `find_package(WebP CONFIG)`, which gives `WebP::webp`, `WebP::webpdemux` and
-     `WebP::libwebpmux`.
-   * libavif: `find_package(libavif CONFIG)`, which gives `avif`.
-   * lcms2 and libjxl ship no CMake package upstream (vcpkg may add one; check the port's
-     `usage` file). Keep pkg-config for them, or write small find modules.
-
-   Wrap each one in an `INTERFACE` target with the current names, so the rest of the CMake files
-   don't change.
-
-Also check:
-
-* `JPEG::JPEG`, `TIFF::TIFF`, `PNG::PNG` and `SQLite::SQLite3` come from CMake's built-in find
-  modules and should work as they are.
-* Tests discover with `gtest_discover_tests`. Running them needs the Qt and vcpkg DLLs on `PATH`,
-  or `windeployqt` run on `iv_ui_tests.exe`.
-
-## Running and deploying
-
-* The app has to find the Qt DLLs and QML modules. For running from the build tree, add
-  `C:/Qt/6.x.y/msvc2022_64/bin` to `PATH`. vcpkg copies its own DLLs next to the executables.
-* For a folder to ship:
-  `windeployqt --qmldir src/ui/qml --release build/src/app/imageviewer.exe`. The QML imports used
-  are QtQuick, QtQuick.Controls (Fusion style), QtQuick.Layouts, QtQuick.Window and QtCore.
-  QtQuick.Dialogs is no longer used.
-* The UI tests in `ctest` run on the software renderer. To run the GPU shader tests by hand:
-  `set QSG_RHI_BACKEND=d3d11` (or `vulkan`), then
-  `build\tests\iv_ui_tests --gtest_filter=ResampledView.*:ColorPreview.*`.
+MSVC gives 41 distinct warnings at `/W4`, none of which stop the build. Most are harmless name
+hiding (C4458) and padding (C4324). The one to review is C4611, in the JPEG and PNG code: `setjmp`
+combined with C++ objects that have destructors, since a `longjmp` over those is non-portable.
 
 ## Parts never run on Windows
 
-Expect bugs here first:
+Expect bugs here first. The test failures above already touch several of them.
 
 * File operations: rename, trash, move and delete on files that are open. The view may hold a
   TIFF open.
@@ -166,8 +168,8 @@ This is not legal advice. Have it checked before a commercial release.
   Core, Gui, Qml, Quick and QuickControls2 are LGPL. **Shader Tools** is used only at build time,
   by `qt_add_shaders`/`qsb`, to compile the shaders. The app doesn't link it or ship it, but
   confirm its licence on its documentation page anyway. Qt Test is used only by the tests.
-* The Qt Online Installer asks open-source users to accept its terms. aqtinstall downloads the
-  same LGPL binaries. Either way the LGPL obligations above apply, not the installer.
+* The Qt Online Installer asks open-source users to accept its terms. The LGPL obligations above
+  apply either way.
 * The other dependencies are permissive (BSD, MIT, IJG, libpng, public domain). Ship their licence
   texts with the app. AV1 (aom, dav1d) also comes with the Alliance for Open Media patent licence,
   which is royalty-free.

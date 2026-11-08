@@ -36,6 +36,12 @@ using test::writeTiff;
 
 namespace {
 
+// SQLite takes UTF-8 paths, and on Windows a path's native form is UTF-16.
+std::string utf8Path(const std::filesystem::path& path) {
+    const std::u8string text = path.u8string();
+    return {reinterpret_cast<const char*>(text.data()), text.size()};
+}
+
 class TempDir {
 public:
     TempDir() {
@@ -865,7 +871,7 @@ TEST(ThumbnailCache, ADamagedEntryIsNotFound) {
     ASSERT_TRUE(cache->find(cacheKey()));
 
     sqlite3* db = nullptr;
-    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_open(utf8Path(dir.file("c.db")).c_str(),&db), SQLITE_OK);
     // Cut short, then with a valid start followed by nonsense.
     for (const char* damage : {"UPDATE thumbnails SET bytes = substr(bytes, 1, length(bytes) / 2)",
                                "UPDATE thumbnails SET bytes = substr(bytes, 1, 2) || zeroblob(200)"}) {
@@ -898,7 +904,7 @@ TEST(ThumbnailCache, LeavesALockedFileToTheCopyHoldingIt) {
 
     // Another copy in the middle of a long write, as far as opening can tell.
     sqlite3* holder = nullptr;
-    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &holder), SQLITE_OK);
+    ASSERT_EQ(sqlite3_open(utf8Path(dir.file("c.db")).c_str(),&holder), SQLITE_OK);
     ASSERT_EQ(sqlite3_exec(holder, "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr), SQLITE_OK);
     EXPECT_FALSE(ThumbnailCache::open(dir.file("c.db"), 1 << 20)) << "no cache this time";
     sqlite3_exec(holder, "COMMIT", nullptr, nullptr, nullptr);
@@ -916,12 +922,12 @@ TEST(ThumbnailCache, LeavesANewerVersionToTheProgramThatMadeIt) {
     TempDir dir;
     ASSERT_TRUE(ThumbnailCache::open(dir.file("c.db"), 1 << 20));
     sqlite3* db = nullptr;
-    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_open(utf8Path(dir.file("c.db")).c_str(),&db), SQLITE_OK);
     ASSERT_EQ(sqlite3_exec(db, "PRAGMA user_version=999", nullptr, nullptr, nullptr), SQLITE_OK);
     sqlite3_close(db);
 
     EXPECT_FALSE(ThumbnailCache::open(dir.file("c.db"), 1 << 20));
-    ASSERT_EQ(sqlite3_open(dir.file("c.db").c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_open(utf8Path(dir.file("c.db")).c_str(),&db), SQLITE_OK);
     int version = 0;
     sqlite3_exec(db, "PRAGMA user_version", [](void* out, int, char** values, char**) { *static_cast<int*>(out) = std::atoi(values[0]); return 0; }, &version, nullptr);
     sqlite3_close(db);

@@ -2,7 +2,11 @@
 #include <filesystem>
 #include <string>
 
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 
 #include <gtest/gtest.h>
 

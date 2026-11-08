@@ -1,0 +1,30 @@
+# Windows dependencies. Linux uses system libraries, and Qt comes from the official installer.
+# See doc/building-windows.md.
+[requires]
+libjpeg-turbo/3.2.0
+libtiff/4.7.2
+sqlite3/3.54.1
+lcms/2.19.1
+libpng/1.6.59
+libwebp/1.6.0
+libavif/1.4.1
+libjxl/0.12.0
+gtest/1.18.0
+
+[tool_requires]
+pkgconf/2.5.1
+
+[options]
+# One libjpeg-turbo for the app and for everything that reads JPEG on its behalf.
+libtiff/*:jpeg=libjpeg-turbo
+libyuv/*:with_jpeg=libjpeg-turbo
+# jbig-kit is GPL. The recipe's default is already off; this keeps it that way.
+libtiff/*:jbig=False
+# Without assembly, AV1 encoding in Save As is several times slower.
+libaom-av1/*:assembly=True
+
+[generators]
+CMakeDeps
+CMakeToolchain
+PkgConfigDeps
+VirtualBuildEnv

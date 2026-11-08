@@ -46,7 +46,7 @@ openSUSE:
 
     sudo zypper in qt6-base-devel qt6-declarative-devel qt6-shadertools-devel libjpeg62-devel libtiff-devel liblcms2-devel sqlite3-devel libpng16-devel libwebp-devel libavif-devel libjxl-devel gtest
 
-Windows: see `doc/building-windows.md` (not built there yet).
+Windows: see `doc/building-windows.md`. It builds with Conan and runs, but some tests still fail there.
 
 Build and test:
 

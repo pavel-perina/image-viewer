@@ -32,8 +32,9 @@ find_package(SQLite3 REQUIRED)
 target_link_libraries(iv_core_tests PRIVATE iv_core JPEG::JPEG TIFF::TIFF SQLite::SQLite3 PkgConfig::LCMS2 GTest::gtest GTest::gtest_main)
 # The formats' own encoders create the test files.
 find_package(PkgConfig REQUIRED)
+# PNG_FOUND from src/core does not reach this directory, so look again.
+find_package(PNG)
 if(PNG_FOUND)
-    find_package(PNG REQUIRED)
     target_link_libraries(iv_core_tests PRIVATE PNG::PNG)
 endif()
 if(WEBP_FOUND)
