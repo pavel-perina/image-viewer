@@ -187,6 +187,19 @@ TEST(Document, TiltTurnsAndKeepsTheLargestRectangle) {
     EXPECT_TRUE(isBlue(pixels, expected.width / 2, expected.height - 5));
 }
 
+TEST(Document, GrayKeepsTheSizeAndUndoBringsTheColourBack) {
+    Document document(turnedJpeg(), 0);
+    document.apply(GrayEdit{GrayMethod::Lightness});
+    EXPECT_EQ(document.size(), (Size{40, 80}));
+    const ImageBuffer pixels = pixelsOf(document);
+    ASSERT_EQ(pixels.size(), (Size{40, 80}));
+    const auto* p = reinterpret_cast<const std::uint8_t*>(pixels.row(4)) + 20 * 4;
+    EXPECT_EQ(p[0], p[1]);
+    EXPECT_EQ(p[1], p[2]);
+    document.undo();
+    EXPECT_TRUE(isRed(pixelsOf(document), 20, 4));
+}
+
 TEST(Document, ScaleFollowsResizing) {
     Document document(turnedJpeg(), 0);
     document.apply(CropEdit{{0, 0, 40, 40}});

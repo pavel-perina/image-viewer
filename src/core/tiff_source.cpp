@@ -263,7 +263,7 @@ bool canReadDirectly(const Directory& d) {
 PixelFormat directFormat(const Directory& d) {
     const bool color = d.photometric == PHOTOMETRIC_RGB;
     if (d.bits == 8) {
-        return PixelFormat::Bgrx8;
+        return color ? PixelFormat::Bgrx8 : PixelFormat::Gray8;
     }
     if (d.bits == 16) {
         return color ? PixelFormat::Rgba16 : PixelFormat::Gray16;
@@ -364,6 +364,13 @@ void convertRow(const std::uint8_t* input, std::size_t step, const Directory& d,
                 row[0] = row[1] = row[2] = static_cast<std::uint8_t>(convert(read(x, 0)));
             }
             row[3] = 255;
+        }
+        break;
+    }
+    case PixelFormat::Gray8: {
+        auto* row = reinterpret_cast<std::uint8_t*>(out.row(y)) + firstX;
+        for (int x = 0; x < width; ++x) {
+            row[x] = static_cast<std::uint8_t>(convert(read(x, 0)));
         }
         break;
     }

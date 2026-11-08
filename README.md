@@ -18,6 +18,7 @@ scales to an exact size, with presets for the screens, long edges and percentage
 another ratio fits inside, crops the middle or stretches. Edit > Straighten (S) levels a picture
 and corrects perspective from lines drawn along edges that should be vertical or horizontal, or
 found by Detect; the angles can be typed too, and the result keeps the largest rectangle inside.
+Edit > Grayscale weighs the colours as JPEG does, or keeps their perceptual lightness (Oklab).
 File > Save (Ctrl+S) overwrites the file
 after a warning that offers a new name instead, and Save As writes another file;
 leaving an edited image asks first.

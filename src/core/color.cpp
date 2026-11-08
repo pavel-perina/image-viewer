@@ -335,14 +335,15 @@ ImageBuffer ColorTransform::apply(const ImageBuffer& source) const {
 }
 
 std::shared_ptr<const ColorTransform> displayTransform(const SubimageInfo& subimage, const ColorTarget& target) {
-    const PixelFormat format = subimage.format;
+    // 8-bit gray is spread to the 8-bit layout before it is transformed.
+    const PixelFormat format = subimage.format == PixelFormat::Gray8 ? PixelFormat::Bgrx8 : subimage.format;
     if (!target.enabled || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F) {
         return nullptr;
     }
     if (subimage.iccProfile.empty() && !target.displayProfile) {
         return nullptr;
     }
-    const bool gray = subimage.stored.colorModel.starts_with("Gray");
+    const bool gray = subimage.format == PixelFormat::Gray8 || subimage.stored.colorModel.starts_with("Gray");
 
     static std::mutex mutex;
     static std::vector<CacheEntry> cache;

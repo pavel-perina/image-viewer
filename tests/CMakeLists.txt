@@ -10,6 +10,7 @@ add_executable(iv_core_tests
     document_tests.cpp
     probe_tests.cpp
     perspective_tests.cpp
+    gray_tests.cpp
     core_tests.cpp
     format_tests.cpp
     info_tests.cpp

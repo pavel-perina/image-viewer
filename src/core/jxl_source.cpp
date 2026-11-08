@@ -162,8 +162,8 @@ Result<ImageBuffer> decode(const std::vector<std::uint8_t>& bytes, PixelFormat f
 
     const ImageBuffer image = ImageBuffer::create(size, format);
     JxlPixelFormat pixels{};
-    pixels.num_channels = format == PixelFormat::Gray16 || format == PixelFormat::Gray32F ? 1 : 4;
-    pixels.data_type = format == PixelFormat::Bgrx8                                       ? JXL_TYPE_UINT8
+    pixels.num_channels = format == PixelFormat::Gray8 || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F ? 1 : 4;
+    pixels.data_type = format == PixelFormat::Bgrx8 || format == PixelFormat::Gray8       ? JXL_TYPE_UINT8
                        : format == PixelFormat::Gray16 || format == PixelFormat::Rgba16 ? JXL_TYPE_UINT16
                                                                                          : JXL_TYPE_FLOAT;
     pixels.endianness = JXL_NATIVE_ENDIAN;
@@ -222,7 +222,7 @@ Result<std::shared_ptr<ImageSource>> openJxlSource(std::vector<std::uint8_t> byt
 
     SubimageInfo info;
     if (basic.bits_per_sample <= 8 && !isFloat) {
-        info.format = PixelFormat::Bgrx8;
+        info.format = gray && !hasAlpha ? PixelFormat::Gray8 : PixelFormat::Bgrx8;
     } else if (isFloat) {
         info.format = gray && !hasAlpha ? PixelFormat::Gray32F : PixelFormat::Rgba32F;
     } else {

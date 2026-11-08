@@ -102,26 +102,29 @@ void addToHistogram16(const ImageBuffer& image, std::vector<std::uint64_t>& hist
     }
 }
 
-DisplayRange autoRange16(std::span<const ImageBuffer> samples) {
-    std::vector<std::uint64_t> histogram(65536, 0);
+// For 16-bit samples, or 8-bit gray ones, which have one channel.
+template <typename Sample>
+DisplayRange autoRangeIntegers(std::span<const ImageBuffer> samples) {
+    constexpr int kMax = std::numeric_limits<Sample>::max();
+    std::vector<std::uint64_t> histogram(kMax + 1, 0);
     std::uint64_t total = 0;
     for (const ImageBuffer& image : samples) {
-        const bool gray = image.format() == PixelFormat::Gray16;
+        const bool gray = image.format() == PixelFormat::Gray16 || image.format() == PixelFormat::Gray8;
         if (gray) {
-            addToHistogram16<std::uint16_t, 1, 1>(image, histogram);
+            addToHistogram16<Sample, 1, 1>(image, histogram);
         } else {
-            addToHistogram16<std::uint16_t, 4, 3>(image, histogram);
+            addToHistogram16<Sample, 4, 3>(image, histogram);
         }
         total += static_cast<std::uint64_t>(image.width()) * image.height() * (gray ? 1 : 3);
     }
     if (total == 0) {
-        return {0, 65535};
+        return {0, kMax};
     }
 
     const std::uint64_t skip = total / 1000;
     std::uint64_t seen = 0;
     int low = 0;
-    for (int i = 0; i < 65536; ++i) {
+    for (int i = 0; i <= kMax; ++i) {
         seen += histogram[static_cast<std::size_t>(i)];
         if (seen > skip) {
             low = i;
@@ -129,8 +132,8 @@ DisplayRange autoRange16(std::span<const ImageBuffer> samples) {
         }
     }
     seen = 0;
-    int high = 65535;
-    for (int i = 65535; i >= 0; --i) {
+    int high = kMax;
+    for (int i = kMax; i >= 0; --i) {
         seen += histogram[static_cast<std::size_t>(i)];
         if (seen > skip) {
             high = i;
@@ -185,10 +188,11 @@ DisplayRange autoRangeFloat(std::span<const ImageBuffer> samples) {
     return {low, high};
 }
 
-std::array<std::uint8_t, 65536> makeLut16(DisplayRange range) {
-    std::array<std::uint8_t, 65536> lut;
+// From samples of up to 16 bits to 8-bit values on screen.
+std::vector<std::uint8_t> makeLut(DisplayRange range, int count) {
+    std::vector<std::uint8_t> lut(static_cast<std::size_t>(count));
     const double scale = 255.0 / std::max(range.high - range.low, 1e-9);
-    for (int i = 0; i < 65536; ++i) {
+    for (int i = 0; i < count; ++i) {
         lut[static_cast<std::size_t>(i)] =
             static_cast<std::uint8_t>(std::clamp((i - range.low) * scale + 0.5, 0.0, 255.0));
     }
@@ -206,6 +210,7 @@ std::uint8_t mapFloat(float value, double low, double scale) {
 void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size fullSize, const ImageBuffer& target) {
     switch (block.format()) {
     case PixelFormat::Bgrx8:   shrinkTyped<std::uint8_t, 4>(block, blockX, blockY, fullSize, target); break;
+    case PixelFormat::Gray8:   shrinkTyped<std::uint8_t, 1>(block, blockX, blockY, fullSize, target); break;
     case PixelFormat::Gray16:  shrinkTyped<std::uint16_t, 1>(block, blockX, blockY, fullSize, target); break;
     case PixelFormat::Rgba16:  shrinkTyped<std::uint16_t, 4>(block, blockX, blockY, fullSize, target); break;
     case PixelFormat::Gray32F: shrinkTyped<float, 1>(block, blockX, blockY, fullSize, target); break;
@@ -453,6 +458,7 @@ void halveBgrx8(const ImageBuffer& strip, int stripY, int fullHeight, const Imag
 void halveBand(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
     switch (strip.format()) {
     case PixelFormat::Bgrx8:   halveBgrx8(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Gray8:   halveTyped<std::uint8_t, 1, DisplaySamples>(strip, stripY, fullHeight, target, firstRow, endRow); break;
     case PixelFormat::Gray16:  halveTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
     case PixelFormat::Rgba16:  halveTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
     case PixelFormat::Gray32F: halveTyped<float, 1, PlainSamples<float>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
@@ -621,6 +627,7 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
     }
     switch (source.format()) {
     case PixelFormat::Bgrx8:   return resizeTyped<std::uint8_t, 4, DisplaySamples>(source, size, stop);
+    case PixelFormat::Gray8:   return resizeTyped<std::uint8_t, 1, DisplaySamples>(source, size, stop);
     case PixelFormat::Gray16:  return resizeTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, size, stop);
     case PixelFormat::Rgba16:  return resizeTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, size, stop);
     case PixelFormat::Gray32F: return resizeTyped<float, 1, PlainSamples<float>>(source, size, stop);
@@ -724,12 +731,114 @@ ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m,
 ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size, const std::stop_token& stop) {
     switch (source.format()) {
     case PixelFormat::Bgrx8:   return warpTyped<std::uint8_t, 4, DisplaySamples>(source, targetToSource, size, stop);
+    case PixelFormat::Gray8:   return warpTyped<std::uint8_t, 1, DisplaySamples>(source, targetToSource, size, stop);
     case PixelFormat::Gray16:  return warpTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop);
     case PixelFormat::Rgba16:  return warpTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop);
     case PixelFormat::Gray32F: return warpTyped<float, 1, PlainSamples<float>>(source, targetToSource, size, stop);
     case PixelFormat::Rgba32F: return warpTyped<float, 4, PlainSamples<float>>(source, targetToSource, size, stop);
     }
     return {};
+}
+
+namespace {
+
+// The sRGB curve both ways, for samples from 0 to 1, mirrored below 0 for floats.
+double srgbDecode(double c) {
+    const double a = std::abs(c);
+    return std::copysign(a <= 0.04045 ? a / 12.92 : std::pow((a + 0.055) / 1.055, 2.4), c);
+}
+
+double srgbEncode(double c) {
+    const double a = std::abs(c);
+    return std::copysign(a <= 0.0031308 ? a * 12.92 : 1.055 * std::pow(a, 1 / 2.4) - 0.055, c);
+}
+
+// Oklab lightness of linear sRGB, cubed: with a and b at zero, Oklab goes back to equal linear
+// R, G and B of this value, as both its matrices keep white.
+double oklabGray(double r, double g, double b) {
+    const double l = std::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const double m = std::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const double s = std::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    const double lightness = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+    return lightness * lightness * lightness;
+}
+
+double lumaOf(double r, double g, double b) { return 0.299 * r + 0.587 * g + 0.114 * b; }
+
+// Samples from 0 to 1 as stored, R, G, B and alpha, to gray as stored.
+template <typename Sample>
+void grayRow(const Sample* in, Sample* out, int width, GrayMethod method) {
+    constexpr double kMax = std::is_floating_point_v<Sample> ? 1.0 : std::numeric_limits<Sample>::max();
+    for (int x = 0; x < width; ++x, in += 4, out += 4) {
+        const double r = in[0] / kMax;
+        const double g = in[1] / kMax;
+        const double b = in[2] / kMax;
+        const double gray = method == GrayMethod::Luma ? lumaOf(r, g, b)
+                                                       : srgbEncode(oklabGray(srgbDecode(r), srgbDecode(g), srgbDecode(b)));
+        Sample value;
+        if constexpr (std::is_floating_point_v<Sample>) {
+            value = static_cast<Sample>(gray);
+        } else {
+            value = static_cast<Sample>(std::clamp(gray, 0.0, 1.0) * kMax + 0.5);
+        }
+        out[0] = out[1] = out[2] = value;
+        out[3] = in[3];
+    }
+}
+
+// B, G, R and the unused byte, by integer weights or through the tables of the sRGB curve.
+void grayRow8(const std::uint8_t* in, std::uint8_t* out, int width, GrayMethod method) {
+    const auto& toLinear = srgbToLinearTable();
+    const auto& toSrgb = linearToSrgbTable();
+    for (int x = 0; x < width; ++x, in += 4, out += 4) {
+        std::uint8_t value = 0;
+        if (method == GrayMethod::Luma) {
+            value = static_cast<std::uint8_t>((299 * in[2] + 587 * in[1] + 114 * in[0] + 500) / 1000);
+        } else {
+            const double gray = oklabGray(toLinear[in[2]], toLinear[in[1]], toLinear[in[0]]);
+            value = toSrgb[static_cast<std::size_t>(std::clamp(gray, 0.0, 1.0) * kEncodeSteps + 0.5)];
+        }
+        out[0] = out[1] = out[2] = value;
+        out[3] = in[3];
+    }
+}
+
+}  // namespace
+
+ImageBuffer toGray(const ImageBuffer& source, GrayMethod method, const std::stop_token& stop) {
+    const PixelFormat format = source.format();
+    if (format == PixelFormat::Gray8 || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F) {
+        return source;
+    }
+    const ImageBuffer target = ImageBuffer::create(source.size(), format);
+    std::atomic<bool> stopped = false;
+    inBands(source.height(), source.width(), [&](int firstRow, int endRow) {
+        for (int y = firstRow; y < endRow; ++y) {
+            if (stop.stop_requested()) {
+                stopped = true;
+                return;
+            }
+            switch (format) {
+            case PixelFormat::Bgrx8:
+                grayRow8(reinterpret_cast<const std::uint8_t*>(source.row(y)), reinterpret_cast<std::uint8_t*>(target.row(y)),
+                         source.width(), method);
+                break;
+            case PixelFormat::Rgba16:
+                grayRow(reinterpret_cast<const std::uint16_t*>(source.row(y)), reinterpret_cast<std::uint16_t*>(target.row(y)),
+                        source.width(), method);
+                break;
+            case PixelFormat::Rgba32F:
+                grayRow(reinterpret_cast<const float*>(source.row(y)), reinterpret_cast<float*>(target.row(y)), source.width(),
+                        method);
+                break;
+            case PixelFormat::Gray8:
+            case PixelFormat::Gray16:
+            case PixelFormat::Gray32F:
+                break;
+            }
+        }
+    });
+    return stopped ? ImageBuffer{} : target;
 }
 
 Size halvedSize(Size size) { return {std::max(1, (size.width + 1) / 2), std::max(1, (size.height + 1) / 2)}; }
@@ -777,7 +886,8 @@ ImageBuffer halve(const ImageBuffer& source) {
 
 DisplayRange fullRange(PixelFormat format) {
     switch (format) {
-    case PixelFormat::Bgrx8:   return {0, 255};
+    case PixelFormat::Bgrx8:
+    case PixelFormat::Gray8:   return {0, 255};
     case PixelFormat::Gray16:
     case PixelFormat::Rgba16:  return {0, 65535};
     case PixelFormat::Gray32F:
@@ -793,9 +903,11 @@ DisplayRange autoRange(std::span<const ImageBuffer> samples) {
     switch (samples.front().format()) {
     case PixelFormat::Bgrx8:
         return {0, 255};
+    case PixelFormat::Gray8:
+        return autoRangeIntegers<std::uint8_t>(samples);
     case PixelFormat::Gray16:
     case PixelFormat::Rgba16:
-        return autoRange16(samples);
+        return autoRangeIntegers<std::uint16_t>(samples);
     case PixelFormat::Gray32F:
     case PixelFormat::Rgba32F:
         return autoRangeFloat(samples);
@@ -810,6 +922,20 @@ bool usesAutoRangeByDefault(PixelFormat format) {
 }
 
 ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+    if (source.format() == PixelFormat::Gray8) {
+        // Spread to the screen's layout, through the range, and then as 8-bit pixels are.
+        const auto lut = makeLut(range, 256);
+        const ImageBuffer target = ImageBuffer::create(source.size(), PixelFormat::Bgrx8);
+        for (int y = 0; y < source.height(); ++y) {
+            const auto* in = reinterpret_cast<const std::uint8_t*>(source.row(y));
+            auto* out = reinterpret_cast<std::uint8_t*>(target.row(y));
+            for (int x = 0; x < source.width(); ++x, out += 4) {
+                out[0] = out[1] = out[2] = lut[in[x]];
+                out[3] = 255;
+            }
+        }
+        return transform ? transform->apply(target) : target;
+    }
     if (transform) {
         const PixelFormat format = source.format();
         if (format == PixelFormat::Bgrx8 || (format != PixelFormat::Gray16 && format != PixelFormat::Gray32F && range == fullRange(format))) {
@@ -826,7 +952,7 @@ ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const Color
     const int width = source.width();
 
     if (source.format() == PixelFormat::Gray16 || source.format() == PixelFormat::Rgba16) {
-        const auto lut = makeLut16(range);
+        const auto lut = makeLut(range, 65536);
         const bool gray = source.format() == PixelFormat::Gray16;
         for (int y = 0; y < source.height(); ++y) {
             const auto* in = reinterpret_cast<const std::uint16_t*>(source.row(y));

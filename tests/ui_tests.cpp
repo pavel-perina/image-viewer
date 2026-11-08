@@ -40,6 +40,7 @@
 #include "test_jpeg.h"
 #include "test_tiff.h"
 #include "core/color.h"
+#include "core/image_writer.h"
 #include "core/jpeg_transform.h"
 #include "ui/browse_context.h"
 #include "ui/color_settings.h"
@@ -3416,6 +3417,40 @@ bool settled(ImageView* view) {
 
 }  // namespace
 
+TEST(Editing, AGrayJpegIsShownAndEditedInOneChannel) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("gray.jpg"));
+    const iv::ImageBuffer gray = iv::ImageBuffer::create({120, 80}, iv::PixelFormat::Gray8);
+    for (int y = 0; y < 80; ++y) {
+        std::memset(gray.row(y), y < 40 ? 60 : 200, 120);
+    }
+    ASSERT_TRUE(iv::writeImage(QFileInfo(path).filesystemFilePath(), gray, {}, iv::JpegWriteOptions{}, true));
+
+    ViewFixture f;
+    ASSERT_TRUE(f.load(path));
+    ASSERT_EQ(f.view->status(), ImageView::Status::Ready);
+    EXPECT_TRUE(f.view->contrastAdjustable());
+    const QImage shot = f.grab();
+    const QColor top = shot.pixelColor(200, 200 - 20);  // shown at 1:1 in the middle
+    const QColor bottom = shot.pixelColor(200, 200 + 20);
+    EXPECT_NEAR(top.red(), 60, 4);
+    EXPECT_EQ(top.red(), top.blue());
+    EXPECT_NEAR(bottom.green(), 200, 4);
+
+    f.view->crop(QRect(10, 10, 100, 60));
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), 100);
+    f.view->resizeImage(50, 30, false);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), 50);
+    f.view->grayscale(1);
+    ASSERT_TRUE(settled(f.view));
+    f.view->straighten(3, 0, 0, 0, true);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_LT(f.view->imageWidth(), 50);
+    EXPECT_TRUE(f.view->modified());
+}
+
 TEST(Editing, CropUndoRedoAndDiscardChangeWhatIsShown) {
     QTemporaryDir dir;
     ViewFixture f;
@@ -3682,6 +3717,21 @@ TEST(Editing, ResizeScalesToTheSizeAndRefusesOnesTooLarge) {
     f.view->undo();
     ASSERT_TRUE(settled(f.view));
     EXPECT_EQ(f.view->imageHeight(), 64);
+}
+
+TEST(Editing, GrayscaleKeepsTheSizeAndUndoes) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTurnedJpeg(dir)));
+    for (const int method : {0, 1}) {
+        f.view->grayscale(method);
+        ASSERT_TRUE(settled(f.view));
+        EXPECT_TRUE(f.view->modified());
+        EXPECT_EQ(f.view->imageHeight(), 64);
+        f.view->undo();
+        ASSERT_TRUE(settled(f.view));
+        EXPECT_FALSE(f.view->modified());
+    }
 }
 
 TEST(Editing, TheResizeDialogKeepsTheRatioOrFillsAnother) {

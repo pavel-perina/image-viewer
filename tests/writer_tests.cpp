@@ -35,6 +35,11 @@ ImageBuffer makeImage(Size size, PixelFormat format, const std::function<double(
                 case PixelFormat::Rgba32F:
                     reinterpret_cast<float*>(image.row(y))[x * 4 + c] = static_cast<float>(v);
                     break;
+                case PixelFormat::Gray8:
+                    if (c == 0) {
+                        reinterpret_cast<std::uint8_t*>(image.row(y))[x] = static_cast<std::uint8_t>(std::lround(v * 255));
+                    }
+                    break;
                 case PixelFormat::Gray16:
                     if (c == 0) {
                         reinterpret_cast<std::uint16_t*>(image.row(y))[x] = static_cast<std::uint16_t>(std::lround(v * 65535));
@@ -65,6 +70,7 @@ double smooth(int x, int y, int c) {
 double sampleAt(const ImageBuffer& image, int x, int y, int c) {
     switch (image.format()) {
     case PixelFormat::Bgrx8:   return reinterpret_cast<const std::uint8_t*>(image.row(y))[x * 4 + 2 - c];
+    case PixelFormat::Gray8:   return reinterpret_cast<const std::uint8_t*>(image.row(y))[x];
     case PixelFormat::Rgba16:  return reinterpret_cast<const std::uint16_t*>(image.row(y))[x * 4 + c] / 257.0;
     case PixelFormat::Rgba32F: return reinterpret_cast<const float*>(image.row(y))[x * 4 + c] * 255.0;
     case PixelFormat::Gray16:  return reinterpret_cast<const std::uint16_t*>(image.row(y))[x] / 257.0;
@@ -120,6 +126,38 @@ bool convertTheSame(const std::vector<std::uint8_t>& a, const std::vector<std::u
         cmsHTRANSFORM two = cmsCreateTransform(second, TYPE_RGB_8, srgb, TYPE_RGB_8, INTENT_RELATIVE_COLORIMETRIC, 0);
         for (int v = 0; v < 256 && same; v += 15) {
             const std::uint8_t in[] = {static_cast<std::uint8_t>(v), static_cast<std::uint8_t>(255 - v), 128};
+            std::uint8_t x[3];
+            std::uint8_t y[3];
+            cmsDoTransform(one, in, x, 1);
+            cmsDoTransform(two, in, y, 1);
+            for (int c = 0; c < 3; ++c) {
+                same = same && std::abs(x[c] - y[c]) <= 1;
+            }
+        }
+        cmsDeleteTransform(one);
+        cmsDeleteTransform(two);
+    }
+    for (cmsHPROFILE profile : {first, second, srgb}) {
+        if (profile) {
+            cmsCloseProfile(profile);
+        }
+    }
+    return same;
+}
+
+// Whether a gray profile shows each gray as an RGB profile shows equal R, G and B, in sRGB
+// within an 8-bit step.
+bool showsGraysAlike(const std::vector<std::uint8_t>& gray, const std::vector<std::uint8_t>& rgb) {
+    cmsHPROFILE first = cmsOpenProfileFromMem(gray.data(), static_cast<cmsUInt32Number>(gray.size()));
+    cmsHPROFILE second = cmsOpenProfileFromMem(rgb.data(), static_cast<cmsUInt32Number>(rgb.size()));
+    cmsHPROFILE srgb = cmsCreate_sRGBProfile();
+    bool same = first && second && cmsGetColorSpace(first) == cmsSigGrayData;
+    if (same) {
+        cmsHTRANSFORM one = cmsCreateTransform(first, TYPE_GRAY_8, srgb, TYPE_RGB_8, INTENT_RELATIVE_COLORIMETRIC, 0);
+        cmsHTRANSFORM two = cmsCreateTransform(second, TYPE_RGB_8, srgb, TYPE_RGB_8, INTENT_RELATIVE_COLORIMETRIC, 0);
+        for (int v = 0; v < 256 && same; v += 5) {
+            const auto value = static_cast<std::uint8_t>(v);
+            const std::uint8_t in[] = {value, value, value};
             std::uint8_t x[3];
             std::uint8_t y[3];
             cmsDoTransform(one, in, x, 1);
@@ -290,10 +328,25 @@ TEST_F(Writer, GrayPixelsAreWrittenAsGray) {
             continue;
         }
         EXPECT_EQ(roundTrip(gray, options).info.stored.colorModel, "Grayscale");
-        // An RGB profile has to go with RGB pixels.
-        EXPECT_NE(roundTrip(gray, options, withRgbProfile).info.stored.colorModel, "Grayscale");
+        // An RGB profile becomes a gray one with its curve, which shows the grays the same.
+        const ReadBack back = roundTrip(gray, options, withRgbProfile);
+        EXPECT_EQ(back.info.stored.colorModel, "Grayscale");
+        EXPECT_TRUE(showsGraysAlike(back.info.iccProfile, withRgbProfile.iccProfile));
     }
     EXPECT_EQ(roundTrip(gray, TiffWriteOptions{}).info.stored.colorModel, "Grayscale");
+    const ReadBack tiff = roundTrip(gray, TiffWriteOptions{}, withRgbProfile);
+    EXPECT_EQ(tiff.info.stored.colorModel, "Grayscale");
+    EXPECT_TRUE(showsGraysAlike(tiff.info.iccProfile, withRgbProfile.iccProfile));
+}
+
+TEST_F(Writer, DeepGrayPixelsAreWrittenAsGray) {
+    const ImageBuffer gray = makeImage({64, 48}, PixelFormat::Rgba16, [](int x, int, int) { return x / 63.0; });
+    const ReadBack png = roundTrip(gray, PngWriteOptions{});
+    EXPECT_EQ(png.info.stored.colorModel, "Grayscale");
+    EXPECT_EQ(png.info.stored.bitsPerSample, 16);
+    EXPECT_EQ(png.info.format, PixelFormat::Gray16);
+    const ImageBuffer floats = makeImage({64, 48}, PixelFormat::Rgba32F, [](int x, int, int) { return x / 63.0; });
+    EXPECT_EQ(roundTrip(floats, TiffWriteOptions{}).info.format, PixelFormat::Gray32F);
 }
 
 TEST_F(Writer, DeepImagesKeepTheirDepthWhereTheFormatCan) {

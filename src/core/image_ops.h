@@ -46,6 +46,15 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
 ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size,
                  const std::stop_token& stop = {});
 
+// How colour becomes gray. Luma weighs the samples as stored by Rec. 601, as JPEG does for its
+// Y. Lightness keeps the lightness of Oklab and sets its chroma to zero, which follows how light
+// colours look more closely, such as saturated blue looking dark; it assumes sRGB.
+enum class GrayMethod { Luma, Lightness };
+
+// The same picture in gray, in the same format with R, G and B equal, keeping alpha. Gray formats
+// are returned as they are. A stop request gives up between rows and returns an empty buffer.
+ImageBuffer toGray(const ImageBuffer& source, GrayMethod method, const std::stop_token& stop = {});
+
 // The pixels turned and mirrored the way an orientation shows them. Normal returns the same buffer.
 ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation);
 

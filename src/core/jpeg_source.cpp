@@ -66,6 +66,8 @@ public:
 
     const char* errorMessage() const { return m_errors.message; }
     jpeg_decompress_struct& cinfo() { return m_cinfo; }
+    // Gray JPEGs decode to one channel, the rest to the 8-bit colour layout.
+    PixelFormat format() const { return m_cinfo.jpeg_color_space == JCS_GRAYSCALE ? PixelFormat::Gray8 : PixelFormat::Bgrx8; }
 
     bool readHeader(std::span<const std::uint8_t> bytes, bool keepMetadata) {
         if (setjmp(m_errors.jump)) {
@@ -101,7 +103,7 @@ public:
         m_cinfo.scale_num = 1;
         m_cinfo.scale_denom = static_cast<unsigned int>(denominator);
         const bool cmyk = m_cinfo.jpeg_color_space == JCS_CMYK || m_cinfo.jpeg_color_space == JCS_YCCK;
-        m_cinfo.out_color_space = cmyk ? JCS_CMYK : JCS_EXT_BGRX;
+        m_cinfo.out_color_space = cmyk ? JCS_CMYK : target.format() == PixelFormat::Gray8 ? JCS_GRAYSCALE : JCS_EXT_BGRX;
         jpeg_start_decompress(&m_cinfo);
 
         JSAMPARRAY cmykRow = nullptr;
@@ -214,7 +216,7 @@ private:
     static Result<ImageBuffer> decode(Decompressor& decompressor, int denominator, Size size, const std::stop_token& stop) {
         ImageBuffer buffer;
         try {
-            buffer = ImageBuffer::create(size, PixelFormat::Bgrx8);
+            buffer = ImageBuffer::create(size, decompressor.format());
         } catch (const std::bad_alloc&) {
             return std::unexpected("not enough memory to decode image");
         }
@@ -233,7 +235,7 @@ private:
             return m_decoded;
         }
         const Size size = m_subimages[0].levels[static_cast<std::size_t>(levelIndex)].size;
-        const auto bytesNeeded = static_cast<std::uint64_t>(size.width) * size.height * 4;
+        const auto bytesNeeded = static_cast<std::uint64_t>(size.width) * size.height * bytesPerPixel(m_subimages[0].format);
         if (bytesNeeded > kMaxDecodedBytes) {
             return std::unexpected("image is too large to decode at this zoom level");
         }
@@ -281,6 +283,7 @@ Result<std::shared_ptr<ImageSource>> openJpegSource(std::vector<std::uint8_t> by
     if (cinfo.data_precision != 8) {
         return std::unexpected("only 8-bit JPEG is supported");
     }
+    info.format = decompressor.format();
 
     for (const int denominator : kScaleDenominators) {
         Size size;
@@ -292,7 +295,7 @@ Result<std::shared_ptr<ImageSource>> openJpegSource(std::vector<std::uint8_t> by
             info.levels.push_back({size, {kTileSize, kTileSize}});
         }
         const Size full = info.levels.front().size;
-        if (static_cast<std::uint64_t>(full.width) * static_cast<std::uint64_t>(full.height) * 4 <= kMaxDecodedBytes) {
+        if (static_cast<std::uint64_t>(full.width) * static_cast<std::uint64_t>(full.height) * bytesPerPixel(info.format) <= kMaxDecodedBytes) {
             break;  // decoded whole, and the rest made from that
         }
     }

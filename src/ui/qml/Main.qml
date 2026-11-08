@@ -219,6 +219,19 @@ ApplicationWindow {
         enabled: window.canEdit && !window.toolActive
         onTriggered: window.startTool(() => resizeDialog.open())
     }
+    // Gray by the weights JPEG uses for Y, or by the lightness of Oklab with no chroma.
+    Action {
+        id: grayLumaAction
+        text: "&Luma, as in JPEG"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.grayscale(0))
+    }
+    Action {
+        id: grayLightnessAction
+        text: "Perceptual &Lightness (Oklab)"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.grayscale(1))
+    }
     Action {
         id: probeAction
         text: "&Probe Colours"
@@ -351,6 +364,12 @@ ApplicationWindow {
             AppMenuItem { action: cropAction }
             AppMenuItem { action: straightenAction }
             AppMenuItem { action: resizeAction }
+            AppMenu {
+                title: "&Grayscale"
+                enabled: window.canEdit && !window.toolActive
+                AppMenuItem { action: grayLumaAction }
+                AppMenuItem { action: grayLightnessAction }
+            }
             AppMenuItem { action: probeAction }
             MenuSeparator {}
             AppMenuItem { action: fileActions.copyAction }

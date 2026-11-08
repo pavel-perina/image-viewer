@@ -102,7 +102,7 @@ public:
         if (depth == 16 && std::endian::native == std::endian::little) {
             png_set_swap(m_png);
         }
-        if (out.format() != PixelFormat::Gray16) {
+        if (out.format() != PixelFormat::Gray16 && out.format() != PixelFormat::Gray8) {
             if ((colorType & PNG_COLOR_MASK_COLOR) == 0) {
                 png_set_gray_to_rgb(m_png);
             }
@@ -248,7 +248,8 @@ Result<std::shared_ptr<ImageSource>> openPngSource(std::vector<std::uint8_t> byt
     const Size size{static_cast<int>(width), static_cast<int>(height)};
 
     SubimageInfo info;
-    info.format = depth < 16 ? PixelFormat::Bgrx8 : gray && !hasAlpha ? PixelFormat::Gray16 : PixelFormat::Rgba16;
+    info.format = gray && !hasAlpha ? (depth < 16 ? PixelFormat::Gray8 : PixelFormat::Gray16)
+                                    : depth < 16 ? PixelFormat::Bgrx8 : PixelFormat::Rgba16;
     if (!fitsInMemoryLimit(size, info.format)) {
         return std::unexpected("image is too large");
     }

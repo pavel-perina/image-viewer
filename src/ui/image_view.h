@@ -129,6 +129,8 @@ public:
     // middle instead of stretching. resizeProblem says why a size cannot be used, or is empty.
     Q_INVOKABLE void resizeImage(int width, int height, bool fill);
     Q_INVOKABLE QString resizeProblem(int width, int height) const;
+    // Turns the picture gray: 0 weighs R, G and B as JPEG does, 1 keeps Oklab lightness.
+    Q_INVOKABLE void grayscale(int method);
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
     // Back to the page as it is in the file.

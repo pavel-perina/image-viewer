@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/crop.h"
+#include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/perspective.h"
 
@@ -36,7 +37,13 @@ struct TiltEdit {
     bool operator==(const TiltEdit&) const = default;
 };
 
-using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit>;
+// Turns the picture gray, keeping its size and format.
+struct GrayEdit {
+    GrayMethod method = GrayMethod::Luma;
+    bool operator==(const GrayEdit&) const = default;
+};
+
+using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.

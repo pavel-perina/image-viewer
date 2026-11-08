@@ -69,8 +69,9 @@ struct WriteMetadata {
 // Encodes the image in the format the options choose. Each format keeps as much as it can hold:
 // 16-bit and float images stay so in TIFF, 16-bit in PNG and JPEG XL, 10-bit in AVIF, and are
 // reduced to 8 bits for JPEG and WebP. Float values are taken as 0 to 1 where they must be
-// reduced. 8-bit images whose pixels are all gray are written as grayscale where the format
-// allows. The unused fourth channel is never written.
+// reduced. Images whose pixels are all gray are written as grayscale where the format allows,
+// with an RGB profile turned into a gray one like it where that can be done exactly. The unused
+// fourth channel is never written.
 Result<std::vector<std::uint8_t>> encodeImage(const ImageBuffer& image, const WriteMetadata& metadata,
                                               const WriteOptions& options);
 

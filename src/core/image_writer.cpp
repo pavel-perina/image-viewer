@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <csetjmp>
 #include <cstdarg>
 #include <cstdio>
@@ -12,6 +13,7 @@
 #include <thread>
 
 #include <jpeglib.h>
+#include <lcms2.h>
 #include <tiffio.h>
 
 #ifdef IV_HAVE_PNG
@@ -54,9 +56,10 @@ struct Packed {
     std::uint8_t* row(int y) { return bytes.data() + rowBytes() * static_cast<std::size_t>(y); }
 };
 
-bool allGray(const ImageBuffer& image) {
+template <typename Sample>
+bool allGrayTyped(const ImageBuffer& image) {
     for (int y = 0; y < image.height(); ++y) {
-        const auto* p = reinterpret_cast<const std::uint8_t*>(image.row(y));
+        const auto* p = reinterpret_cast<const Sample*>(image.row(y));
         for (int x = 0; x < image.width(); ++x, p += 4) {
             if (p[0] != p[1] || p[1] != p[2]) {
                 return false;
@@ -66,7 +69,22 @@ bool allGray(const ImageBuffer& image) {
     return true;
 }
 
-bool isGrayFormat(PixelFormat format) { return format == PixelFormat::Gray16 || format == PixelFormat::Gray32F; }
+// Whether every pixel of a format with R, G and B has them equal.
+bool allGray(const ImageBuffer& image) {
+    switch (image.format()) {
+    case PixelFormat::Bgrx8:   return allGrayTyped<std::uint8_t>(image);
+    case PixelFormat::Rgba16:  return allGrayTyped<std::uint16_t>(image);
+    case PixelFormat::Rgba32F: return allGrayTyped<float>(image);
+    case PixelFormat::Gray8:
+    case PixelFormat::Gray16:
+    case PixelFormat::Gray32F: return true;
+    }
+    return false;
+}
+
+bool isGrayFormat(PixelFormat format) {
+    return format == PixelFormat::Gray8 || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F;
+}
 
 // The colour space an ICC profile is for, from its header: "RGB ", "GRAY" and so on.
 std::string profileSpace(const std::vector<std::uint8_t>& icc) {
@@ -79,10 +97,11 @@ Packed pack(const ImageBuffer& image, Depth deepest, bool grayAllowed) {
     Packed out;
     out.width = image.width();
     out.height = image.height();
-    const bool gray = isGrayFormat(format) || (format == PixelFormat::Bgrx8 && grayAllowed && allGray(image));
+    const bool gray = isGrayFormat(format) || (grayAllowed && allGray(image));
     out.channels = gray && grayAllowed ? 1 : 3;
     switch (format) {
     case PixelFormat::Bgrx8:
+    case PixelFormat::Gray8:
         out.bits = 8;
         break;
     case PixelFormat::Gray16:
@@ -112,6 +131,7 @@ Packed pack(const ImageBuffer& image, Depth deepest, bool grayAllowed) {
                 float raw = 0;
                 switch (format) {
                 case PixelFormat::Bgrx8:
+                case PixelFormat::Gray8:
                     value = static_cast<double>(reinterpret_cast<const std::uint8_t*>(in)[at]) / 255;
                     break;
                 case PixelFormat::Gray16:
@@ -158,9 +178,63 @@ std::vector<std::uint8_t> xmpFor(const WriteMetadata& metadata) {
     return xmp;
 }
 
-// Whether gray pixels may be written as gray: not if an RGB profile has to go with them.
-bool grayAllowedWith(const WriteMetadata& metadata) {
-    return metadata.iccProfile.empty() || profileSpace(metadata.iccProfile) == "GRAY";
+// Whether gray pixels may be written as gray, and the profile to go with them then.
+struct GrayChoice {
+    bool allowed = false;
+    std::vector<std::uint8_t> profile;
+};
+
+// A gray profile showing gray as an RGB profile shows equal R, G and B. For a matrix profile with
+// one curve for all three, as sRGB, Adobe RGB and Display P3 have, that is the same gray exactly:
+// equal R, G and B make the profile's white scaled by the curve. Empty for other profiles.
+std::vector<std::uint8_t> grayProfileLike(const std::vector<std::uint8_t>& rgb) {
+    std::vector<std::uint8_t> result;
+    cmsHPROFILE profile = cmsOpenProfileFromMem(rgb.data(), static_cast<cmsUInt32Number>(rgb.size()));
+    if (!profile) {
+        return result;
+    }
+    const auto curveOf = [&](cmsTagSignature tag) {
+        return cmsIsMatrixShaper(profile) ? static_cast<const cmsToneCurve*>(cmsReadTag(profile, tag)) : nullptr;
+    };
+    const cmsToneCurve* curve = curveOf(cmsSigGreenTRCTag);
+    const cmsToneCurve* red = curveOf(cmsSigRedTRCTag);
+    const cmsToneCurve* blue = curveOf(cmsSigBlueTRCTag);
+    bool oneCurve = curve && red && blue;
+    for (int i = 0; i <= 16 && oneCurve; ++i) {
+        const float v = static_cast<float>(i) / 16;
+        const float g = cmsEvalToneCurveFloat(curve, v);
+        oneCurve = std::abs(cmsEvalToneCurveFloat(red, v) - g) < 1e-4F && std::abs(cmsEvalToneCurveFloat(blue, v) - g) < 1e-4F;
+    }
+    if (oneCurve) {
+        if (cmsHPROFILE gray = cmsCreateGrayProfile(cmsD50_xyY(), curve)) {
+            cmsUInt32Number size = 0;
+            if (cmsSaveProfileToMem(gray, nullptr, &size) && size > 0) {
+                result.resize(size);
+                if (!cmsSaveProfileToMem(gray, result.data(), &size)) {
+                    result.clear();
+                }
+            }
+            cmsCloseProfile(gray);
+        }
+    }
+    cmsCloseProfile(profile);
+    return result;
+}
+
+// Without a profile or with a gray one, gray stays as it is. With an RGB one, gray pixels go with
+// a gray profile like it where one can be made, and stay RGB otherwise.
+GrayChoice grayChoiceFor(const WriteMetadata& metadata) {
+    const std::string space = profileSpace(metadata.iccProfile);
+    if (metadata.iccProfile.empty() || space == "GRAY") {
+        return {true, metadata.iccProfile};
+    }
+    if (space == "RGB ") {
+        std::vector<std::uint8_t> gray = grayProfileLike(metadata.iccProfile);
+        if (!gray.empty()) {
+            return {true, std::move(gray)};
+        }
+    }
+    return {};
 }
 
 // libjpeg
@@ -250,7 +324,9 @@ private:
 
 Result<std::vector<std::uint8_t>> encodeJpeg(const ImageBuffer& image, const WriteMetadata& metadata,
                                              const JpegWriteOptions& options) {
-    const Packed pixels = pack(image, Depth::Eight, grayAllowedWith(metadata));
+    const GrayChoice gray = grayChoiceFor(metadata);
+    const Packed pixels = pack(image, Depth::Eight, gray.allowed);
+    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
     // A marker holds at most 65533 bytes. What does not fit is left out; a longer XMP packet
     // would need the extended XMP split over several markers.
     std::vector<std::uint8_t> app1[2];
@@ -263,7 +339,7 @@ Result<std::vector<std::uint8_t>> encodeJpeg(const ImageBuffer& image, const Wri
         app1[1].insert(app1[1].end(), xmp.begin(), xmp.end());
     }
     JpegCompressor compressor;
-    if (!compressor.compress(pixels, options, app1, metadata.iccProfile)) {
+    if (!compressor.compress(pixels, options, app1, icc)) {
         return std::unexpected(std::string("cannot write JPEG: ") + compressor.error());
     }
     return compressor.output();
@@ -344,14 +420,16 @@ bool writePng(PngWriter& writer, const Packed& pixels, const PngWriteOptions& op
 
 Result<std::vector<std::uint8_t>> encodePng(const ImageBuffer& image, const WriteMetadata& metadata,
                                             const PngWriteOptions& options) {
-    const Packed pixels = pack(image, Depth::Sixteen, grayAllowedWith(metadata));
+    const GrayChoice gray = grayChoiceFor(metadata);
+    const Packed pixels = pack(image, Depth::Sixteen, gray.allowed);
+    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
     PngWriter writer;
     std::vector<char> xmp;
     if (const auto packet = xmpFor(metadata); !packet.empty()) {
         xmp.assign(packet.begin(), packet.end());
         xmp.push_back('\0');
     }
-    if (!writePng(writer, pixels, options, metadata.iccProfile, exifFor(metadata, pixels.width, pixels.height), xmp)) {
+    if (!writePng(writer, pixels, options, icc, exifFor(metadata, pixels.width, pixels.height), xmp)) {
         return std::unexpected("cannot write PNG: " + writer.error);
     }
     return std::move(writer.bytes);
@@ -409,7 +487,9 @@ int ignoreTiffWarning(TIFF*, void*, const char*, const char*, va_list) { return 
 
 Result<std::vector<std::uint8_t>> encodeTiff(const ImageBuffer& image, const WriteMetadata& metadata,
                                              const TiffWriteOptions& options) {
-    const Packed pixels = pack(image, Depth::Float, grayAllowedWith(metadata));
+    const GrayChoice gray = grayChoiceFor(metadata);
+    const Packed pixels = pack(image, Depth::Float, gray.allowed);
+    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
     MemoryFile file;
     TIFFOpenOptions* openOptions = TIFFOpenOptionsAlloc();
     TIFFOpenOptionsSetErrorHandlerExtR(openOptions, captureTiffError, &file);
@@ -442,9 +522,8 @@ Result<std::vector<std::uint8_t>> encodeTiff(const ImageBuffer& image, const Wri
         break;
     }
     TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(tiff, 0));
-    if (!metadata.iccProfile.empty() && profileSpace(metadata.iccProfile) == (pixels.channels == 1 ? "GRAY" : "RGB ")) {
-        TIFFSetField(tiff, TIFFTAG_ICCPROFILE, static_cast<std::uint32_t>(metadata.iccProfile.size()),
-                     metadata.iccProfile.data());
+    if (!icc.empty() && profileSpace(icc) == (pixels.channels == 1 ? "GRAY" : "RGB ")) {
+        TIFFSetField(tiff, TIFFTAG_ICCPROFILE, static_cast<std::uint32_t>(icc.size()), icc.data());
     }
     if (const auto xmp = xmpFor(metadata); !xmp.empty()) {
         TIFFSetField(tiff, TIFFTAG_XMLPACKET, static_cast<std::uint32_t>(xmp.size()), xmp.data());
@@ -618,7 +697,9 @@ Result<std::vector<std::uint8_t>> encodeAvif(const ImageBuffer& image, const Wri
 #ifdef IV_HAVE_JXL
 Result<std::vector<std::uint8_t>> encodeJxl(const ImageBuffer& image, const WriteMetadata& metadata,
                                             const JxlWriteOptions& options) {
-    const Packed pixels = pack(image, Depth::Float, grayAllowedWith(metadata));
+    const GrayChoice gray = grayChoiceFor(metadata);
+    const Packed pixels = pack(image, Depth::Float, gray.allowed);
+    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
     const auto encoder = JxlEncoderMake(nullptr);
     const auto runner = JxlThreadParallelRunnerMake(nullptr, std::clamp(std::thread::hardware_concurrency(), 1u, 8u));
     if (!encoder || !runner ||
@@ -638,9 +719,9 @@ Result<std::vector<std::uint8_t>> encodeJxl(const ImageBuffer& image, const Writ
     if (JxlEncoderSetBasicInfo(encoder.get(), &info) != JXL_ENC_SUCCESS) {
         return std::unexpected("cannot write JPEG XL of this size");
     }
-    const bool profileFits = profileSpace(metadata.iccProfile) == (pixels.channels == 1 ? "GRAY" : "RGB ");
-    if (!metadata.iccProfile.empty() && profileFits) {
-        if (JxlEncoderSetICCProfile(encoder.get(), metadata.iccProfile.data(), metadata.iccProfile.size()) != JXL_ENC_SUCCESS) {
+    const bool profileFits = profileSpace(icc) == (pixels.channels == 1 ? "GRAY" : "RGB ");
+    if (!icc.empty() && profileFits) {
+        if (JxlEncoderSetICCProfile(encoder.get(), icc.data(), icc.size()) != JXL_ENC_SUCCESS) {
             return std::unexpected("cannot write JPEG XL: the colour profile is not usable");
         }
     } else {

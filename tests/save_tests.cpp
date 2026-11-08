@@ -127,6 +127,7 @@ TEST_F(Save, CanLeaveTheMetadataOutButKeepsTheProfile) {
     options.exif = test::exampleExifBlock(true);
     options.xmp = kXmp;
     options.iccProfile = adobeRgbProfile();
+    options.pixel = [](int, int) { return test::Rgb{200, 60, 30}; };  // gray would get a gray profile
     test::writeFile(m_jpeg, test::encodeJpeg(options));
     const SubimageInfo info = saved({.keepMetadata = false})->subimages().front();
     EXPECT_FALSE(info.exif.present);

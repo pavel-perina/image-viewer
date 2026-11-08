@@ -1059,6 +1059,18 @@ void ImageView::resizeImage(int width, int height, bool fill) {
     d.showEdit();
 }
 
+void ImageView::grayscale(int method) {
+    Impl& d = *m_impl;
+    if (!editable() || d.status != Status::Ready) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    d.edit->apply(GrayEdit{method == 1 ? GrayMethod::Lightness : GrayMethod::Luma});
+    d.showEdit();
+}
+
 void ImageView::undo() {
     if (canUndo()) {
         m_impl->edit->undo();
@@ -1123,7 +1135,7 @@ void ImageView::probe(QPointF point) {
         pixel.insert(QStringLiteral("values"), QString::fromStdString(valuesText(*result)));
         pixel.insert(QStringLiteral("fractions"), QString::fromStdString(fractionsText(*result)));
         pixel.insert(QStringLiteral("gray"), result->channels == 1);
-        pixel.insert(QStringLiteral("depth"), result->format == PixelFormat::Bgrx8 ? QStringLiteral("8-bit")
+        pixel.insert(QStringLiteral("depth"), result->format == PixelFormat::Bgrx8 || result->format == PixelFormat::Gray8 ? QStringLiteral("8-bit")
                                               : result->format == PixelFormat::Gray16 || result->format == PixelFormat::Rgba16
                                                   ? QStringLiteral("16-bit")
                                                   : QStringLiteral("32-bit float"));

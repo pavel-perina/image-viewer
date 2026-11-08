@@ -33,7 +33,7 @@ void finish(Histogram& histogram, bool anyColor) {
 
 void countIntegers(std::span<const ImageBuffer> tiles, Histogram& histogram) {
     const PixelFormat format = tiles.front().format();
-    const bool is8 = format == PixelFormat::Bgrx8;
+    const bool is8 = format == PixelFormat::Bgrx8 || format == PixelFormat::Gray8;
     histogram.bitsPerBin = is8 ? 8 : 16;
     histogram.low = 0;
     histogram.high = is8 ? 255 : 65535;
@@ -47,7 +47,12 @@ void countIntegers(std::span<const ImageBuffer> tiles, Histogram& histogram) {
         for (int y = 0; y < tile.height(); ++y) {
             const std::byte* row = tile.row(y);
             const int width = tile.width();
-            if (is8) {
+            if (format == PixelFormat::Gray8) {
+                const auto* in = reinterpret_cast<const std::uint8_t*>(row);
+                for (int x = 0; x < width; ++x) {
+                    ++red[in[x]];
+                }
+            } else if (is8) {
                 const auto* in = reinterpret_cast<const std::uint8_t*>(row);
                 for (int x = 0; x < width; ++x, in += 4) {
                     ++blue[in[0]];

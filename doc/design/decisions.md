@@ -20,7 +20,16 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   decoding only gives the first rough preview, and the levels of a JPEG too big to decode whole
   (over 8 GB as pixels). The full decode stays in memory while the image is open, about 100 MB
   for 25 megapixels.
-* TIFF keeps the file's precision: 8-bit becomes `Bgrx8`, higher depths become `Gray16`,
+* Pixel formats: `Bgrx8` for 8-bit colour, the layout Qt and the GPU take directly; `Gray8`,
+  `Gray16` and `Gray32F` for one channel; `Rgba16` and `Rgba32F` for deeper colour. Always
+  interleaved, rows with a stride, in shared storage so crops and tiles are views. What the
+  channels mean, the colour profile and what the file stored, lives beside the pixels in the
+  subimage's description.
+* 8-bit gray JPEG, PNG, TIFF and JPEG XL decode to `Gray8`, a quarter of the memory of `Bgrx8`,
+  which matters for large scans and gray images from instruments. It is spread to `Bgrx8` only
+  per tile on its way to the screen, and goes through edits and saving in one channel, mixed in
+  linear light like 8-bit colour. WebP and AVIF gray still decode as colour.
+* TIFF keeps the file's precision: 8-bit becomes `Bgrx8` or `Gray8`, higher depths become `Gray16`,
   `Rgba16`, `Gray32F` or `Rgba32F`. Layouts it cannot read directly (palette, 1-bit, YCbCr,
   8-bit CMYK) go through libtiff's RGBA interface as 8-bit. 16-bit CMYK is refused for now.
 * Reduced images become levels whether stored in the main chain or in SubIFDs. Levels are
@@ -67,7 +76,9 @@ change nothing useful. The first press of a double click does this too, for that
 ## Display range
 * Pixels are converted to `Bgrx8` on the worker thread, with a low and high value per image.
 * Float images default to auto contrast (0.1% percentiles of the coarsest level), because
-  they have no natural range. 16-bit images default to the full range, because stretching a
+  they have no natural range. 16-bit and 8-bit gray images default to the full range, and offer
+  auto contrast, since gray images are often measurements that use a small part of it. 16-bit
+  images keep the full range by default because stretching a
   photograph would falsify its exposure, so one that uses a small part of the range looks
   dark until auto contrast is turned on. Thumbnails follow the same default. The choice is
   per image and does not carry over to the next one.
@@ -319,8 +330,11 @@ change nothing useful. The first press of a double click does this too, for that
   10-bit in AVIF, and 8-bit in JPEG and WebP. Float stays float in TIFF and JPEG XL and becomes
   16-bit in PNG and AVIF, taking 0 to 1 as the range. The unused fourth channel is never written,
   as the viewer does not keep alpha.
-* 8-bit images whose pixels are all gray are written as grayscale where the format has it (JPEG,
-  PNG, TIFF, JPEG XL), unless an RGB profile has to go with them.
+* Images whose pixels are all gray, at any depth, are written as grayscale where the format has
+  it (JPEG, PNG, TIFF, JPEG XL). An RGB profile then becomes a gray one made with lcms from its
+  green curve and D50 white. For a matrix profile with one curve for all three channels, which
+  covers sRGB, Adobe RGB and Display P3, that shows every gray exactly as before. Other RGB
+  profiles keep the pixels RGB. WebP and AVIF have no gray here.
 * The ICC profile is written when its colour space matches the pixels; without one, PNG gets
   an sRGB chunk, AVIF sRGB colour codes and JPEG XL an sRGB colour encoding. Lossy JPEG XL
   stores a profile it recognises as a compact description and gives back an equivalent one,
@@ -392,7 +406,7 @@ change nothing useful. The first press of a double click does this too, for that
   same pixel twice in a row. Clicking one shows its values and copies its hex.
 
 ## Editing
-Built so far: the edit list with undo, crop, resize, straighten, saving over the original and
+Built so far: the edit list with undo, crop, resize, straighten, grayscale, saving over the original and
 the question before leaving an edited image. Still planned lists the rest.
 
 * `Document` in core holds one page of an opened file and its edits. The page is decoded once
@@ -484,6 +498,20 @@ the question before leaving an edited image. Still planned lists the rest.
   can look wrong; a 4-corner mode that maps a chosen quadrilateral to a rectangle, for a document
   or a painting; and the level data some cameras store (roll and pitch in maker notes, the
   gravity vector of phones, gimbal angles of drones) as a starting point.
+
+### Grayscale
+* Two ways, as a submenu that applies at once, since undo makes comparing them cheap. Luma
+  weighs R, G and B as stored by Rec. 601, as JPEG does for Y. Perceptual lightness keeps the
+  L of Oklab and sets the chroma to zero; with a and b at zero Oklab returns equal linear R, G
+  and B of L cubed, so the gray is that value encoded, and grays stay exactly as they were. It
+  follows how bright colours look: saturated blue comes out dark and yellow light.
+* Lightness assumes the sRGB curve and primaries, also for 16-bit and float images; with
+  another profile it is an approximation.
+* The result keeps its format with R, G and B equal, so the other edits and the view work as
+  before. Saving writes it as one gray channel where the format allows, as for any gray pixels;
+  see Writers.
+* The same Oklab conversion is meant for a later lightness, chroma and hue adjustment, of which
+  grayscale is chroma at zero.
 
 ### Still planned
 * A document is a base image, an edit list, an optional file path and an unsaved flag.

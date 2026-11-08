@@ -16,7 +16,8 @@ bool isFloat(PixelFormat format) {
 
 double maximumOf(PixelFormat format) {
     switch (format) {
-    case PixelFormat::Bgrx8: return 255;
+    case PixelFormat::Bgrx8:
+    case PixelFormat::Gray8: return 255;
     case PixelFormat::Gray16:
     case PixelFormat::Rgba16: return 65535;
     case PixelFormat::Gray32F:
@@ -68,6 +69,12 @@ Result<PixelProbe> probePixel(ImageSource& source, int subimage, int x, int y, c
         probe.values = {double(b[2]), double(b[1]), double(b[0])};
         // 8-bit gray is decoded into all three channels.
         probe.channels = info.stored.colorModel.starts_with("Grayscale") ? 1 : 3;
+        break;
+    }
+    case PixelFormat::Gray8: {
+        const double v = *reinterpret_cast<const std::uint8_t*>(p);
+        probe.values = {v, v, v};
+        probe.channels = 1;
         break;
     }
     case PixelFormat::Gray16: {
