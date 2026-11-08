@@ -299,6 +299,8 @@ change nothing useful. The first press of a double click does this too, for that
   loads it again.
 * The files change in place, so the first use asks, with an option not to ask again. The menu
   turns asking back on.
+* They are disabled on an image with edits in effect, even saved ones, as they would change the
+  file while the view shows the edits; undoing them makes the tools available again.
 * Convert to JPEG XL repacks the coefficients with libjxl and stores what rebuilds the original
   file. Each result is rebuilt and compared byte for byte before it is written, and a file that
   does not come back the same is reported and not converted. The new file keeps the JPEG's
@@ -357,6 +359,9 @@ change nothing useful. The first press of a double click does this too, for that
   typed into XMP stay.
 * Saving a JPEG as JPEG compresses it again, and the dialog says so and points to the lossless
   tools.
+* To be redone once the browser has places: a dialog of our own, with the folder chosen from the
+  places, the name, the format and its options in one window, instead of the native dialog
+  followed by the options.
 
 ## Clipboard
 * Copy puts files on the clipboard as URLs, also in the format file managers on GNOME look for.

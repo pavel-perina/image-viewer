@@ -29,8 +29,9 @@ Item {
     readonly property var targetPaths: viewing ? (context.currentPath ? [context.currentPath] : []) : context.selectedPaths
     readonly property bool hasTargets: targetPaths.length > 0
     readonly property bool idle: !context.busy
-    // The lossless JPEG tools work only when every target is a JPEG.
-    readonly property bool jpegTargets: context.allJpeg(targetPaths)
+    // The lossless JPEG tools work only when every target is a JPEG, and not on an image with
+    // edits in effect, as they change the file rather than what is shown.
+    readonly property bool jpegTargets: context.allJpeg(targetPaths) && !(editView && editView.canUndo)
 
     readonly property alias renameAction: renameAction
     readonly property alias trashAction: trashAction

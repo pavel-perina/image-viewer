@@ -3739,6 +3739,46 @@ TEST(Editing, TheResizeDialogKeepsTheRatioOrFillsAnother) {
     EXPECT_EQ(image->imageHeight(), 30);
 }
 
+TEST(Editing, LosslessJpegToolsWaitUntilTheEditsAreGone) {
+    QTemporaryDir dir;
+    const QString path = writeTurnedJpeg(dir);
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 500; visible: true
+            property alias context: context
+            property alias actions: actions
+            property alias view: image
+            BrowseContext { id: context }
+            ImageView { id: image; anchors.fill: parent; source: context.currentPath }
+            FileActions { id: actions; context: context; viewing: true; editView: image }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* context = root->property("context").value<BrowseContext*>();
+    auto* actions = root->property("actions").value<QObject*>();
+    auto* image = root->property("view").value<ImageView*>();
+    context->openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 64; }));
+    auto* rotate = actions->property("rotateClockwiseAction").value<QObject*>();
+    EXPECT_TRUE(rotate->property("enabled").toBool());
+
+    image->crop(QRect(0, 0, 16, 16));
+    ASSERT_TRUE(settled(image));
+    EXPECT_FALSE(rotate->property("enabled").toBool()) << "it would turn the file, not the crop shown";
+    // Saved, the crop is still what is shown.
+    image->markSaved(image->editedImage());
+    EXPECT_FALSE(rotate->property("enabled").toBool());
+    image->undo();
+    ASSERT_TRUE(settled(image));
+    EXPECT_TRUE(rotate->property("enabled").toBool());
+}
+
 TEST(Main, LeavingAnEditedImageAsksFirst) {
     QTemporaryDir dir;
     writeTurnedJpeg(dir, QStringLiteral("a.jpg"));
