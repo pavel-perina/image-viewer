@@ -39,6 +39,9 @@ ShaderEffect {
         anchors.fill: parent
         blending: false
         fragmentShader: "qrc:/shaders/mks_horizontal.frag.qsb"
+        // Shown again by hand when the effect goes, as the garbage collector may take its time
+        // with this source and the view would stay hidden until then.
+        Component.onDestruction: source.hideSource = false
         property var source: ShaderEffectSource {
             sourceItem: vertical.view
             hideSource: true

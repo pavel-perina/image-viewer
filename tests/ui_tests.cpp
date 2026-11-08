@@ -1394,6 +1394,15 @@ double mks2013(double x) {
     return x <= 2.5 ? -0.125 * (x - 2.5) * (x - 2.5) : 0.0;
 }
 
+// What the window shows, or a null image once it has been closed: grabbing a closed window
+// crashes in Qt's render thread, and someone may close it while the test runs on a desktop.
+QImage grabIfShown(QQuickWindow& window) {
+    if (!window.isVisible() || !window.isExposed()) {
+        return {};
+    }
+    return window.grabWindow().convertToFormat(QImage::Format_RGB32);
+}
+
 }  // namespace
 
 // Needs a GPU or at least a GL driver, so run this one by hand on a real display or Xvfb:
@@ -1442,7 +1451,7 @@ TEST(ResampledView, MatchesTheKernelComputedOnTheCpu) {
         while (timer.elapsed() < 500) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
         }
-        shown = window.grabWindow().convertToFormat(QImage::Format_RGB32);
+        shown = grabIfShown(window);
     };
     settle();
 
@@ -1472,6 +1481,10 @@ TEST(ResampledView, MatchesTheKernelComputedOnTheCpu) {
     };
 
     const auto compareAll = [&](int tolerance) {
+        if (shown.isNull()) {
+            ADD_FAILURE() << "the window was closed";
+            return;
+        }
         const QRectF rect = view->resampleImageRect();
         int worst = 0;
         int checked = 0;
@@ -1521,7 +1534,16 @@ TEST(ResampledView, MatchesTheKernelComputedOnTheCpu) {
     QTest::qWait(600);
     QObject::disconnect(watching);
     EXPECT_EQ(dropped, 0);
+
+    // Turned off, the view shows again at once.
     window.rootObject()->setProperty("sharpResampling", false);
+    ASSERT_FALSE(view->resampleActive());
+    settle();
+    ASSERT_FALSE(shown.isNull()) << "the window was closed";
+    const QPointF middle = view->imageToItem({width / 2.0, height / 2.0}) * window.devicePixelRatio();
+    const Rgb inside = pattern(width / 2, height / 2);
+    const QColor c = shown.pixelColor(middle.toPoint());
+    EXPECT_NEAR(c.green(), inside.g, 40) << "the picture, not the background";
 }
 
 TEST(BrowserPage, ClicksWithModifiersReachTheSelection) {
