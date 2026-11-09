@@ -19,7 +19,7 @@ Dialog {
 
     header: Rectangle {
         implicitHeight: 34
-        color: Qt.lighter(palette.window, 1.35)
+        color: Theme.raised
         radius: 4
         // Square below, where it meets the body.
         Rectangle {

@@ -34,7 +34,7 @@ Rectangle {
 
             Rectangle {
                 anchors.fill: parent
-                color: headerHover.hovered ? Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12) : "transparent"
+                color: headerHover.hovered ? Theme.hover : "transparent"
             }
             Caret {
                 id: caret
@@ -57,7 +57,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: !panel.collapsed
-            color: "#202020"
+            color: Theme.imageBackground
 
             ImageSurface {
                 id: surface
@@ -77,7 +77,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 wrapMode: Text.Wrap
-                color: "#e0e0e0"
+                color: Theme.onImage
                 visible: surface.view.status === ImageView.Error
                 text: surface.view.errorString
             }

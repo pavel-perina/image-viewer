@@ -89,7 +89,7 @@ BarButton {
         background: Rectangle {
             color: palette.base
             border.width: 1
-            border.color: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12)
+            border.color: Theme.hover
         }
 
         ListView {
@@ -110,7 +110,7 @@ BarButton {
                 width: ListView.view.width
                 height: 26
                 radius: 2
-                color: rowHover.hovered && usable ? Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12) : "transparent"
+                color: rowHover.hovered && usable ? Theme.hover : "transparent"
                 Label {
                     id: detail
                     anchors.right: parent.right

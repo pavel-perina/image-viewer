@@ -48,7 +48,7 @@ Rectangle {
                                                : Qt.size(view.imageWidth, view.imageHeight)
 
     width: 280
-    color: "#e6181818"
+    color: Theme.panel
 
     Settings {
         id: settings
@@ -144,7 +144,7 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            color: "#a0a0a0"
+            color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
             text: "Draw lines along edges that should be vertical or horizontal: one levels the picture; "
                   + "two of either kind also correct the perspective. Detect finds them. The right button, "
@@ -172,12 +172,12 @@ Rectangle {
         Label {
             visible: panel.message !== ""
             text: panel.message
-            color: "#e0a050"
+            color: Theme.warning
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
 
-        Label { text: "Lines correct"; color: "#a0a0a0" }
+        Label { text: "Lines correct"; color: Theme.textMuted }
         ComboBox {
             objectName: "straightenMode"
             focusPolicy: Qt.NoFocus
@@ -194,7 +194,7 @@ Rectangle {
             }
         }
 
-        Label { text: "Angles, in degrees"; color: "#a0a0a0" }
+        Label { text: "Angles, in degrees"; color: Theme.textMuted }
         GridLayout {
             columns: 2
             columnSpacing: 10
@@ -220,7 +220,7 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            color: "#a0a0a0"
+            color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
             text: panel.cameraFocal > 0 ? "Focal length as on 35mm film, from the camera."
                                         : "The camera data has no focal length; it matters for perspective only."
@@ -243,7 +243,7 @@ Rectangle {
 
         Label {
             text: "Result " + Math.round(panel.resultSize.width) + " x " + Math.round(panel.resultSize.height) + " pixels"
-            color: "#a0a0a0"
+            color: Theme.textMuted
         }
 
         Item { Layout.fillHeight: true }

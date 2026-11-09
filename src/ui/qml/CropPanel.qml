@@ -29,7 +29,7 @@ Rectangle {
     }
 
     width: 280
-    color: "#e6181818"
+    color: Theme.panel
 
     readonly property int imageWidth: view.imageWidth
     // The stored choice, if it is still one of the list; a screen may have gone.
@@ -115,7 +115,7 @@ Rectangle {
             font.pointSize: Qt.application.font.pointSize + 1
         }
 
-        Label { text: "Aspect ratio"; color: "#a0a0a0" }
+        Label { text: "Aspect ratio"; color: Theme.textMuted }
         ComboBox {
             id: ratioBox
             objectName: "cropRatio"
@@ -167,7 +167,7 @@ Rectangle {
             }
         }
 
-        Label { text: "Position and size, in pixels"; color: "#a0a0a0"; Layout.topMargin: 4 }
+        Label { text: "Position and size, in pixels"; color: Theme.textMuted; Layout.topMargin: 4 }
         GridLayout {
             columns: 2
             columnSpacing: 8
@@ -214,7 +214,7 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            color: "#a0a0a0"
+            color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
             text: "Drag the edges or corners, or draw a new rectangle on the image. The wheel zooms; the right button, or Space with the left one, pans."
         }

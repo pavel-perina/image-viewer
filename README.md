@@ -89,11 +89,8 @@ comparison, set it in the environment:
 
 The layouts are made for Fusion's sizes, so the others overflow in places.
 
-Fusion's palette can be tried out the same way, from a file, as in `doc/palette-example.conf`:
-
-    QT_QUICK_CONTROLS_CONF=doc/palette-example.conf build/src/app/imageviewer
-
-Panels and backgrounds whose colours are set in QML do not follow it yet.
+The colours, for the controls too, are all set in `src/ui/qml/Theme.qml`, so the system's
+colour scheme does not change them.
 
 The interface uses the Inter typeface, embedded in the executable, under the SIL Open Font License
 (`src/app/fonts/Inter-LICENSE.txt`).

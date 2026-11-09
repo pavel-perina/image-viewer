@@ -44,7 +44,7 @@ Rectangle {
                                     || (!view.grayImage && (saturation !== 100 || view.colorCubeName !== ""))
 
     width: 280
-    color: "#e6181818"
+    color: Theme.panel
 
     function start() {
         view.clearColorCube()
@@ -119,7 +119,7 @@ Rectangle {
             columnSpacing: 8
             Layout.fillWidth: true
 
-            Label { text: "Levels"; color: "#a0a0a0"; Layout.columnSpan: 3 }
+            Label { text: "Levels"; color: Theme.textMuted; Layout.columnSpan: 3 }
             LevelsControl {
                 objectName: "levels"
                 Layout.columnSpan: 3
@@ -141,7 +141,7 @@ Rectangle {
                 }
             }
 
-            Label { text: "In Oklab, keeping the colours"; color: "#a0a0a0"; Layout.columnSpan: 3; Layout.topMargin: 6 }
+            Label { text: "In Oklab, keeping the colours"; color: Theme.textMuted; Layout.columnSpan: 3; Layout.topMargin: 6 }
             Label { text: "Brightness" }
             Slider {
                 objectName: "adjustBrightness"
@@ -207,7 +207,7 @@ Rectangle {
                           + "lightness. Off, they are clipped per channel, which shifts hue and flattens detail."
         }
 
-        Label { text: "Colour table"; color: "#a0a0a0" }
+        Label { text: "Colour table"; color: Theme.textMuted }
         RowLayout {
             Layout.fillWidth: true
             enabled: !panel.view.grayImage
@@ -231,14 +231,14 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             elide: Text.ElideMiddle
-            color: "#a0a0a0"
+            color: Theme.textMuted
             text: panel.view.grayImage ? "A gray picture takes levels and lightness only."
                                        : panel.view.colorCubeName !== "" ? panel.view.colorCubeName : "None"
         }
         Label {
             visible: panel.message !== ""
             text: panel.message
-            color: "#e0a050"
+            color: Theme.warning
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }

@@ -166,9 +166,12 @@ change nothing useful. The first press of a double click does this too, for that
   asks for another, to compare. Compared on 2026-11-09: Material, Universal and FluentWinUI3 have
   dark themes but larger controls, and the panels, laid out for Fusion, overflow in them;
   Material also paints the bars in its own colours.
-* The plan: Fusion stays and takes a palette of our own, dark first, as Fusion draws every state
-  of every control from the palette. Colours used directly in QML become named roles in
-  `Theme.qml`, so a light theme can follow. Icons of our own, single-colour SVG tinted by the
+* Fusion takes a palette of our own, dark, as Fusion draws every state of every control from the
+  palette. `Theme.qml` holds every colour, and `Main.qml` gives all of Fusion's roles from it,
+  disabled ones included: any role left out comes from the system theme, which on a light desktop
+  gave white menus and black text over our dark panels. Popups take the window's palette, and
+  there is one window. The surround of the image stays neutral gray, and what is drawn over
+  pictures stays light. A light theme would be a second set of values. The plan from here: icons of our own, single-colour SVG tinted by the
   theme. Controls that still look wrong get restyled one by one in a style that falls back to
   Fusion for the rest. States are layered rather than drawn per combination: a base colour from
   the role, darker when pressed, a light overlay when hovered, dimmed when disabled, and a focus

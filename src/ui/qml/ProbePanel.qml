@@ -20,7 +20,7 @@ Rectangle {
     readonly property var shown: remembered ? remembered : probed
 
     width: 280
-    color: "#e6181818"
+    color: Theme.panel
 
     onProbedChanged: remembered = null
 
@@ -94,7 +94,7 @@ Rectangle {
                 implicitWidth: 52
                 implicitHeight: 52
                 color: panel.shown ? panel.shown.color : "transparent"
-                border.color: "#606060"
+                border.color: Theme.swatchFrame
             }
             ColumnLayout {
                 spacing: 2
@@ -104,7 +104,7 @@ Rectangle {
                 Label {
                     visible: !!panel.shown
                     text: panel.shown ? panel.shown.depth + (panel.remembered ? ", remembered" : "") : ""
-                    color: "#a0a0a0"
+                    color: Theme.textMuted
                 }
             }
         }
@@ -131,7 +131,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Label {
                         text: row.modelData.label
-                        color: "#a0a0a0"
+                        color: Theme.textMuted
                         font.pointSize: Qt.application.font.pointSize - 1
                     }
                     RowLayout {
@@ -155,7 +155,7 @@ Rectangle {
             visible: !panel.shown
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            color: "#a0a0a0"
+            color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
             text: "Click the image to read a pixel at full size. Drag to follow the mouse; arrow keys move by one pixel. The wheel zooms and the right button pans. Ctrl+C copies the hex value."
         }
@@ -163,7 +163,7 @@ Rectangle {
         RowLayout {
             Layout.topMargin: 6
             Layout.fillWidth: true
-            Label { text: "Remembered"; color: "#a0a0a0"; Layout.fillWidth: true }
+            Label { text: "Remembered"; color: Theme.textMuted; Layout.fillWidth: true }
             ToolButton {
                 text: "List"
                 checkable: true
@@ -209,12 +209,12 @@ Rectangle {
                         implicitWidth: 20
                         implicitHeight: 20
                         color: entry.modelData.color
-                        border.color: "#606060"
+                        border.color: Theme.swatchFrame
                     }
                     Label { text: entry.modelData.hex; font.family: "monospace" }
                     Label {
                         text: entry.modelData.values
-                        color: "#a0a0a0"
+                        color: Theme.textMuted
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
@@ -237,7 +237,7 @@ Rectangle {
                 width: 28
                 height: 28
                 color: modelData.color
-                border.color: swatchArea.containsMouse ? "white" : "#606060"
+                border.color: swatchArea.containsMouse ? "white" : Theme.swatchFrame
                 ToolTip.visible: swatchArea.containsMouse
                 ToolTip.text: modelData.hex + "  " + modelData.values
                 MouseArea {

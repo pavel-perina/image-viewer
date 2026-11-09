@@ -32,6 +32,37 @@ ApplicationWindow {
     width: 1280
     height: 800
     visible: true
+
+    // All roles, as one left out comes from the system theme. These set every group, then the
+    // disabled one is changed. Menus and dialogs are popups in this window and take it too.
+    palette.window: Theme.window
+    palette.windowText: Theme.text
+    palette.base: Theme.base
+    palette.alternateBase: Theme.alternateBase
+    palette.text: Theme.text
+    palette.button: Theme.button
+    palette.buttonText: Theme.text
+    palette.brightText: Theme.highlightedText
+    palette.highlight: Theme.highlight
+    palette.highlightedText: Theme.highlightedText
+    palette.accent: Theme.accent
+    palette.light: Theme.light
+    palette.midlight: Theme.midlight
+    palette.mid: Theme.mid
+    palette.dark: Theme.dark
+    palette.shadow: Theme.shadow
+    palette.link: Theme.link
+    palette.linkVisited: Theme.linkVisited
+    palette.toolTipBase: Theme.toolTip
+    palette.toolTipText: Theme.text
+    palette.placeholderText: Theme.placeholderText
+    palette.disabled.windowText: Theme.textDisabled
+    palette.disabled.text: Theme.textDisabled
+    palette.disabled.buttonText: Theme.textDisabled
+    palette.disabled.button: Theme.buttonDisabled
+    palette.disabled.highlight: Theme.highlightDisabled
+    palette.disabled.highlightedText: Theme.textMuted
+    color: Theme.window
     title: (window.edited ? "*" : "") + (context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer")
 
     // needsEdit: the tool edits the image, so it starts only on one that can be edited.

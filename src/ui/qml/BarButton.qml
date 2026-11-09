@@ -10,7 +10,7 @@ Rectangle {
     property bool lit: false  // a star that is filled
     property string tip
     property bool menuOpen: false  // the tip would cover it
-    readonly property color ink: usable ? palette.windowText : Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.25)
+    readonly property color ink: usable ? palette.windowText : Theme.textDisabled
 
     signal activated()
     signal secondaryActivated()
@@ -19,7 +19,7 @@ Rectangle {
     width: 26
     height: 26
     radius: 3
-    color: hover.hovered && usable ? Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12) : "transparent"
+    color: hover.hovered && usable ? Theme.hover : "transparent"
 
     ToolTip.visible: tip !== "" && hover.hovered && !menuOpen
     ToolTip.delay: 600

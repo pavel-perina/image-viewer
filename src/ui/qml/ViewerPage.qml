@@ -198,7 +198,7 @@ Rectangle {
 
     signal fileMenuRequested()
 
-    color: "#202020"
+    color: Theme.imageBackground
 
     TapHandler {
         acceptedButtons: Qt.RightButton
@@ -260,9 +260,9 @@ Rectangle {
         anchors.topMargin: 12
         visible: page.compareNotice !== ""
         text: page.compareNotice
-        color: "#f0f0f0"
+        color: Theme.onImageBright
         padding: 8
-        background: Rectangle { color: "#d0181818"; radius: 4 }
+        background: Rectangle { color: Theme.bubble; radius: 4 }
         Timer {
             running: page.compareNotice !== ""
             interval: 4000
@@ -562,7 +562,7 @@ Rectangle {
 
     Label {
         anchors.centerIn: surface
-        color: "#e0e0e0"
+        color: Theme.onImage
         visible: surface.view.status === ImageView.Error
         text: "Cannot open " + page.context.currentName + ": " + surface.view.errorString
     }

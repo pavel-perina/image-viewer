@@ -107,7 +107,7 @@ AppDialog {
 
         Label {
             text: "Now " + dialog.imageWidth + " x " + dialog.imageHeight + " pixels"
-            color: "#a0a0a0"
+            color: Theme.textMuted
         }
 
         ComboBox {
@@ -151,7 +151,7 @@ AppDialog {
         ColumnLayout {
             visible: dialog.otherRatio
             spacing: 0
-            Label { text: "The image has another ratio:"; color: "#a0a0a0" }
+            Label { text: "The image has another ratio:"; color: Theme.textMuted }
             RadioButton {
                 text: "Fit inside, " + Math.round(dialog.target.width) + " x " + Math.round(dialog.target.height)
                 checked: settings.mode === "fit"
@@ -173,7 +173,7 @@ AppDialog {
         Label {
             visible: dialog.problem !== ""
             text: dialog.problem
-            color: "#e07070"
+            color: Theme.danger
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }

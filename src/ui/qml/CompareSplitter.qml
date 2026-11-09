@@ -33,8 +33,8 @@ Item {
         padding: 4
         leftPadding: 8
         rightPadding: 8
-        color: "#f0f0f0"
-        background: Rectangle { color: "#a0181818"; radius: 3 }
+        color: Theme.onImageBright
+        background: Rectangle { color: Theme.badge; radius: 3 }
     }
 
     Tag {
@@ -65,7 +65,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             width: 2
             height: parent.height
-            color: "#e0e0e0"
+            color: Theme.onImage
             opacity: 0.85
         }
         Rectangle {
@@ -73,14 +73,14 @@ Item {
             width: 16
             height: 40
             radius: 4
-            color: "#e0e0e0"
-            border.color: "#404040"
+            color: Theme.onImage
+            border.color: Theme.onImageShade
             Column {
                 anchors.centerIn: parent
                 spacing: 3
                 Repeater {
                     model: 3
-                    Rectangle { width: 6; height: 1; color: "#404040" }
+                    Rectangle { width: 6; height: 1; color: Theme.onImageShade }
                 }
             }
         }

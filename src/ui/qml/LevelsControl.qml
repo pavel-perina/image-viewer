@@ -69,11 +69,11 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: control.inset
         Layout.rightMargin: control.inset
-        Label { text: Math.round(control.black); color: "#a0a0a0" }
+        Label { text: Math.round(control.black); color: Theme.textMuted }
         Item { Layout.fillWidth: true }
-        Label { objectName: "levelsGamma"; text: control.gamma.toFixed(2); color: "#a0a0a0" }
+        Label { objectName: "levelsGamma"; text: control.gamma.toFixed(2); color: Theme.textMuted }
         Item { Layout.fillWidth: true }
-        Label { text: Math.round(control.white); color: "#a0a0a0" }
+        Label { text: Math.round(control.white); color: Theme.textMuted }
     }
 
     LevelsBar {
@@ -98,9 +98,9 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: control.inset
         Layout.rightMargin: control.inset
-        Label { text: "Output " + Math.round(control.outBlack); color: "#a0a0a0" }
+        Label { text: "Output " + Math.round(control.outBlack); color: Theme.textMuted }
         Item { Layout.fillWidth: true }
-        Label { text: Math.round(control.outWhite); color: "#a0a0a0" }
+        Label { text: Math.round(control.outWhite); color: Theme.textMuted }
     }
 
     // A gradient from black to white with triangles under it, one per level. A press takes the
@@ -152,7 +152,7 @@ ColumnLayout {
                     g.closePath()
                     g.fillStyle = fill
                     g.fill()
-                    g.strokeStyle = "#a0a0a0"
+                    g.strokeStyle = Theme.textMuted
                     g.lineWidth = 1
                     g.stroke()
                 }

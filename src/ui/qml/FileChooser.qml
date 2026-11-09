@@ -321,7 +321,7 @@ AppDialog {
             Layout.fillWidth: true
             visible: chooser.problem !== ""
             text: chooser.problem
-            color: "#e06c60"
+            color: Theme.danger
             wrapMode: Text.Wrap
         }
 

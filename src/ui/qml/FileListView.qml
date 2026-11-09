@@ -147,7 +147,7 @@ FocusScope {
             z: 2
             width: detailsView.width
             height: list.rowHeight
-            color: Qt.lighter(list.palette.window, 1.15)
+            color: Theme.header
             Row {
                 anchors.fill: parent
                 HeaderCell { width: parent.width - list.sizeWidth - list.typeWidth - list.modifiedWidth; text: "Name"; key: FolderListing.Name }
@@ -286,14 +286,14 @@ FocusScope {
             width: 7
             height: 4
             radius: 1
-            color: "#c9a043"
+            color: Theme.folderShade
         }
         Rectangle {
             y: 2
             width: parent.width
             height: parent.height - 2
             radius: 1.5
-            color: "#e2b955"
+            color: Theme.folder
         }
     }
 }

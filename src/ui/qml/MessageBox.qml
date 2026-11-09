@@ -90,7 +90,7 @@ AppDialog {
                 onPaint: {
                     const ctx = getContext("2d")
                     ctx.reset()
-                    ctx.fillStyle = box.kind === "error" ? "#c9443f" : box.kind === "warning" ? "#d9992b" : Theme.accent
+                    ctx.fillStyle = box.kind === "error" ? Theme.dangerFill : box.kind === "warning" ? Theme.warningFill : Theme.accent
                     ctx.beginPath()
                     if (box.kind === "warning") {
                         ctx.moveTo(16, 2)

@@ -17,7 +17,7 @@ Rectangle {
 
     // Carets stay behind the names they separate.
     readonly property color caretColor: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.55)
-    readonly property color hoverColor: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.12)
+    readonly property color hoverColor: Theme.hover
     readonly property int menuRowHeight: 26
 
     property bool editing: false
@@ -299,7 +299,7 @@ Rectangle {
                 radius: 3
                 color: palette.base
                 border.width: 1
-                border.color: bar.problem ? "#d9534f" : palette.highlight
+                border.color: bar.problem ? Theme.danger : palette.highlight
             }
             ToolTip.visible: bar.problem !== ""
             ToolTip.text: bar.problem

@@ -14,7 +14,7 @@ Rectangle {
     property bool fitRange: false
 
     width: 320
-    color: "#e6181818"
+    color: Theme.panel
 
     // Keeps the mouse from reaching the image underneath.
     MouseArea {
@@ -49,7 +49,7 @@ Rectangle {
             Label {
                 Layout.fillWidth: true
                 text: histogramView.description
-                color: "#a0a0a0"
+                color: Theme.textMuted
                 font.pointSize: Qt.application.font.pointSize - 1
                 elide: Text.ElideRight
             }
@@ -84,7 +84,7 @@ Rectangle {
                         Layout.topMargin: 8
                         text: row.modelData.section
                         font.bold: true
-                        color: "#e0e0e0"
+                        color: Theme.onImage
                     }
 
                     RowLayout {
@@ -95,7 +95,7 @@ Rectangle {
                             Layout.preferredWidth: 90
                             Layout.alignment: Qt.AlignTop
                             text: row.modelData.label
-                            color: "#a0a0a0"
+                            color: Theme.textMuted
                         }
                         Label {
                             id: valueLabel
@@ -103,7 +103,7 @@ Rectangle {
 
                             Layout.fillWidth: true
                             text: row.modelData.value
-                            color: link ? "#8ab4f8" : "#e0e0e0"
+                            color: link ? Theme.link : Theme.onImage
                             font.underline: linkArea.containsMouse
                             wrapMode: Text.WrapAnywhere
 
