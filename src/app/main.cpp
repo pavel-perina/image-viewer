@@ -15,7 +15,10 @@ int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
-    QQuickStyle::setStyle(QStringLiteral("Fusion"));
+    // Fusion unless another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Material, for one.
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
+        QQuickStyle::setStyle(QStringLiteral("Fusion"));
+    }
 
     iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
 

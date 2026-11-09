@@ -161,6 +161,19 @@ change nothing useful. The first press of a double click does this too, for that
   doing so under such a compositor would correct twice.
 * One display target for the application, not per window, until a second window exists.
 
+## Look
+* Qt Quick Controls in the Fusion style, chosen in `main.cpp` unless `QT_QUICK_CONTROLS_STYLE`
+  asks for another, to compare. Compared on 2026-11-09: Material, Universal and FluentWinUI3 have
+  dark themes but larger controls, and the panels, laid out for Fusion, overflow in them;
+  Material also paints the bars in its own colours.
+* The plan: Fusion stays and takes a palette of our own, dark first, as Fusion draws every state
+  of every control from the palette. Colours used directly in QML become named roles in
+  `Theme.qml`, so a light theme can follow. Icons of our own, single-colour SVG tinted by the
+  theme. Controls that still look wrong get restyled one by one in a style that falls back to
+  Fusion for the rest. States are layered rather than drawn per combination: a base colour from
+  the role, darker when pressed, a light overlay when hovered, dimmed when disabled, and a focus
+  ring for keyboard focus on top.
+
 ## Threads
 * Own work queue instead of oneTBB, because visible-first priorities and cancelling work
   that scrolled away are the central requirement. It defaults to 2/3 of the logical cores.

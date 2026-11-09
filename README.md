@@ -78,6 +78,23 @@ shaders is skipped there, so run it by hand on a display:
 
     QT_QPA_PLATFORM=xcb QSG_RHI_BACKEND=opengl build/tests/iv_ui_tests --gtest_filter='ResampledView.*'
 
+## Style
+
+The controls use Qt's Fusion style. To see the application in another of Qt's styles, for
+comparison, set it in the environment:
+
+    QT_QUICK_CONTROLS_STYLE=Universal QT_QUICK_CONTROLS_UNIVERSAL_THEME=Dark build/src/app/imageviewer
+    QT_QUICK_CONTROLS_STYLE=Material QT_QUICK_CONTROLS_MATERIAL_THEME=Dark build/src/app/imageviewer
+    QT_QUICK_CONTROLS_STYLE=FluentWinUI3 build/src/app/imageviewer
+
+The layouts are made for Fusion's sizes, so the others overflow in places.
+
+Fusion's palette can be tried out the same way, from a file, as in `doc/palette-example.conf`:
+
+    QT_QUICK_CONTROLS_CONF=doc/palette-example.conf build/src/app/imageviewer
+
+Panels and backgrounds whose colours are set in QML do not follow it yet.
+
 ## Controls
 
 | Input | Action |
