@@ -173,6 +173,13 @@ change nothing useful. The first press of a double click does this too, for that
   Fusion for the rest. States are layered rather than drawn per combination: a base colour from
   the role, darker when pressed, a light overlay when hovered, dimmed when disabled, and a focus
   ring for keyboard focus on top.
+* Inter 4.1 is embedded and set as the application font at the size the system asks for: the
+  variable file only (880 KB), as it holds every weight; no italics are used. Characters it lacks
+  come from the system's fonts. Its digits are proportional; labels with values that change
+  under the cursor can turn on tabular figures (`font.features: { "tnum": 1 }`). The variable
+  file has no hinting, which may look soft at small sizes on Windows at 100% scaling; hinted
+  static files would be the fix. The tests keep the system font, as they do not go through
+  `main.cpp`.
 
 ## Threads
 * Own work queue instead of oneTBB, because visible-first priorities and cancelling work

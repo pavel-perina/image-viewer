@@ -95,6 +95,9 @@ Fusion's palette can be tried out the same way, from a file, as in `doc/palette-
 
 Panels and backgrounds whose colours are set in QML do not follow it yet.
 
+The interface uses the Inter typeface, embedded in the executable, under the SIL Open Font License
+(`src/app/fonts/Inter-LICENSE.txt`).
+
 ## Controls
 
 | Input | Action |

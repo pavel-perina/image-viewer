@@ -1,5 +1,11 @@
 qt_add_executable(imageviewer main.cpp)
 
+# Inter 4.1 (SIL Open Font License, fonts/Inter-LICENSE.txt), every weight in the one variable file.
+qt_add_resources(imageviewer "fonts"
+    PREFIX "/"
+    FILES fonts/InterVariable.ttf
+)
+
 target_link_libraries(imageviewer PRIVATE
     iv_ui
     iv_uiplugin

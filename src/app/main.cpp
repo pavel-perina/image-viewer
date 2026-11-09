@@ -1,5 +1,7 @@
 #include <QCoreApplication>
 #include <QDir>
+#include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
@@ -18,6 +20,14 @@ int main(int argc, char* argv[]) {
     // Fusion unless another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Material, for one.
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
         QQuickStyle::setStyle(QStringLiteral("Fusion"));
+    }
+
+    // The same font everywhere, at the size the system asks for. What Inter lacks, such as Chinese
+    // file names, comes from the system's fonts as before.
+    if (const int id = QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/InterVariable.ttf")); id >= 0) {
+        QFont font = QGuiApplication::font();
+        font.setFamilies(QFontDatabase::applicationFontFamilies(id));
+        QGuiApplication::setFont(font);
     }
 
     iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
