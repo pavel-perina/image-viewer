@@ -11,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/disk_gate.h"
 #include "core/exif.h"
 #include "core/geometry.h"
 #include "core/image_buffer.h"
@@ -93,8 +94,11 @@ public:
     }
 };
 
-// Detects the format from the file contents, not its extension.
-Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path);
+// Detects the format from the file contents, not its extension. Formats decoded from memory are
+// read whole through the DiskGate, at that priority; a TIFF reads parts as needed, ungated.
+Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path,
+                                                     ReadPriority priority = ReadPriority::Foreground,
+                                                     std::stop_token stop = {});
 
 // A whole level of a subimage in one buffer, put together from its tiles.
 Result<ImageBuffer> readLevel(ImageSource& source, int subimage, int level, const std::stop_token& stop);

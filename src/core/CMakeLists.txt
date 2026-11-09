@@ -14,6 +14,8 @@ add_library(iv_core STATIC
     color_edit.h
     crop.cpp
     crop.h
+    disk_gate.cpp
+    disk_gate.h
     document.cpp
     document.h
     exif.cpp

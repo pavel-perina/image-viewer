@@ -166,6 +166,22 @@ change nothing useful. The first press of a double click does this too, for that
   that scrolled away are the central requirement. It defaults to 2/3 of the logical cores.
 * Anything posting results to a QObject must cancel and wait for its work queue group in
   the destructor.
+* Reading a file whole to decode it goes through `DiskGate`: one file at a time per disk unless
+  the disk is solid-state, so thumbnails of a folder on a spinning disk are read one after
+  another instead of ten workers seeking between ten files. Decoding stays parallel. Opening an
+  image to show it goes before thumbnails waiting for the same disk, and a cancelled thumbnail
+  stops waiting.
+* The disk is found per folder and cached: on Linux the mount from `/proc/self/mountinfo`, then
+  `queue/rotational` of its block device (the whole disk for a partition, the source device for
+  Btrfs, whose subvolumes have device numbers of their own); network file systems count as
+  seeking, memory ones as solid. On Windows the volume of the path, `GetDriveType`, and for a
+  fixed drive the seek penalty from `IOCTL_STORAGE_QUERY_PROPERTY`, which needs no admin rights.
+  Removable drives and anything not recognised, and every disk on other systems, get the gate of
+  a spinning disk. USB sticks often report themselves as rotational, which suits them, as they
+  are slow at reading several files at once too.
+* Not gated: TIFF, which libtiff reads in parts while decoding, so a TIFF thumbnail would have to
+  hold the disk for its whole decoding. Workers waiting at the gate are not free for other work
+  meanwhile; opening an image still finds one soon, as each read on a spinning disk is short.
 
 ## Testing
 * ThreadSanitizer with GCC 16 aborts on any `longjmp`, even in a three-line program. When

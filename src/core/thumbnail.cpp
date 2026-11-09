@@ -58,7 +58,7 @@ bool tooExpensive(const SubimageInfo& subimage, int level) {
 }  // namespace
 
 Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge, std::stop_token stop, const ColorTarget& target) {
-    const auto source = openImageSource(path);
+    const auto source = openImageSource(path, ReadPriority::Background, stop);
     if (!source) {
         return std::unexpected(source.error());
     }

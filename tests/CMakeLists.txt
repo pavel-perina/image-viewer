@@ -7,6 +7,7 @@ include(GoogleTest)
 add_executable(iv_core_tests
     color_tests.cpp
     crop_tests.cpp
+    disk_gate_tests.cpp
     document_tests.cpp
     probe_tests.cpp
     perspective_tests.cpp

@@ -150,6 +150,9 @@ Expect bugs here first. The test failures above already touch several of them.
 * Paths with drive letters and UNC paths: the path bar, the file chooser, typed paths.
 * The file chooser's places (`FolderLists::places`), which name drives "Name (C:)".
 * The thumbnail cache location and the settings (QSettings).
+* Telling SSDs from spinning disks for the disk gate (`src/core/disk_gate.cpp`): the Windows part
+  has not even been compiled yet. A wrong answer only costs speed: an SSD taken for a spinning
+  disk reads one file at a time.
 * High-DPI scaling with fractional factors.
 
 ## Qt licensing for a commercial release

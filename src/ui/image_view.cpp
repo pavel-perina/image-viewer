@@ -559,7 +559,7 @@ struct ImageView::Impl {
                      [this, newPath, file = QFileInfo(newPath).filesystemFilePath(), request](std::stop_token stop) {
             Result<Loaded> loaded = std::unexpected("cancelled");
             try {
-                auto source = openImageSource(file);
+                auto source = openImageSource(file, ReadPriority::Foreground, stop);
                 loaded = source ? loadPreview(*source, 0, stop) : Result<Loaded>(std::unexpected(source.error()));
                 if (loaded) {
                     loaded->fileDetails = describeFile(newPath);

@@ -24,7 +24,8 @@
 
 namespace iv {
 
-Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path) {
+Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path, ReadPriority priority,
+                                                     std::stop_token stop) {
     // Only the header: a TIFF can be far larger than memory.
     std::array<std::uint8_t, 16> header{};
     {
@@ -66,7 +67,12 @@ Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path
         }
 #endif
         if (opener) {
+            auto pass = DiskGate::global().enter(path, priority, stop);
+            if (!pass) {
+                return std::unexpected("cancelled");
+            }
             auto bytes = readFile(path);
+            pass.reset();  // decoding needs the disk no more
             if (!bytes) {
                 return std::unexpected(bytes.error());
             }
