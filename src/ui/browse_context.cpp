@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <ranges>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <stop_token>
@@ -273,17 +274,34 @@ private:
 };
 
 // Files for other applications. File managers on GNOME look for the second format.
-QMimeData* filesMimeData(const QStringList& paths) {
+// How file managers mark files cut rather than copied, so that the one that pastes moves them.
+constexpr const char* kKdeCut = "application/x-kde-cutselection";
+constexpr const char* kGnomeFiles = "x-special/gnome-copied-files";
+#ifdef Q_OS_WIN
+constexpr const char* kWindowsDropEffect = "application/x-qt-windows-mime;value=\"Preferred DropEffect\"";
+constexpr quint32 kDropEffectCopy = 1;
+constexpr quint32 kDropEffectMove = 2;
+#endif
+
+QMimeData* filesMimeData(const QStringList& paths, bool cut = false) {
     auto* mime = new QMimeData;
     QList<QUrl> urls;
-    QByteArray gnomeFiles = "copy";
+    QByteArray gnomeFiles = cut ? "cut" : "copy";
     for (const QString& path : paths) {
         const QUrl url = QUrl::fromLocalFile(path);
         urls << url;
         gnomeFiles += '\n' + url.toEncoded();
     }
     mime->setUrls(urls);
-    mime->setData(QStringLiteral("x-special/gnome-copied-files"), gnomeFiles);
+    mime->setData(QString::fromLatin1(kGnomeFiles), gnomeFiles);
+    if (cut) {
+        mime->setData(QString::fromLatin1(kKdeCut), "1");
+    }
+#ifdef Q_OS_WIN
+    // A DWORD, as Explorer writes it.
+    const quint32 effect = cut ? kDropEffectMove : kDropEffectCopy;
+    mime->setData(QString::fromLatin1(kWindowsDropEffect), QByteArray(reinterpret_cast<const char*>(&effect), sizeof effect));
+#endif
     return mime;
 }
 
@@ -1029,6 +1047,39 @@ void BrowseContext::copyFilesToClipboard(const QStringList& paths) {
             }
         });
     });
+}
+
+void BrowseContext::cutFilesToClipboard(const QStringList& paths) {
+    if (!paths.isEmpty()) {
+        QGuiApplication::clipboard()->setMimeData(filesMimeData(paths, true));
+    }
+}
+
+bool BrowseContext::clipboardIsCut() const {
+    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    if (!mime) {
+        return false;
+    }
+    if (mime->data(QString::fromLatin1(kKdeCut)).startsWith('1') || mime->data(QString::fromLatin1(kGnomeFiles)).startsWith("cut")) {
+        return true;
+    }
+#ifdef Q_OS_WIN
+    const QByteArray effect = mime->data(QString::fromLatin1(kWindowsDropEffect));
+    if (effect.size() >= 4) {
+        quint32 value = 0;
+        std::memcpy(&value, effect.constData(), sizeof value);
+        return (value & kDropEffectMove) != 0;
+    }
+#endif
+    return false;
+}
+
+void BrowseContext::clearClipboard() {
+    QGuiApplication::clipboard()->clear();
+}
+
+bool BrowseContext::isFolder(const QString& path) const {
+    return QFileInfo(path).isDir();
 }
 
 void BrowseContext::dragFiles(const QStringList& paths, const QImage& image) {

@@ -341,8 +341,10 @@ change nothing useful. The first press of a double click does this too, for that
 * Files dropped on a folder of the tree are copied there, or moved when the drop asks for it,
   through the same path as Copy To and Move To. The other side is always told it was a copy, so
   that it never deletes a file that was skipped here. The folder the files are all in already,
-  and a folder dropped into itself, are refused. Dropped anywhere else, a file opens in the large
-  view and a folder in the browser; over the tree only a folder takes a drop.
+  and a folder dropped into itself, are refused. Dropped on the rest of the browser, files go the
+  same way into the folder shown. A folder dropped there opens instead, as folders cannot be
+  copied yet, and a file dropped on the large view opens. Over the tree only a folder takes a
+  drop.
 
 ## Lossless JPEG tools
 * Rotate 90° either way, 180°, flip either way and apply the EXIF orientation. Each works on
@@ -474,8 +476,12 @@ change nothing useful. The first press of a double click does this too, for that
 * Paste with files copies them into the current folder. Otherwise it saves the image as a new
   file named after the time, such as `2026-12-24_125959.png`, adding `_1` if taken. PNG is fixed
   until the configuration dialog exists.
-* Cut is not implemented. Files cut in another application are copied on paste, leaving the
-  originals in place.
+* Cut puts the files on the clipboard marked as cut, as file managers do: `cut` in GNOME's format,
+  `application/x-kde-cutselection` for KDE, and the "Preferred DropEffect" of a move on Windows.
+  Nothing happens to them until they are pasted, and it is the application that pastes which
+  moves them. No image is added, as the files are to go. Pasting files cut here or in a file
+  manager moves them into the current folder and empties the clipboard, as they are no longer
+  where it says.
 
 ## Comparing
 * Two pictures of the same size are shown one each side of a vertical line that can be

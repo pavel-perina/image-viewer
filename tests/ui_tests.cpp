@@ -5215,23 +5215,45 @@ QPointF treeRowCentre(MainFixture& f, const QString& folder) {
 
 }  // namespace
 
-TEST(Drop, AFileOrFolderFromAnotherApplicationOpens) {
+TEST(Drop, FilesFromAnotherApplicationGoIntoTheFolderShown) {
+    MainFixture f(2);
+    ASSERT_NE(f.window, nullptr);
+    QTemporaryDir other;
+    const QString first = other.filePath(QStringLiteral("first.jpg"));
+    const QString second = other.filePath(QStringLiteral("second.jpg"));
+    writeJpeg(first);
+    writeJpeg(second);
+    auto* grid = qobject_cast<QQuickItem*>(f.find(QStringLiteral("thumbnailGrid")));
+    const QPointF overGrid = grid->mapToScene(QPointF(grid->width() / 2, grid->height() / 2));
+
+    EXPECT_TRUE(dropFiles(f.window, overGrid, {first}));
+    EXPECT_TRUE(waitUntil([&] { return QFile::exists(f.dir.filePath(QStringLiteral("first.jpg"))); }));
+    EXPECT_TRUE(QFile::exists(first)) << "copied";
+    EXPECT_FALSE(f.window->property("viewing").toBool()) << "and not opened";
+    EXPECT_TRUE(dropFiles(f.window, overGrid, {second}, Qt::ShiftModifier));
+    EXPECT_TRUE(waitUntil([&] { return QFile::exists(f.dir.filePath(QStringLiteral("second.jpg"))) && !QFile::exists(second); }))
+        << "moved with Shift";
+    EXPECT_TRUE(waitUntil([&] { return f.context->fileCount() == 4; }));
+    EXPECT_FALSE(dropFiles(f.window, overGrid, {f.dir.filePath(QStringLiteral("a.jpg"))})) << "not where they are already";
+}
+
+TEST(Drop, AFolderOpensAndAFileOpensInTheLargeView) {
     MainFixture f(2);
     ASSERT_NE(f.window, nullptr);
     QTemporaryDir other;
     const QString file = other.filePath(QStringLiteral("dropped.jpg"));
     writeJpeg(file);
-    auto* grid = qobject_cast<QQuickItem*>(f.find(QStringLiteral("thumbnailGrid")));
-    const QPointF overGrid = grid->mapToScene(QPointF(grid->width() / 2, grid->height() / 2));
+    const QPointF middle(f.window->width() / 2, f.window->height() / 2);
 
-    EXPECT_TRUE(dropFiles(f.window, overGrid, {file}));
-    EXPECT_TRUE(f.window->property("viewing").toBool()) << "a file opens in the large view";
-    EXPECT_EQ(f.context->currentPath(), file);
-
-    EXPECT_TRUE(dropFiles(f.window, QPointF(f.window->width() / 2, f.window->height() / 2), {f.dir.path()}));
-    EXPECT_FALSE(f.window->property("viewing").toBool()) << "a folder opens in the browser";
-    EXPECT_TRUE(waitUntil([&] { return f.context->directory() == f.dir.path() && f.context->fileCount() == 2; }));
-    EXPECT_TRUE(QFile::exists(file)) << "nothing is copied or moved";
+    EXPECT_TRUE(dropFiles(f.window, middle, {other.path()}));
+    EXPECT_TRUE(waitUntil([&] { return f.context->directory() == other.path() && f.context->fileCount() == 1; }))
+        << "a folder opens in the browser";
+    f.context->openPath(f.dir.filePath(QStringLiteral("a.jpg")));
+    f.window->setProperty("viewing", true);
+    EXPECT_TRUE(dropFiles(f.window, middle, {file}));
+    EXPECT_TRUE(f.window->property("viewing").toBool());
+    EXPECT_EQ(f.context->currentPath(), file) << "a file dropped on the large view opens";
+    EXPECT_FALSE(QFile::exists(f.dir.filePath(QStringLiteral("dropped.jpg")))) << "nothing is copied";
 }
 
 TEST(Drop, FilesOnAFolderOfTheTreeAreCopiedOrWithShiftMoved) {
@@ -5268,6 +5290,32 @@ TEST(Drop, NotOnTheFolderTheFilesAreAlreadyIn) {
     waitUntil([] { return false; }, 200);
     EXPECT_FALSE(f.find(QStringLiteral("conflictDialog")) && f.find(QStringLiteral("conflictDialog"))->property("visible").toBool());
     EXPECT_EQ(QDir(sub).entryList(QDir::NoDotAndDotDot | QDir::AllEntries), QStringList{QStringLiteral("a.jpg")});
+}
+
+TEST(Clipboard, CutFilesAreMarkedForFileManagersAndMovedWhenPastedHere) {
+    MainFixture f(1, {QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    const QString file = f.dir.filePath(QStringLiteral("a.jpg"));
+    const QString sub = f.dir.filePath(QStringLiteral("sub"));
+    f.context->setCurrentIndex(0);
+    QTest::keyClick(f.window, Qt::Key_X, Qt::ControlModifier);
+    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    ASSERT_NE(mime, nullptr);
+    EXPECT_EQ(mime->urls(), QList<QUrl>{QUrl::fromLocalFile(file)});
+    EXPECT_EQ(mime->data(QStringLiteral("application/x-kde-cutselection")), QByteArray("1"));
+    EXPECT_TRUE(mime->data(QStringLiteral("x-special/gnome-copied-files")).startsWith("cut\n"));
+    EXPECT_FALSE(mime->hasImage()) << "a cut file is not offered as a picture";
+    EXPECT_TRUE(f.context->clipboardIsCut());
+    EXPECT_TRUE(QFile::exists(file)) << "nothing moves until it is pasted";
+
+    f.context->openPath(sub);
+    ASSERT_TRUE(waitUntil([&] { return f.context->directory() == sub; }));
+    QTest::keyClick(f.window, Qt::Key_V, Qt::ControlModifier);
+    EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/a.jpg")) && !QFile::exists(file); })) << "moved";
+    EXPECT_TRUE(f.context->clipboardFiles().isEmpty()) << "and gone from the clipboard";
+
+    f.context->copyFilesToClipboard({sub + QStringLiteral("/a.jpg")});
+    EXPECT_FALSE(f.context->clipboardIsCut()) << "a copy is not a cut";
 }
 
 int main(int argc, char** argv) {

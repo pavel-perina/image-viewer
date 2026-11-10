@@ -43,6 +43,7 @@ Item {
     readonly property alias newFolderAction: newFolderAction
     readonly property alias openFolderAction: openFolderAction
     readonly property alias copyAction: copyAction
+    readonly property alias cutAction: cutAction
     readonly property alias pasteAction: pasteAction
     readonly property alias copyPathAction: copyPathAction
     readonly property alias refreshAction: refreshAction
@@ -122,12 +123,20 @@ Item {
         folderDialog.start(recent.length > 0 ? recent[0] : context.directory, "")
     }
 
+    // Files that were cut are moved, and the clipboard emptied, as they are no longer there.
     function paste() {
         const files = context.clipboardFiles()
-        if (files.length > 0)
-            transfer(files, context.directory, false)
-        else
+        if (files.length === 0) {
             context.pasteImage()
+        } else if (context.clipboardIsCut()) {
+            const folder = context.directory
+            guard(() => {
+                context.clearClipboard()
+                transfer(files, folder, true)
+            })
+        } else {
+            transfer(files, context.directory, false)
+        }
     }
 
     // Asks first unless told not to, as the files change in place.
@@ -306,6 +315,13 @@ Item {
         onTriggered: root.context.copyFilesToClipboard(root.targetPaths)
     }
     Action {
+        id: cutAction
+        text: "Cu&t"
+        shortcut: StandardKey.Cut
+        enabled: root.idle && root.hasTargets
+        onTriggered: root.context.cutFilesToClipboard(root.targetPaths)
+    }
+    Action {
         id: pasteAction
         text: "&Paste"
         shortcut: StandardKey.Paste
@@ -408,6 +424,7 @@ Item {
     AppMenu {
         id: fileMenu
         parent: Overlay.overlay
+        AppMenuItem { action: cutAction }
         AppMenuItem { action: copyAction }
         AppMenuItem { action: pasteAction }
         AppMenuItem { action: copyPathAction }

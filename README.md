@@ -120,13 +120,14 @@ The interface uses the Inter typeface, embedded in the executable, under the SIL
 | Ctrl+A | Select all images in the folder |
 | Click between thumbnails | Clear the selection |
 | Drag thumbnails | Copy the files to another application or a folder of the tree; hold Shift when dropping to move them |
-| Drop files from another application | On a folder of the tree, copy them there (Shift moves); elsewhere, open the first |
+| Drop files from another application | Copy them into a folder of the tree, or into the folder shown (Shift moves); a folder dropped opens, and so does a file dropped on the large view |
 | Right-click | Menu of file operations; on a folder in the tree, of folder operations |
 | Del | Move the selected files to the trash, or the shown image in the large view |
 | Shift+Del | Delete the same files permanently, after asking |
 | F2 | Rename |
 | Ctrl+C | Copy files to the clipboard, a single file also as an image |
-| Ctrl+V | Paste files, or save a clipboard image as a new PNG named after the time |
+| Ctrl+X | Cut files: the application that pastes them moves them, this one included |
+| Ctrl+V | Paste files, moving those that were cut, or save a clipboard image as a new PNG named after the time |
 | Ctrl+Shift+C | Copy the full path as text |
 | Ctrl+Shift+N | New folder |
 | F5 | Scan the folder again |

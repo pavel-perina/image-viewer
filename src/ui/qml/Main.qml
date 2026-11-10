@@ -467,6 +467,7 @@ ApplicationWindow {
             AppMenuItem { action: adjustAction }
             AppMenuItem { action: probeAction }
             MenuSeparator {}
+            AppMenuItem { action: fileActions.cutAction }
             AppMenuItem { action: fileActions.copyAction }
             AppMenuItem { action: fileActions.pasteAction }
             AppMenuItem { action: fileActions.copyPathAction }
@@ -629,28 +630,52 @@ ApplicationWindow {
         }
     }
 
-    // A file or folder dropped from another application opens, the first if there are several.
-    // Under the pages, so that a folder of the tree takes files dropped on it instead; and not
-    // over the tree, where only that means anything, as when it refuses the folder they are in.
+    // Files dropped from another application go into the folder shown, copied or with Shift
+    // moved, as on a folder of the tree. A folder dropped opens, as folders cannot be copied yet,
+    // and so does a file dropped on the large view. Under the pages, so that a folder of the tree
+    // takes what is dropped on it; and not over the tree, as when it refuses the folder the
+    // files are in.
     DropArea {
         objectName: "windowDropArea"
         anchors.fill: parent
         keys: ["text/uri-list"]
 
+        function pathsOf(urls) {
+            return urls.map(url => context.pathFromUrl(url)).filter(path => path !== "")
+        }
+
+        // Into the folder shown, rather than opening.
+        function filing(paths) {
+            return !window.viewing && context.directory !== "" && !paths.every(path => context.isFolder(path))
+        }
+
         function accepts(drag) {
-            if (browserPage.draggingFiles || window.toolActive || drag.urls.length === 0)
+            const paths = pathsOf(drag.urls)
+            if (browserPage.draggingFiles || window.toolActive || paths.length === 0)
                 return false
+            if (window.viewing)
+                return true
             const tree = browserPage.folderTree
-            return window.viewing || !tree.contains(mapToItem(tree, drag.x, drag.y))
+            if (tree.contains(mapToItem(tree, drag.x, drag.y)))
+                return false
+            const parentOf = (path) => path.substring(0, path.lastIndexOf("/")) || "/"
+            return !filing(paths) || !paths.every(path => parentOf(path) === context.directory)
         }
 
         onEntered: (drag) => drag.accepted = accepts(drag)
         onPositionChanged: (drag) => drag.accepted = accepts(drag)
         onDropped: (drop) => {
-            const path = context.pathFromUrl(drop.urls[0])
-            if (!path || !accepts(drop))
+            if (!accepts(drop))
                 return
+            const paths = pathsOf(drop.urls)
+            // Told it was a copy, so that the other side never deletes a file skipped here.
             drop.accept(Qt.CopyAction)
+            if (filing(paths)) {
+                fileActions.drop(paths.filter(path => !context.isFolder(path)), context.directory,
+                                 drop.proposedAction === Qt.MoveAction)
+                return
+            }
+            const path = paths.find(path => context.isFolder(path)) ?? paths[0]
             window.leaveImage(() => {
                 context.openPath(path)
                 window.viewing = context.currentPath !== ""

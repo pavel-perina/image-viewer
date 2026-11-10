@@ -156,6 +156,12 @@ public:
     Q_INVOKABLE void copyTextToClipboard(const QString& text);
     // Local files on the clipboard, which take precedence over an image there.
     Q_INVOKABLE QStringList clipboardFiles() const;
+    // Files marked as cut, as file managers mark them: the one that pastes moves them. Without
+    // an image, as the files are to go rather than be copied.
+    Q_INVOKABLE void cutFilesToClipboard(const QStringList& paths);
+    Q_INVOKABLE bool clipboardIsCut() const;
+    Q_INVOKABLE void clearClipboard();
+    Q_INVOKABLE bool isFolder(const QString& path) const;
     // Saves the image on the clipboard as a new file in the directory.
     Q_INVOKABLE void pasteImage();
     Q_INVOKABLE QString clipboardText() const;
