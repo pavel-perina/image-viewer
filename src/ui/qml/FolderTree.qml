@@ -13,6 +13,10 @@ TreeView {
     signal trashRequested(string path)
     // Enter: back to the files of the folder.
     signal filesRequested()
+    signal filesDropped(var paths, string folder, bool moving)
+
+    // The folder files are dragged over, shown framed.
+    property string dropPath: ""
 
     clip: true
     activeFocusOnTab: true
@@ -95,6 +99,52 @@ TreeView {
                 || (event.key === Qt.Key_Delete && (plain || event.modifiers === Qt.ShiftModifier))
     }
 
+    // Files dropped on a folder are copied there, or moved with Shift. Not into the folder they
+    // are all in already, which would only ask about each one.
+    DropArea {
+        id: dropArea
+        // On the view itself, not in its scrolling content where children otherwise go.
+        parent: tree
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+
+        function folderAt(x, y) {
+            const point = tree.mapToItem(tree.contentItem, x, y)
+            const cell = tree.cellAtPosition(point, true)
+            return cell.y >= 0 && cell.y < tree.rows ? tree.pathAt(cell.y) : ""
+        }
+
+        function pathsOf(urls) {
+            return urls.map(url => tree.context.pathFromUrl(url)).filter(path => path !== "")
+        }
+
+        function update(drag) {
+            const folder = folderAt(drag.x, drag.y)
+            const paths = pathsOf(drag.urls)
+            const parentOf = (path) => path.substring(0, path.lastIndexOf("/")) || "/"
+            const usable = folder !== "" && paths.length > 0
+                    && !paths.every(path => parentOf(path) === folder)
+                    && !paths.some(path => folder === path || folder.startsWith(path + "/"))
+            tree.dropPath = usable ? folder : ""
+            drag.accepted = usable
+        }
+
+        onEntered: (drag) => update(drag)
+        onPositionChanged: (drag) => update(drag)
+        onExited: tree.dropPath = ""
+        onDropped: (drop) => {
+            update(drop)
+            const folder = tree.dropPath
+            tree.dropPath = ""
+            if (!folder)
+                return
+            // The other side is told it was a copy in any case, so that it never deletes what
+            // was not moved here, as when a file of that name is skipped.
+            drop.accept(Qt.CopyAction)
+            tree.filesDropped(pathsOf(drop.urls), folder, drop.proposedAction === Qt.MoveAction)
+        }
+    }
+
     delegate: TreeViewDelegate {
         id: treeRow
         implicitWidth: tree.width
@@ -104,6 +154,14 @@ TreeView {
             tree.rows
             treeRow.model.display  // rows sorted in place keep their number and change their folder
             return treeModel.pathForIndex(tree.index(row, 0)) === tree.context.directory
+        }
+        // Framed while files are dragged over it.
+        Rectangle {
+            anchors.fill: parent
+            color: "transparent"
+            border.width: 1
+            border.color: palette.highlight
+            visible: tree.dropPath !== "" && tree.dropPath === treeModel.pathForIndex(tree.index(treeRow.row, 0))
         }
         contentItem: Label {
             text: {

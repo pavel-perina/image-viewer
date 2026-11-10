@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QImage>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -158,6 +159,12 @@ public:
     // Saves the image on the clipboard as a new file in the directory.
     Q_INVOKABLE void pasteImage();
     Q_INVOKABLE QString clipboardText() const;
+
+    // Drags the files out, to another application or a folder of the tree, until the button is
+    // released. A copy unless Ctrl, Shift or the other side asks for a move, as in file managers;
+    // Qt Quick's own drag would make a move the default. A moved file is never deleted here: the
+    // other side moves it, or it stays a copy. The image, when not null, is shown by the pointer.
+    Q_INVOKABLE void dragFiles(const QStringList& paths, const QImage& image);
 
     Q_INVOKABLE QString pathFromUrl(const QUrl& url) const;
     Q_INVOKABLE QUrl urlFromPath(const QString& path) const;

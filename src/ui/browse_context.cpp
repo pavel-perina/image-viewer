@@ -5,6 +5,7 @@
 #include <QCollator>
 #include <QDateTime>
 #include <QDir>
+#include <QDrag>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QGuiApplication>
@@ -12,6 +13,7 @@
 #include <QImage>
 #include <QList>
 #include <QMimeData>
+#include <QPixmap>
 #include <QSet>
 #include <QStringList>
 #include <QTimeZone>
@@ -1027,6 +1029,25 @@ void BrowseContext::copyFilesToClipboard(const QStringList& paths) {
             }
         });
     });
+}
+
+void BrowseContext::dragFiles(const QStringList& paths, const QImage& image) {
+    if (paths.isEmpty()) {
+        return;
+    }
+    auto* mime = new QMimeData;
+    QList<QUrl> urls;
+    for (const QString& path : paths) {
+        urls << QUrl::fromLocalFile(path);
+    }
+    mime->setUrls(urls);
+    auto* drag = new QDrag(this);
+    drag->setMimeData(mime);
+    if (!image.isNull()) {
+        drag->setPixmap(QPixmap::fromImage(image));
+        drag->setHotSpot(QPoint(-12, -12));  // beside the pointer, leaving where it goes in sight
+    }
+    drag->exec(Qt::CopyAction | Qt::MoveAction, Qt::CopyAction);
 }
 
 void BrowseContext::copyPathsToClipboard(const QStringList& paths) {

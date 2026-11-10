@@ -18,6 +18,8 @@
 #include <QMimeData>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
+#include <QQmlContext>
+#include <QQmlExpression>
 #include <QQuickItem>
 #include <QQuickTextureFactory>
 #include <QQuickView>
@@ -5162,6 +5164,110 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     QTest::keyClick(f.window, Qt::Key_Delete, Qt::ShiftModifier);
     waitUntil([] { return false; }, 200);
     EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
+}
+
+namespace {
+
+// Files dragged from another application and dropped at a point of the window. Returns whether
+// something took them.
+bool dropFiles(QQuickWindow* window, QPointF at, const QStringList& paths, Qt::KeyboardModifiers modifiers = {}) {
+    QMimeData mime;
+    QList<QUrl> urls;
+    for (const QString& path : paths) {
+        urls << QUrl::fromLocalFile(path);
+    }
+    mime.setUrls(urls);
+    const Qt::DropActions actions = Qt::CopyAction | Qt::MoveAction;
+    QDragEnterEvent enter(at.toPoint(), actions, &mime, Qt::LeftButton, modifiers);
+    QCoreApplication::sendEvent(window, &enter);
+    QDragMoveEvent move(at.toPoint(), actions, &mime, Qt::LeftButton, modifiers);
+    QCoreApplication::sendEvent(window, &move);
+    QDropEvent drop(at, actions, &mime, Qt::LeftButton, modifiers);
+    QCoreApplication::sendEvent(window, &drop);
+    return drop.isAccepted();
+}
+
+// The middle of a folder's row in the tree, scrolled into sight once the tree lists it. Read just
+// before it is used, as the tree centres the open folder again as each of its parents loads.
+QPointF treeRowCentre(MainFixture& f, const QString& folder) {
+    auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));
+    auto* model = qobject_cast<iv::DirectoryTreeModel*>(tree->property("model").value<QObject*>());
+    QPointF centre;
+    const bool shown = waitUntil([&] {
+        const QModelIndex index = model->indexForPath(folder);
+        int number = -1;
+        QMetaObject::invokeMethod(tree, "rowAtIndex", Q_RETURN_ARG(int, number), Q_ARG(QModelIndex, index));
+        if (number < 0) {
+            return false;
+        }
+        QQmlExpression(qmlContext(tree), tree, QStringLiteral("positionViewAtRow(%1, TableView.Contain)").arg(number)).evaluate();
+        QCoreApplication::processEvents();
+        QQuickItem* row = nullptr;
+        QMetaObject::invokeMethod(tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(QModelIndex, index));
+        if (!row) {
+            return false;
+        }
+        centre = row->mapToScene(QPointF(row->width() / 2, row->height() / 2));
+        return tree->contains(tree->mapFromScene(centre));
+    });
+    return shown ? centre : QPointF();
+}
+
+}  // namespace
+
+TEST(Drop, AFileOrFolderFromAnotherApplicationOpens) {
+    MainFixture f(2);
+    ASSERT_NE(f.window, nullptr);
+    QTemporaryDir other;
+    const QString file = other.filePath(QStringLiteral("dropped.jpg"));
+    writeJpeg(file);
+    auto* grid = qobject_cast<QQuickItem*>(f.find(QStringLiteral("thumbnailGrid")));
+    const QPointF overGrid = grid->mapToScene(QPointF(grid->width() / 2, grid->height() / 2));
+
+    EXPECT_TRUE(dropFiles(f.window, overGrid, {file}));
+    EXPECT_TRUE(f.window->property("viewing").toBool()) << "a file opens in the large view";
+    EXPECT_EQ(f.context->currentPath(), file);
+
+    EXPECT_TRUE(dropFiles(f.window, QPointF(f.window->width() / 2, f.window->height() / 2), {f.dir.path()}));
+    EXPECT_FALSE(f.window->property("viewing").toBool()) << "a folder opens in the browser";
+    EXPECT_TRUE(waitUntil([&] { return f.context->directory() == f.dir.path() && f.context->fileCount() == 2; }));
+    EXPECT_TRUE(QFile::exists(file)) << "nothing is copied or moved";
+}
+
+TEST(Drop, FilesOnAFolderOfTheTreeAreCopiedOrWithShiftMoved) {
+    MainFixture f(1, {QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    const QString sub = f.dir.filePath(QStringLiteral("sub"));
+    QTemporaryDir other;
+    const QString first = other.filePath(QStringLiteral("first.jpg"));
+    const QString second = other.filePath(QStringLiteral("second.jpg"));
+    writeJpeg(first);
+    writeJpeg(second);
+    ASSERT_FALSE(treeRowCentre(f, sub).isNull());
+
+    EXPECT_TRUE(dropFiles(f.window, treeRowCentre(f, sub), {first}));
+    EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/first.jpg")); }));
+    EXPECT_TRUE(QFile::exists(first)) << "copied";
+    EXPECT_EQ(f.context->directory(), f.dir.path()) << "the folder shown stays";
+
+    EXPECT_TRUE(dropFiles(f.window, treeRowCentre(f, sub), {second}, Qt::ShiftModifier));
+    EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/second.jpg")) && !QFile::exists(second); }))
+        << "moved with Shift";
+}
+
+TEST(Drop, NotOnTheFolderTheFilesAreAlreadyIn) {
+    MainFixture f(1, {QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    const QString sub = f.dir.filePath(QStringLiteral("sub"));
+    const QString file = f.dir.filePath(QStringLiteral("a.jpg"));
+    ASSERT_FALSE(treeRowCentre(f, sub).isNull());
+    EXPECT_FALSE(dropFiles(f.window, treeRowCentre(f, f.dir.path()), {file})) << "the folder it is in";
+    EXPECT_FALSE(dropFiles(f.window, treeRowCentre(f, sub), {f.dir.path()})) << "a folder into its own subfolder";
+    EXPECT_TRUE(dropFiles(f.window, treeRowCentre(f, sub), {file}, Qt::ControlModifier)) << "but elsewhere";
+    EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/a.jpg")); }));
+    waitUntil([] { return false; }, 200);
+    EXPECT_FALSE(f.find(QStringLiteral("conflictDialog")) && f.find(QStringLiteral("conflictDialog"))->property("visible").toBool());
+    EXPECT_EQ(QDir(sub).entryList(QDir::NoDotAndDotDot | QDir::AllEntries), QStringList{QStringLiteral("a.jpg")});
 }
 
 int main(int argc, char** argv) {

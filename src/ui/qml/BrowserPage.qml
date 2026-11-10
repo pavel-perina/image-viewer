@@ -23,9 +23,16 @@ SplitView {
     // F2 and Del in the folder tree.
     signal folderRenameRequested(string path)
     signal folderTrashRequested(string path)
+    // Files dropped on a folder of the tree, from the thumbnails or from another application.
+    signal filesDropped(var paths, string folder, bool moving)
+
+    // While thumbnails are dragged out, so that the window does not open them when they are
+    // dropped back on it.
+    property bool draggingFiles: false
 
     readonly property bool filesFocused: grid.activeFocus
     readonly property bool treeFocused: folderTree.activeFocus
+    readonly property Item folderTree: folderTree
 
     // The thumbnails take the keys unless the tree or the path bar has them.
     function focusFiles() {
@@ -73,6 +80,7 @@ SplitView {
             onRenameRequested: (path) => page.folderRenameRequested(path)
             onTrashRequested: (path) => page.folderTrashRequested(path)
             onFilesRequested: grid.forceActiveFocus()
+            onFilesDropped: (paths, folder, moving) => page.filesDropped(paths, folder, moving)
         }
 
         PreviewPanel {
@@ -235,6 +243,39 @@ SplitView {
                         }
                     }
                     onDoubleTapped: page.viewRequested()
+                }
+
+                // Dragged out as files, of the whole selection if it is chosen: to a file manager,
+                // a mail, an editor, or a folder of the tree. The thumbnail goes with it, small.
+                DragHandler {
+                    id: fileDrag
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    // The grid would scroll instead, as it does for a touch.
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
+                    grabPermissions: PointerHandler.TakeOverForbidden
+                    // From a plain press, as with Ctrl it would start at once and take the click
+                    // that adds to the selection. Ctrl and Shift still choose when dropping.
+                    acceptedModifiers: Qt.NoModifier
+                    onActiveChanged: {
+                        if (!active)
+                            return
+                        grid.forceActiveFocus()
+                        if (!cell.selected)
+                            page.context.clickFile(cell.index, false, false)
+                        const paths = page.context.selectedPaths
+                        const start = (image) => {
+                            // Only while the button is still down: a drag started after the
+                            // release would wait for another click.
+                            if (!fileDrag.active)
+                                return
+                            page.draggingFiles = true
+                            page.context.dragFiles(paths, image)
+                            page.draggingFiles = false
+                        }
+                        if (!thumbnailImage.grabToImage((result) => start(result.image), Qt.size(64, 64)))
+                            start(null)
+                    }
                 }
 
                 TapHandler {

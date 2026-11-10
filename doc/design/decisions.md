@@ -332,6 +332,17 @@ change nothing useful. The first press of a double click does this too, for that
 * Folders can be created, renamed and trashed from the tree, but not yet copied or moved.
 * The folder is watched and scanned again 200 ms after changes stop coming in. F5 does it
   by hand, for network folders that do not report changes.
+* Thumbnails drag out as files (`text/uri-list`), the selection or the one under the pointer, to
+  any application or to a folder of the tree. The drag is a copy unless Ctrl, Shift or the other
+  side asks for a move, as in file managers. It is started by `BrowseContext::dragFiles` rather
+  than Qt Quick's `Drag`, which offers no default action and so makes a move the default. A move
+  is never finished here by deleting: the other side moves the file, or it stays a copy, as with
+  Explorer moving between disks.
+* Files dropped on a folder of the tree are copied there, or moved when the drop asks for it,
+  through the same path as Copy To and Move To. The other side is always told it was a copy, so
+  that it never deletes a file that was skipped here. The folder the files are all in already,
+  and a folder dropped into itself, are refused. Dropped anywhere else, a file opens in the large
+  view and a folder in the browser; over the tree only a folder takes a drop.
 
 ## Lossless JPEG tools
 * Rotate 90° either way, 180°, flip either way and apply the EXIF orientation. Each works on
@@ -764,9 +775,6 @@ the question before leaving an edited image. Still planned lists the rest.
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
   they changed.
-* Thumbnails cannot be dragged, neither to another application (a file manager, a mail or chat
-  window, an editor) nor to a folder in the tree to copy or move them, and files dropped from
-  outside are not taken either.
 * Sorting by name, date modified, size or type exists but is hidden in View > Sort By; the browser
   shows no control for it, nor what the order is. There is no sorting by the date a photo was
   taken (EXIF), which needs metadata read in the background (see Metadata).

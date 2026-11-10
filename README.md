@@ -119,6 +119,8 @@ The interface uses the Inter typeface, embedded in the executable, under the SIL
 | Shift+click, Shift+arrows, Shift+PgDown, Shift+PgUp | Select a range; with Ctrl+click, add a range |
 | Ctrl+A | Select all images in the folder |
 | Click between thumbnails | Clear the selection |
+| Drag thumbnails | Copy the files to another application or a folder of the tree; hold Shift when dropping to move them |
+| Drop files from another application | On a folder of the tree, copy them there (Shift moves); elsewhere, open the first |
 | Right-click | Menu of file operations; on a folder in the tree, of folder operations |
 | Del | Move the selected files to the trash, or the shown image in the large view |
 | Shift+Del | Delete the same files permanently, after asking |

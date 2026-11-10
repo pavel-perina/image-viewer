@@ -629,6 +629,35 @@ ApplicationWindow {
         }
     }
 
+    // A file or folder dropped from another application opens, the first if there are several.
+    // Under the pages, so that a folder of the tree takes files dropped on it instead; and not
+    // over the tree, where only that means anything, as when it refuses the folder they are in.
+    DropArea {
+        objectName: "windowDropArea"
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+
+        function accepts(drag) {
+            if (browserPage.draggingFiles || window.toolActive || drag.urls.length === 0)
+                return false
+            const tree = browserPage.folderTree
+            return window.viewing || !tree.contains(mapToItem(tree, drag.x, drag.y))
+        }
+
+        onEntered: (drag) => drag.accepted = accepts(drag)
+        onPositionChanged: (drag) => drag.accepted = accepts(drag)
+        onDropped: (drop) => {
+            const path = context.pathFromUrl(drop.urls[0])
+            if (!path || !accepts(drop))
+                return
+            drop.accept(Qt.CopyAction)
+            window.leaveImage(() => {
+                context.openPath(path)
+                window.viewing = context.currentPath !== ""
+            })
+        }
+    }
+
     StackLayout {
         anchors.fill: parent
         currentIndex: window.viewing ? 1 : 0
@@ -643,6 +672,7 @@ ApplicationWindow {
             onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)
             onFolderRenameRequested: (path) => fileActions.renameFolder(path)
             onFolderTrashRequested: (path) => fileActions.trashFolder(path)
+            onFilesDropped: (paths, folder, moving) => fileActions.drop(paths, folder, moving)
         }
 
         ViewerPage {

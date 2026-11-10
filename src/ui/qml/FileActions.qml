@@ -64,6 +64,16 @@ Item {
         folderMenu.popup()
     }
 
+    // Files dropped on a folder. Moving the image shown asks first about unsaved changes.
+    function drop(paths, folder, moving) {
+        if (!root.idle)
+            return
+        if (moving)
+            root.guard(() => root.transfer(paths, folder, true))
+        else
+            root.transfer(paths, folder, false)
+    }
+
     function renameFolder(path) {
         if (root.idle)
             root.askName("Rename Folder", root.folderName(path), (name) => root.context.rename(path, name))
