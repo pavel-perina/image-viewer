@@ -644,14 +644,16 @@ struct ChooserFixture {
     }
 };
 
-// The whole application on a folder of four images, active, for keys.
+// The whole application, its window active, as a user has it. Records the QML warnings.
 struct MainFixture {
     QTemporaryDir dir;
     QQmlApplicationEngine engine;
     QQuickWindow* window = nullptr;
     BrowseContext* context = nullptr;
+    QStringList warnings;
 
-    // Folders before the window, as the tree lists each folder once.
+    // On a folder of files a.jpg, b.jpg and so on, and of subfolders made first, as the tree
+    // lists each folder once. Waits until the files are listed.
     explicit MainFixture(int files = 4, const QStringList& folders = {}) {
         for (const QString& folder : folders) {
             QDir(dir.path()).mkpath(folder);
@@ -659,8 +661,27 @@ struct MainFixture {
         for (int i = 0; i < files; ++i) {
             writeJpeg(dir.filePath(QStringLiteral("%1.jpg").arg(QChar('a' + i))));
         }
+        open(dir.path());
+        if (context) {
+            waitUntil([&] { return context->fileCount() == files; });
+        }
+    }
+
+    // On what prepare puts in the folder, starting at one of its files, or the folder itself
+    // when start is empty.
+    MainFixture(const std::function<void(const QTemporaryDir&)>& prepare, const QString& start) {
+        prepare(dir);
+        open(start.isEmpty() ? dir.path() : dir.filePath(start));
+    }
+
+    void open(const QString& path) {
+        QObject::connect(&engine, &QQmlEngine::warnings, [this](const QList<QQmlError>& list) {
+            for (const QQmlError& warning : list) {
+                warnings << warning.toString();
+            }
+        });
         engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-        engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
+        engine.setInitialProperties({{QStringLiteral("initialPath"), path}});
         engine.loadFromModule("ImageViewer", "Main");
         if (engine.rootObjects().size() != 1) {
             return;
@@ -669,7 +690,6 @@ struct MainFixture {
         window->requestActivate();
         waitUntil([&] { return window->isExposed(); });
         context = window->findChild<BrowseContext*>();
-        waitUntil([&] { return context->fileCount() == files; });
     }
 
     QObject* find(const QString& name) const { return window->findChild<QObject*>(name); }

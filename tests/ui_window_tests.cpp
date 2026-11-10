@@ -144,31 +144,17 @@ TEST(ViewerPage, PanelTakesRoomFromTheImageExceptAtFullScreen) {
 }
 
 TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
-    QTemporaryDir dir;
-    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-    QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
-        for (const QQmlError& warning : warnings) {
-            ADD_FAILURE() << warning.toString().toStdString();
-        }
-    });
-    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
-    engine.loadFromModule("ImageViewer", "Main");
-    ASSERT_EQ(engine.rootObjects().size(), 1);
-    QCoreApplication::processEvents();
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
     waitUntil([] { return false; }, 200);
+    EXPECT_EQ(f.warnings, QStringList());
 }
 
 TEST(Main, EditingThePathTurnsOffShortcutsForKeysATextFieldLeaves) {
-    QTemporaryDir dir;
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
-    engine.loadFromModule("ImageViewer", "Main");
-    ASSERT_EQ(engine.rootObjects().size(), 1);
-    QObject* window = engine.rootObjects().front();
-    auto* bar = window->findChild<QObject*>(QStringLiteral("pathBar"));
+    MainFixture f(0);
+    ASSERT_NE(f.window, nullptr);
+    QObject* window = f.window;
+    auto* bar = f.find(QStringLiteral("pathBar"));
     ASSERT_NE(bar, nullptr);
 
     EXPECT_FALSE(window->property("typing").toBool());
@@ -399,19 +385,13 @@ TEST(ViewerPage, WheelMovesThroughTheImages) {
 }
 
 TEST(Main, StraightenFromTheBrowserOpensTheImageFirst) {
-    QTemporaryDir dir;
-    writeTiltedJpeg(dir);
-    QFile::copy(dir.filePath(QStringLiteral("tilted.jpg")), dir.filePath(QStringLiteral("tilted2.jpg")));
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
-    engine.loadFromModule("ImageViewer", "Main");
-    ASSERT_EQ(engine.rootObjects().size(), 1);
-    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
-    ASSERT_NE(window, nullptr);
-    window->requestActivate();
-    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
-    auto* context = window->findChild<BrowseContext*>();
+    MainFixture f([](const QTemporaryDir& dir) {
+        writeTiltedJpeg(dir);
+        QFile::copy(dir.filePath(QStringLiteral("tilted.jpg")), dir.filePath(QStringLiteral("tilted2.jpg")));
+    }, QString());
+    ASSERT_NE(f.window, nullptr);
+    QQuickWindow* window = f.window;
+    BrowseContext* context = f.context;
     ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 2; }));
     ASSERT_FALSE(window->property("viewing").toBool());
 
@@ -431,19 +411,10 @@ TEST(Main, StraightenFromTheBrowserOpensTheImageFirst) {
 }
 
 TEST(Main, DeleteWhileStraighteningRemovesTheLineNotTheFile) {
-    QTemporaryDir dir;
-    writeTiltedJpeg(dir);
-    const QString path = dir.filePath(QStringLiteral("tilted.jpg"));
-    ASSERT_TRUE(QFile::exists(path));
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-    engine.setInitialProperties({{QStringLiteral("initialPath"), path}});
-    engine.loadFromModule("ImageViewer", "Main");
-    ASSERT_EQ(engine.rootObjects().size(), 1);
-    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
-    ASSERT_NE(window, nullptr);
-    window->requestActivate();
-    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
+    MainFixture f([](const QTemporaryDir& dir) { writeTiltedJpeg(dir); }, QStringLiteral("tilted.jpg"));
+    ASSERT_NE(f.window, nullptr);
+    QQuickWindow* window = f.window;
+    const QString path = f.dir.filePath(QStringLiteral("tilted.jpg"));
     auto* image = window->property("activeView").value<ImageView*>();
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 400; }));
 
@@ -468,17 +439,13 @@ TEST(Main, DeleteWhileStraighteningRemovesTheLineNotTheFile) {
 }
 
 TEST(Main, LeavingAnEditedImageAsksFirst) {
-    QTemporaryDir dir;
-    writeTurnedJpeg(dir, QStringLiteral("a.jpg"));
-    writeTurnedJpeg(dir, QStringLiteral("b.jpg"));
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.filePath(QStringLiteral("a.jpg"))}});
-    engine.loadFromModule("ImageViewer", "Main");
-    ASSERT_EQ(engine.rootObjects().size(), 1);
-    QObject* window = engine.rootObjects().front();
-    auto* context = window->findChild<BrowseContext*>();
-    ASSERT_NE(context, nullptr);
+    MainFixture f([](const QTemporaryDir& dir) {
+        writeTurnedJpeg(dir, QStringLiteral("a.jpg"));
+        writeTurnedJpeg(dir, QStringLiteral("b.jpg"));
+    }, QStringLiteral("a.jpg"));
+    ASSERT_NE(f.window, nullptr);
+    QObject* window = f.window;
+    BrowseContext* context = f.context;
     ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 2; }));
     auto* image = window->property("activeView").value<ImageView*>();
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->source().endsWith(QStringLiteral("a.jpg")); }));
@@ -742,17 +709,11 @@ TEST(FileChooser, FolderModeChoosesTheSelectedFolderOrElseTheOneShown) {
 }
 
 TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
-    QTemporaryDir dir;
-    writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
-    QQmlApplicationEngine engine;
-    engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
-    engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
-    engine.loadFromModule("ImageViewer", "Main");
-    ASSERT_EQ(engine.rootObjects().size(), 1);
-    auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
-    window->requestActivate();
-    ASSERT_TRUE(waitUntil([&] { return window->isExposed(); }));
-    auto* context = window->findChild<BrowseContext*>();
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    QQuickWindow* window = f.window;
+    BrowseContext* context = f.context;
+    const QTemporaryDir& dir = f.dir;
     ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 1 && context->selectedCount() == 1; }));
 
     auto* chooser = window->findChild<QObject*>(QStringLiteral("saveDialog"));
