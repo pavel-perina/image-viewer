@@ -1,6 +1,8 @@
 qt_add_library(iv_ui STATIC
     browse_context.cpp
     browse_context.h
+    browse_context_files.cpp
+    browse_context_p.h
     color_lut.cpp
     color_lut.h
     color_settings.cpp
@@ -14,6 +16,10 @@ qt_add_library(iv_ui STATIC
     edited_image.h
     file_clipboard.cpp
     file_clipboard.h
+    file_job_runner.cpp
+    file_job_runner.h
+    file_list_model.cpp
+    file_list_model.h
     file_operations.cpp
     file_operations.h
     folder_listing.cpp
