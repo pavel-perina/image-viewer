@@ -270,7 +270,7 @@ SplitView {
                             if (!fileDrag.active)
                                 return
                             page.draggingFiles = true
-                            page.context.dragFiles(paths, image)
+                            FileClipboard.dragFiles(paths, image)
                             page.draggingFiles = false
                         }
                         if (!thumbnailImage.grabToImage((result) => start(result.image), Qt.size(64, 64)))

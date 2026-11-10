@@ -56,6 +56,7 @@
 #include "core/jpeg_transform.h"
 #include "ui/browse_context.h"
 #include "ui/color_settings.h"
+#include "ui/file_clipboard.h"
 #include "ui/directory_tree_model.h"
 #include "ui/folder_listing.h"
 #include "ui/folder_lists.h"

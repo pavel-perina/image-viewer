@@ -12,6 +12,8 @@ qt_add_library(iv_ui STATIC
     directory_tree_model.cpp
     directory_tree_model.h
     edited_image.h
+    file_clipboard.cpp
+    file_clipboard.h
     file_operations.cpp
     file_operations.h
     folder_listing.cpp

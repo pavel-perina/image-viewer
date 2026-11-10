@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QImage>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -37,7 +36,6 @@ class BrowseContext : public QObject {
     Q_PROPERTY(QString jobName READ jobName NOTIFY jobChanged)
     Q_PROPERTY(int jobDone READ jobDone NOTIFY jobChanged)
     Q_PROPERTY(int jobTotal READ jobTotal NOTIFY jobChanged)
-    Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
     Q_PROPERTY(bool canGoBack READ canGoBack NOTIFY historyChanged)
     Q_PROPERTY(bool canGoForward READ canGoForward NOTIFY historyChanged)
     Q_PROPERTY(bool canGoUp READ canGoUp NOTIFY directoryChanged)
@@ -78,7 +76,6 @@ public:
     QString jobName() const;
     int jobDone() const;
     int jobTotal() const;
-    bool canPaste() const;
     bool canGoBack() const;
     bool canGoForward() const;
     bool canGoUp() const;
@@ -149,28 +146,9 @@ public:
     bool canConvertToJxl() const;
     Q_INVOKABLE void cancelJob();  // stops before the next file
 
-    // Puts the files on the clipboard for other applications, and a single file also as an
-    // image, which arrives there a moment later as it has to be decoded.
-    Q_INVOKABLE void copyFilesToClipboard(const QStringList& paths);
-    Q_INVOKABLE void copyPathsToClipboard(const QStringList& paths);
-    Q_INVOKABLE void copyTextToClipboard(const QString& text);
-    // Local files on the clipboard, which take precedence over an image there.
-    Q_INVOKABLE QStringList clipboardFiles() const;
-    // Files marked as cut, as file managers mark them: the one that pastes moves them. Without
-    // an image, as the files are to go rather than be copied.
-    Q_INVOKABLE void cutFilesToClipboard(const QStringList& paths);
-    Q_INVOKABLE bool clipboardIsCut() const;
-    Q_INVOKABLE void clearClipboard();
     Q_INVOKABLE bool isFolder(const QString& path) const;
     // Saves the image on the clipboard as a new file in the directory.
     Q_INVOKABLE void pasteImage();
-    Q_INVOKABLE QString clipboardText() const;
-
-    // Drags the files out, to another application or a folder of the tree, until the button is
-    // released. A copy unless Ctrl, Shift or the other side asks for a move, as in file managers;
-    // Qt Quick's own drag would make a move the default. A moved file is never deleted here: the
-    // other side moves it, or it stays a copy. The image, when not null, is shown by the pointer.
-    Q_INVOKABLE void dragFiles(const QStringList& paths, const QImage& image);
 
     Q_INVOKABLE QString pathFromUrl(const QUrl& url) const;
     Q_INVOKABLE QUrl urlFromPath(const QString& path) const;
@@ -184,7 +162,6 @@ signals:
     void selectionChanged();
     void sortChanged();
     void jobChanged();
-    void clipboardChanged();
     void historyChanged();
     void summaryChanged();
     // The last image of the directory went away.

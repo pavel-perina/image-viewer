@@ -125,13 +125,13 @@ Item {
 
     // Files that were cut are moved, and the clipboard emptied, as they are no longer there.
     function paste() {
-        const files = context.clipboardFiles()
+        const files = FileClipboard.files()
         if (files.length === 0) {
             context.pasteImage()
-        } else if (context.clipboardIsCut()) {
+        } else if (FileClipboard.isCut()) {
             const folder = context.directory
             guard(() => {
-                context.clearClipboard()
+                FileClipboard.clear()
                 transfer(files, folder, true)
             })
         } else {
@@ -312,20 +312,20 @@ Item {
         text: "&Copy"
         shortcut: StandardKey.Copy
         enabled: root.hasTargets && !root.copyTakenByTool
-        onTriggered: root.context.copyFilesToClipboard(root.targetPaths)
+        onTriggered: FileClipboard.copyFiles(root.targetPaths)
     }
     Action {
         id: cutAction
         text: "Cu&t"
         shortcut: StandardKey.Cut
         enabled: root.idle && root.hasTargets
-        onTriggered: root.context.cutFilesToClipboard(root.targetPaths)
+        onTriggered: FileClipboard.cutFiles(root.targetPaths)
     }
     Action {
         id: pasteAction
         text: "&Paste"
         shortcut: StandardKey.Paste
-        enabled: root.idle && root.context.canPaste && root.context.directory !== ""
+        enabled: root.idle && FileClipboard.canPaste && root.context.directory !== ""
         onTriggered: root.paste()
     }
     Action {
@@ -333,7 +333,7 @@ Item {
         text: "Copy Full Pat&h"
         shortcut: "Ctrl+Shift+C"
         enabled: root.hasTargets
-        onTriggered: root.context.copyPathsToClipboard(root.targetPaths)
+        onTriggered: FileClipboard.copyPaths(root.targetPaths)
     }
     Action {
         id: refreshAction

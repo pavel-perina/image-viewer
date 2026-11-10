@@ -5,15 +5,12 @@
 #include <QCollator>
 #include <QDateTime>
 #include <QDir>
-#include <QDrag>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QGuiApplication>
 #include <QHash>
 #include <QImage>
 #include <QList>
-#include <QMimeData>
-#include <QPixmap>
 #include <QSet>
 #include <QStringList>
 #include <QTimeZone>
@@ -23,7 +20,6 @@
 #include <algorithm>
 #include <ranges>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <limits>
 #include <stop_token>
@@ -48,8 +44,6 @@ namespace {
 constexpr int kScanPriority = 100;
 constexpr int kJobPriority = 100;
 constexpr int kRefreshDelayMs = 200;  // copying many files changes the directory many times
-// A clipboard image is for pasting elsewhere. Past this edge a pyramid gives a reduced version.
-constexpr int kClipboardImageEdge = 16384;
 
 // A folder visited, and the image that was current in it.
 struct HistoryEntry {
@@ -272,38 +266,6 @@ private:
     QList<FileEntry> m_entries;
     std::vector<char> m_selected;
 };
-
-// Files for other applications. File managers on GNOME look for the second format.
-// How file managers mark files cut rather than copied, so that the one that pastes moves them.
-constexpr const char* kKdeCut = "application/x-kde-cutselection";
-constexpr const char* kGnomeFiles = "x-special/gnome-copied-files";
-#ifdef Q_OS_WIN
-constexpr const char* kWindowsDropEffect = "application/x-qt-windows-mime;value=\"Preferred DropEffect\"";
-constexpr quint32 kDropEffectCopy = 1;
-constexpr quint32 kDropEffectMove = 2;
-#endif
-
-QMimeData* filesMimeData(const QStringList& paths, bool cut = false) {
-    auto* mime = new QMimeData;
-    QList<QUrl> urls;
-    QByteArray gnomeFiles = cut ? "cut" : "copy";
-    for (const QString& path : paths) {
-        const QUrl url = QUrl::fromLocalFile(path);
-        urls << url;
-        gnomeFiles += '\n' + url.toEncoded();
-    }
-    mime->setUrls(urls);
-    mime->setData(QString::fromLatin1(kGnomeFiles), gnomeFiles);
-    if (cut) {
-        mime->setData(QString::fromLatin1(kKdeCut), "1");
-    }
-#ifdef Q_OS_WIN
-    // A DWORD, as Explorer writes it.
-    const quint32 effect = cut ? kDropEffectMove : kDropEffectCopy;
-    mime->setData(QString::fromLatin1(kWindowsDropEffect), QByteArray(reinterpret_cast<const char*>(&effect), sizeof effect));
-#endif
-    return mime;
-}
 
 }  // namespace
 
@@ -538,7 +500,6 @@ BrowseContext::BrowseContext(QObject* parent) : QObject(parent), m_impl(std::mak
     m_impl->refreshTimer.setInterval(kRefreshDelayMs);
     connect(&m_impl->refreshTimer, &QTimer::timeout, this, [this] { refresh(); });
     connect(&m_impl->watcher, &QFileSystemWatcher::directoryChanged, &m_impl->refreshTimer, qOverload<>(&QTimer::start));
-    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &BrowseContext::clipboardChanged);
     connect(this, &BrowseContext::filesChanged, this, &BrowseContext::summaryChanged);
     connect(this, &BrowseContext::selectionChanged, this, &BrowseContext::summaryChanged);
 }
@@ -1019,116 +980,8 @@ void BrowseContext::saveAs(const QString& source, int page, const QString& targe
 
 void BrowseContext::cancelJob() { m_impl->jobStop.request_stop(); }
 
-void BrowseContext::copyFilesToClipboard(const QStringList& paths) {
-    if (paths.isEmpty()) {
-        return;
-    }
-    QClipboard* clipboard = QGuiApplication::clipboard();
-    QMimeData* mime = filesMimeData(paths);
-    clipboard->setMimeData(mime);
-    if (paths.size() != 1) {
-        return;
-    }
-    // Decoded here rather than when asked for, as a clipboard manager asks at once, and that
-    // would stop the main thread. Colours are converted to sRGB, which is what others assume.
-    m_impl->queue.submit(m_impl->jobGroup, kJobPriority, [this, mime, path = paths.front()](std::stop_token stop) {
-        const auto image = makeThumbnail(QFileInfo(path).filesystemFilePath(), kClipboardImageEdge, stop);
-        if (!image) {
-            return;  // it still is on the clipboard as a file
-        }
-        QImage pixels = toQImage(*image);
-        QMetaObject::invokeMethod(this, [mime, path, pixels = std::move(pixels)] {
-            QClipboard* board = QGuiApplication::clipboard();
-            // The pointer is only compared: if anything else was copied since, it is gone.
-            if (board->mimeData() == mime) {
-                QMimeData* withImage = filesMimeData({path});
-                withImage->setImageData(pixels);
-                board->setMimeData(withImage);
-            }
-        });
-    });
-}
-
-void BrowseContext::cutFilesToClipboard(const QStringList& paths) {
-    if (!paths.isEmpty()) {
-        QGuiApplication::clipboard()->setMimeData(filesMimeData(paths, true));
-    }
-}
-
-bool BrowseContext::clipboardIsCut() const {
-    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
-    if (!mime) {
-        return false;
-    }
-    if (mime->data(QString::fromLatin1(kKdeCut)).startsWith('1') || mime->data(QString::fromLatin1(kGnomeFiles)).startsWith("cut")) {
-        return true;
-    }
-#ifdef Q_OS_WIN
-    const QByteArray effect = mime->data(QString::fromLatin1(kWindowsDropEffect));
-    if (effect.size() >= 4) {
-        quint32 value = 0;
-        std::memcpy(&value, effect.constData(), sizeof value);
-        return (value & kDropEffectMove) != 0;
-    }
-#endif
-    return false;
-}
-
-void BrowseContext::clearClipboard() {
-    QGuiApplication::clipboard()->clear();
-}
-
 bool BrowseContext::isFolder(const QString& path) const {
     return QFileInfo(path).isDir();
-}
-
-void BrowseContext::dragFiles(const QStringList& paths, const QImage& image) {
-    if (paths.isEmpty()) {
-        return;
-    }
-    auto* mime = new QMimeData;
-    QList<QUrl> urls;
-    for (const QString& path : paths) {
-        urls << QUrl::fromLocalFile(path);
-    }
-    mime->setUrls(urls);
-    auto* drag = new QDrag(this);
-    drag->setMimeData(mime);
-    if (!image.isNull()) {
-        drag->setPixmap(QPixmap::fromImage(image));
-        drag->setHotSpot(QPoint(-12, -12));  // beside the pointer, leaving where it goes in sight
-    }
-    drag->exec(Qt::CopyAction | Qt::MoveAction, Qt::CopyAction);
-}
-
-void BrowseContext::copyPathsToClipboard(const QStringList& paths) {
-    QStringList native;
-    for (const QString& path : paths) {
-        native << QDir::toNativeSeparators(path);
-    }
-    QGuiApplication::clipboard()->setText(native.join(QLatin1Char('\n')));
-}
-
-void BrowseContext::copyTextToClipboard(const QString& text) {
-    QGuiApplication::clipboard()->setText(text);
-}
-
-QStringList BrowseContext::clipboardFiles() const {
-    QStringList paths;
-    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
-    if (mime && mime->hasUrls()) {
-        for (const QUrl& url : mime->urls()) {
-            if (url.isLocalFile()) {
-                paths << url.toLocalFile();
-            }
-        }
-    }
-    return paths;
-}
-
-bool BrowseContext::canPaste() const {
-    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
-    return mime && (mime->hasImage() || !clipboardFiles().isEmpty());
 }
 
 void BrowseContext::pasteImage() {
@@ -1141,8 +994,6 @@ void BrowseContext::pasteImage() {
         return saveNewImage(image, folder, QDateTime::currentDateTime());
     });
 }
-
-QString BrowseContext::clipboardText() const { return QGuiApplication::clipboard()->text(); }
 
 QString BrowseContext::nativePath(const QString& path) const { return QDir::toNativeSeparators(path); }
 

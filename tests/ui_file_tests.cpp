@@ -278,41 +278,45 @@ TEST(FileOperations, SortsByEachKeyAndKeepsTheCurrentImage) {
 
 TEST(Clipboard, FilesReachTheClipboardAndASingleOneAlsoAsAnImage) {
     FileOpsFixture f(2);
+    iv::FileClipboard clipboard;
     const QStringList both{f.path(QStringLiteral("a.jpg")), f.path(QStringLiteral("b.jpg"))};
-    f.context.copyFilesToClipboard(both);
-    EXPECT_EQ(f.context.clipboardFiles(), both);
+    clipboard.copyFiles(both);
+    EXPECT_EQ(clipboard.files(), both);
     EXPECT_FALSE(QGuiApplication::clipboard()->mimeData()->hasImage());
 
-    f.context.copyFilesToClipboard({both[0]});
-    EXPECT_EQ(f.context.clipboardFiles(), QStringList{both[0]});
+    clipboard.copyFiles({both[0]});
+    EXPECT_EQ(clipboard.files(), QStringList{both[0]});
     EXPECT_TRUE(waitUntil([] { return QGuiApplication::clipboard()->mimeData()->hasImage(); }));
-    EXPECT_EQ(f.context.clipboardFiles(), QStringList{both[0]}) << "the image adds to the files";
+    EXPECT_EQ(clipboard.files(), QStringList{both[0]}) << "the image adds to the files";
     EXPECT_EQ(QGuiApplication::clipboard()->image().width(), 64);
-    EXPECT_TRUE(f.context.canPaste());
+    EXPECT_TRUE(clipboard.canPaste());
 }
 
 TEST(Clipboard, ALateImageDoesNotOverwriteANewerCopy) {
     FileOpsFixture f(1);
-    f.context.copyFilesToClipboard({f.path(QStringLiteral("a.jpg"))});
+    iv::FileClipboard clipboard;
+    clipboard.copyFiles({f.path(QStringLiteral("a.jpg"))});
     QGuiApplication::clipboard()->setText(QStringLiteral("newer"));
     waitUntil([] { return false; }, 300);
     EXPECT_EQ(QGuiApplication::clipboard()->text(), QStringLiteral("newer"));
-    EXPECT_FALSE(f.context.canPaste());
+    EXPECT_FALSE(clipboard.canPaste());
 }
 
 TEST(Clipboard, FullPathsAreText) {
     FileOpsFixture f(1);
-    f.context.copyPathsToClipboard({f.path(QStringLiteral("a.jpg"))});
+    iv::FileClipboard clipboard;
+    clipboard.copyPaths({f.path(QStringLiteral("a.jpg"))});
     EXPECT_EQ(QGuiApplication::clipboard()->text(), QDir::toNativeSeparators(f.path(QStringLiteral("a.jpg"))));
 }
 
 TEST(Clipboard, PastedImageBecomesATimeNamedPngAndIsSelected) {
     FileOpsFixture f(1);
+    iv::FileClipboard clipboard;
     QImage image(20, 10, QImage::Format_ARGB32);
     image.fill(qRgba(10, 200, 30, 128));
     QGuiApplication::clipboard()->setImage(image);
-    ASSERT_TRUE(f.context.canPaste());
-    EXPECT_TRUE(f.context.clipboardFiles().isEmpty());
+    ASSERT_TRUE(clipboard.canPaste());
+    EXPECT_TRUE(clipboard.files().isEmpty());
 
     const QRegularExpression pattern(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}_\\d{6}\\.png$"));
     f.context.pasteImage();
@@ -419,6 +423,7 @@ TEST(Drop, NotOnTheFolderTheFilesAreAlreadyIn) {
 
 TEST(Clipboard, CutFilesAreMarkedForFileManagersAndMovedWhenPastedHere) {
     MainFixture f(1, {QStringLiteral("sub")});
+    iv::FileClipboard clipboard;
     ASSERT_NE(f.window, nullptr);
     const QString file = f.dir.filePath(QStringLiteral("a.jpg"));
     const QString sub = f.dir.filePath(QStringLiteral("sub"));
@@ -430,15 +435,15 @@ TEST(Clipboard, CutFilesAreMarkedForFileManagersAndMovedWhenPastedHere) {
     EXPECT_EQ(mime->data(QStringLiteral("application/x-kde-cutselection")), QByteArray("1"));
     EXPECT_TRUE(mime->data(QStringLiteral("x-special/gnome-copied-files")).startsWith("cut\n"));
     EXPECT_FALSE(mime->hasImage()) << "a cut file is not offered as a picture";
-    EXPECT_TRUE(f.context->clipboardIsCut());
+    EXPECT_TRUE(clipboard.isCut());
     EXPECT_TRUE(QFile::exists(file)) << "nothing moves until it is pasted";
 
     f.context->openPath(sub);
     ASSERT_TRUE(waitUntil([&] { return f.context->directory() == sub; }));
     QTest::keyClick(f.window, Qt::Key_V, Qt::ControlModifier);
     EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/a.jpg")) && !QFile::exists(file); })) << "moved";
-    EXPECT_TRUE(f.context->clipboardFiles().isEmpty()) << "and gone from the clipboard";
+    EXPECT_TRUE(clipboard.files().isEmpty()) << "and gone from the clipboard";
 
-    f.context->copyFilesToClipboard({sub + QStringLiteral("/a.jpg")});
-    EXPECT_FALSE(f.context->clipboardIsCut()) << "a copy is not a cut";
+    clipboard.copyFiles({sub + QStringLiteral("/a.jpg")});
+    EXPECT_FALSE(clipboard.isCut()) << "a copy is not a cut";
 }

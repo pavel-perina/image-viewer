@@ -52,7 +52,7 @@ Rectangle {
 
     // Pastes into the field rather than opening at once, if it cannot be opened.
     function pasteAndGo() {
-        const text = context.clipboardText()
+        const text = FileClipboard.text()
         submit(text)
         if (problem) {
             field.text = text
@@ -347,7 +347,7 @@ Rectangle {
         parent: Overlay.overlay
         AppMenuItem {
             text: "&Copy Path"
-            onTriggered: bar.context.copyPathsToClipboard([pathMenu.path])
+            onTriggered: FileClipboard.copyPaths([pathMenu.path])
         }
         AppMenuItem {
             text: "&Paste and Go"

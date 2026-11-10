@@ -64,7 +64,7 @@ Rectangle {
     function copy(text) {
         if (!text)
             return
-        context.copyTextToClipboard(text)
+        FileClipboard.copyText(text)
         copied.text = "Copied " + text
         copiedTimer.restart()
     }
