@@ -9,8 +9,14 @@ TreeView {
 
     required property BrowseContext context
     signal folderMenuRequested(string path)
+    signal renameRequested(string path)
+    signal trashRequested(string path)
+    // Enter: back to the files of the folder.
+    signal filesRequested()
 
     clip: true
+    activeFocusOnTab: true
+    keyNavigationEnabled: false
     model: DirectoryTreeModel {
         id: treeModel
     }
@@ -30,6 +36,63 @@ TreeView {
         const row = rowAtIndex(index)
         expand(row)
         positionViewAtRow(row, TableView.Contain)
+    }
+
+    function pathAt(row) {
+        return treeModel.pathForIndex(tree.index(row, 0))
+    }
+
+    // Opens the folder of a row without unfolding it, so that moving down does not descend into
+    // every folder on the way.
+    function openRow(row) {
+        if (row < 0 || row >= rows)
+            return
+        const path = pathAt(row)
+        revealedPath = path
+        context.openPath(path)
+        positionViewAtRow(row, TableView.Contain)
+    }
+
+    // Keys as in a file manager's tree. Left collapses an open folder, otherwise goes to its parent;
+    // Right opens a closed one, otherwise goes to its first subfolder.
+    function handleKey(event) {
+        if ((event.modifiers & ~Qt.KeypadModifier) !== 0)
+            return false
+        const row = rowAtIndex(treeModel.indexForPath(context.directory))
+        switch (event.key) {
+        case Qt.Key_Up: openRow(row < 0 ? 0 : row - 1); break
+        case Qt.Key_Down: openRow(row + 1); break
+        case Qt.Key_Left:
+            if (row >= 0 && isExpanded(row))
+                collapse(row)
+            else
+                context.goUp()
+            break
+        case Qt.Key_Right:
+            if (row < 0)
+                break
+            if (!isExpanded(row))
+                expand(row)
+            else if (row + 1 < rows && depth(row + 1) > depth(row))
+                openRow(row + 1)
+            break
+        case Qt.Key_Backspace: context.goUp(); break
+        case Qt.Key_F2: if (context.directory) renameRequested(context.directory); break
+        case Qt.Key_Delete: if (context.directory) trashRequested(context.directory); break
+        case Qt.Key_Return:
+        case Qt.Key_Enter: filesRequested(); break
+        default: return false
+        }
+        return true
+    }
+
+    Keys.onPressed: (event) => event.accepted = handleKey(event)
+    // Taken from the window's shortcuts, where they would rename or delete the files instead.
+    // Shift+Del too, which does nothing to a folder.
+    Keys.onShortcutOverride: (event) => {
+        const plain = (event.modifiers & ~Qt.KeypadModifier) === 0
+        event.accepted = (plain && event.key === Qt.Key_F2)
+                || (event.key === Qt.Key_Delete && (plain || event.modifiers === Qt.ShiftModifier))
     }
 
     delegate: TreeViewDelegate {
@@ -57,6 +120,7 @@ TreeView {
                 return point.position.x < treeRow.indicator.x + treeRow.indicator.width
             }
             onTapped: (point) => {
+                tree.forceActiveFocus()
                 if (onArrow(point))
                     return
                 const path = treeModel.pathForIndex(tree.index(treeRow.row, 0))
@@ -72,7 +136,10 @@ TreeView {
         }
         TapHandler {
             acceptedButtons: Qt.RightButton
-            onTapped: tree.folderMenuRequested(treeModel.pathForIndex(tree.index(treeRow.row, 0)))
+            onTapped: {
+                tree.forceActiveFocus()
+                tree.folderMenuRequested(treeModel.pathForIndex(tree.index(treeRow.row, 0)))
+            }
         }
     }
 

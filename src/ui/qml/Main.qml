@@ -190,7 +190,19 @@ ApplicationWindow {
         context.sortDescending = browserSettings.sortDescending
         context.openPath(initialPath)
         window.viewing = context.currentPath !== ""
+        Qt.callLater(window.focusPage)
     }
+
+    // The keys go to the page shown: to the thumbnails in the browser, as nothing else would take
+    // them, and away from a tool that has ended.
+    function focusPage() {
+        if (window.viewing)
+            viewerPage.forceActiveFocus()
+        else
+            browserPage.focusFiles()
+    }
+    onViewingChanged: Qt.callLater(window.focusPage)
+    onToolActiveChanged: if (!window.toolActive) Qt.callLater(window.focusPage)
 
     function toggleFullScreen() {
         window.visibility = window.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
@@ -391,33 +403,25 @@ ApplicationWindow {
     Action { id: actualSizeAction; text: "1:1"; shortcut: "1"; onTriggered: window.activeView.actualSize() }
     Action { id: fullScreenAction; text: "Full Screen"; shortcut: "F11"; onTriggered: window.toggleFullScreen() }
 
-    // Space pans while cropping, with the left button.
-    Shortcut { sequences: ["Right", "Space"]; enabled: !window.typing && !window.toolActive; onActivated: window.next() }
-    Shortcut { sequences: ["Left", "Backspace"]; enabled: !window.typing && !window.toolActive; onActivated: window.previous() }
-    Shortcut { sequence: "PgDown"; enabled: !window.typing && !window.toolActive; onActivated: window.viewing ? window.next() : browserPage.movePage(1) }
-    Shortcut { sequence: "PgUp"; enabled: !window.typing && !window.toolActive; onActivated: window.viewing ? window.previous() : browserPage.movePage(-1) }
-    Shortcut { sequence: "Shift+PgDown"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(1) }
-    Shortcut { sequence: "Shift+PgUp"; enabled: !window.viewing && !window.typing; onActivated: browserPage.extendSelectionByPage(-1) }
+    // Moving between images in the large view. In the browser the thumbnails and the folder tree
+    // take these keys themselves, each while it has the focus. Space pans while cropping.
+    Shortcut { sequences: ["Right", "Space", "PgDown"]; enabled: window.viewing && !window.toolActive; onActivated: window.next() }
+    Shortcut { sequences: ["Left", "Backspace", "PgUp"]; enabled: window.viewing && !window.toolActive; onActivated: window.previous() }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.straightening && !viewerPage.straightenPanelEditing; onActivated: viewerPage.applyStraighten() }
     Shortcut { sequences: ["Return", "Enter"]; enabled: window.adjusting; onActivated: viewerPage.applyAdjust() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
-    Shortcut { sequence: "Up"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(-1) }
-    Shortcut { sequence: "Down"; enabled: !window.viewing && !window.typing; onActivated: browserPage.moveCurrent(1) }
-    Shortcut { sequence: "Shift+Left"; enabled: !window.viewing; onActivated: context.extendSelectionTo(context.currentIndex - 1) }
-    Shortcut { sequence: "Shift+Right"; enabled: !window.viewing; onActivated: context.extendSelectionTo(context.currentIndex + 1) }
-    Shortcut { sequence: "Shift+Up"; enabled: !window.viewing; onActivated: browserPage.extendSelection(-1) }
-    Shortcut { sequence: "Shift+Down"; enabled: !window.viewing; onActivated: browserPage.extendSelection(1) }
     Shortcut { sequence: "Ctrl+A"; enabled: !window.viewing; onActivated: context.selectAll() }
     Action { id: backAction; text: "&Back"; shortcut: "Alt+Left"; enabled: !window.viewing && context.canGoBack; onTriggered: context.goBack() }
     Action { id: forwardAction; text: "&Forward"; shortcut: "Alt+Right"; enabled: !window.viewing && context.canGoForward; onTriggered: context.goForward() }
     Action { id: upAction; text: "&Up"; shortcut: "Alt+Up"; enabled: !window.viewing && context.canGoUp; onTriggered: context.goUp() }
     Action { id: editPathAction; text: "&Edit Location"; shortcut: "Ctrl+L"; enabled: !window.viewing; onTriggered: browserPage.pathBar.edit() }
+    // Back to the browser, as Enter there opens the image.
     Shortcut {
         sequences: ["Return", "Enter"]
-        enabled: !window.viewing && !window.typing && context.currentPath !== ""
-        onActivated: window.viewing = true
+        enabled: window.viewing && !window.toolActive
+        onActivated: window.leaveImage(() => window.viewing = false)
     }
     Shortcut { sequence: "="; onActivated: window.activeView.zoomIn() }
     Shortcut {
@@ -637,6 +641,8 @@ ApplicationWindow {
             onViewRequested: window.viewing = true
             onFileMenuRequested: fileActions.fileMenu.popup()
             onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)
+            onFolderRenameRequested: (path) => fileActions.renameFolder(path)
+            onFolderTrashRequested: (path) => fileActions.trashFolder(path)
         }
 
         ViewerPage {

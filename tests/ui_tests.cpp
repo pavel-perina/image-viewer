@@ -4979,6 +4979,191 @@ TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
     QTest::keyClick(window, Qt::Key_Escape);
 }
 
+namespace {
+
+// The whole application on a folder of four images, active, for keys.
+struct MainFixture {
+    QTemporaryDir dir;
+    QQmlApplicationEngine engine;
+    QQuickWindow* window = nullptr;
+    BrowseContext* context = nullptr;
+
+    // Folders before the window, as the tree lists each folder once.
+    explicit MainFixture(int files = 4, const QStringList& folders = {}) {
+        for (const QString& folder : folders) {
+            QDir(dir.path()).mkpath(folder);
+        }
+        for (int i = 0; i < files; ++i) {
+            writeJpeg(dir.filePath(QStringLiteral("%1.jpg").arg(QChar('a' + i))));
+        }
+        engine.addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+        engine.setInitialProperties({{QStringLiteral("initialPath"), dir.path()}});
+        engine.loadFromModule("ImageViewer", "Main");
+        if (engine.rootObjects().size() != 1) {
+            return;
+        }
+        window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());
+        window->requestActivate();
+        waitUntil([&] { return window->isExposed(); });
+        context = window->findChild<BrowseContext*>();
+        waitUntil([&] { return context->fileCount() == files; });
+    }
+
+    QObject* find(const QString& name) const { return window->findChild<QObject*>(name); }
+    QString focused() const {
+        QQuickItem* item = window->activeFocusItem();
+        return item ? QString::fromLatin1(item->metaObject()->className()) + QLatin1Char(' ') + item->objectName() : QStringLiteral("none");
+    }
+};
+
+}  // namespace
+
+TEST(Keys, TheThumbnailsHaveTheKeysAfterEditingThePathOrAName) {
+    MainFixture f;
+    ASSERT_NE(f.window, nullptr);
+    QObject* grid = f.find(QStringLiteral("thumbnailGrid"));
+    ASSERT_TRUE(waitUntil([&] { return grid->property("activeFocus").toBool(); })) << "they start with them";
+    f.context->setCurrentIndex(0);
+    QTest::keyClick(f.window, Qt::Key_Right);
+    EXPECT_EQ(f.context->currentIndex(), 1);
+
+    // A hidden path field used to keep the focus, and with it the arrows.
+    QTest::keyClick(f.window, Qt::Key_L, Qt::ControlModifier);
+    ASSERT_TRUE(f.window->property("typing").toBool());
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(grid->property("activeFocus").toBool());
+    QTest::keyClick(f.window, Qt::Key_Right);
+    EXPECT_EQ(f.context->currentIndex(), 2);
+
+    QTest::keyClick(f.window, Qt::Key_F2);
+    QObject* names = f.find(QStringLiteral("nameDialog"));
+    ASSERT_TRUE(waitUntil([&] { return names->property("opened").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    ASSERT_TRUE(waitUntil([&] { return !names->property("visible").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Left);
+    EXPECT_EQ(f.context->currentIndex(), 1);
+}
+
+TEST(Keys, ThumbnailsMoveByRowPageAndEndAndChooseWithShift) {
+    MainFixture f(6);
+    ASSERT_NE(f.window, nullptr);
+    f.context->setCurrentIndex(0);
+    QTest::keyClick(f.window, Qt::Key_End);
+    EXPECT_EQ(f.context->currentIndex(), 5);
+    QTest::keyClick(f.window, Qt::Key_Home, Qt::ShiftModifier);
+    EXPECT_EQ(f.context->currentIndex(), 0);
+    EXPECT_EQ(f.context->selectedPaths().size(), 6);
+    QTest::keyClick(f.window, Qt::Key_Down);
+    const int columns = f.find(QStringLiteral("thumbnailGrid"))->property("columns").toInt();
+    EXPECT_EQ(f.context->currentIndex(), columns < 6 ? columns : 0);
+    EXPECT_EQ(f.context->selectedPaths().size(), 1);
+}
+
+TEST(Keys, EnterOpensTheImageAndGoesBack) {
+    MainFixture f;
+    ASSERT_NE(f.window, nullptr);
+    f.context->setCurrentIndex(1);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_TRUE(f.window->property("viewing").toBool());
+    QTest::keyClick(f.window, Qt::Key_Right);
+    EXPECT_EQ(f.context->currentIndex(), 2) << "the large view moves on";
+    QTest::keyClick(f.window, Qt::Key_Return);
+    EXPECT_FALSE(f.window->property("viewing").toBool());
+    EXPECT_TRUE(waitUntil([&] { return f.find(QStringLiteral("thumbnailGrid"))->property("activeFocus").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Backspace);
+    EXPECT_TRUE(waitUntil([&] { return f.context->directory() == QFileInfo(f.dir.path()).absolutePath(); }))
+        << "Backspace in the browser goes to the parent folder";
+}
+
+TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {
+    MainFixture f(1, {QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    const QString sub = f.dir.filePath(QStringLiteral("sub"));
+    f.context->openPath(sub);
+    ASSERT_TRUE(waitUntil([&] { return f.context->directory() == sub; }));
+    ASSERT_TRUE(f.find(QStringLiteral("thumbnailGrid"))->property("activeFocus").toBool());
+    QTest::keyClick(f.window, Qt::Key_Left, Qt::AltModifier);
+    EXPECT_TRUE(waitUntil([&] { return f.context->directory() == f.dir.path(); })) << "Alt+Left from the thumbnails";
+    qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")))->forceActiveFocus();
+    QTest::keyClick(f.window, Qt::Key_Right, Qt::AltModifier);
+    EXPECT_TRUE(waitUntil([&] { return f.context->directory() == sub; })) << "Alt+Right from the tree";
+}
+
+TEST(Keys, TheTreeMovesBetweenFoldersAsAFileManagerDoes) {
+    MainFixture f(1, {QStringLiteral("one/deep"), QStringLiteral("two")});
+    ASSERT_NE(f.window, nullptr);
+    const QString root = f.dir.path();
+    auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));
+    ASSERT_NE(tree, nullptr);
+    tree->forceActiveFocus();
+    const auto key = [&](Qt::Key k, const QString& expected) {
+        QTest::keyClick(f.window, k);
+        return waitUntil([&] { return f.context->directory() == expected; });
+    };
+    auto* model = qobject_cast<iv::DirectoryTreeModel*>(tree->property("model").value<QObject*>());
+    const auto rowOf = [&](const QString& path) {
+        int row = -1;
+        QMetaObject::invokeMethod(tree, "rowAtIndex", Q_RETURN_ARG(int, row), Q_ARG(QModelIndex, model->indexForPath(path)));
+        return row;
+    };
+    const auto isExpanded = [&](const QString& path) {
+        const int row = rowOf(path);
+        bool open = false;
+        QMetaObject::invokeMethod(tree, "isExpanded", Q_RETURN_ARG(bool, open), Q_ARG(int, row));
+        return open;
+    };
+    const QString one = root + QStringLiteral("/one");
+    // The model lists folders in the background.
+    ASSERT_TRUE(waitUntil([&] { return isExpanded(root) && rowOf(one) > rowOf(root) && rowOf(root + QStringLiteral("/two")) > rowOf(one); }));
+    EXPECT_TRUE(key(Qt::Key_Down, one));
+    EXPECT_FALSE(isExpanded(one)) << "moving does not unfold";
+    EXPECT_TRUE(key(Qt::Key_Down, root + QStringLiteral("/two"))) << "so the next is beside it, not in it";
+    EXPECT_TRUE(key(Qt::Key_Up, one));
+    QTest::keyClick(f.window, Qt::Key_Right);
+    EXPECT_TRUE(waitUntil([&] { return isExpanded(one); })) << "Right unfolds";
+    ASSERT_TRUE(waitUntil([&] { return rowOf(one + QStringLiteral("/deep")) > rowOf(one); })) << "its subfolders are listed";
+    EXPECT_TRUE(key(Qt::Key_Right, one + QStringLiteral("/deep"))) << "then goes in";
+    EXPECT_TRUE(key(Qt::Key_Left, one)) << "Left on a closed folder goes to its parent";
+    QTest::keyClick(f.window, Qt::Key_Left);
+    EXPECT_TRUE(waitUntil([&] { return !isExpanded(one); })) << "and folds an open one";
+    EXPECT_EQ(f.context->directory(), one);
+    EXPECT_TRUE(key(Qt::Key_Backspace, root));
+    EXPECT_TRUE(tree->hasActiveFocus());
+    QTest::keyClick(f.window, Qt::Key_Return);
+    EXPECT_TRUE(f.find(QStringLiteral("thumbnailGrid"))->property("activeFocus").toBool()) << "Enter goes to the files";
+}
+
+TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
+    MainFixture f(2, {QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    const QString folder = f.dir.filePath(QStringLiteral("sub"));
+    writeJpeg(folder + QStringLiteral("/x.jpg"));
+    f.context->openPath(folder);
+    ASSERT_TRUE(waitUntil([&] { return f.context->fileCount() == 1; }));
+    f.context->setCurrentIndex(0);
+    auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));
+    tree->forceActiveFocus();
+
+    QTest::keyClick(f.window, Qt::Key_F2);
+    QObject* names = f.find(QStringLiteral("nameDialog"));
+    ASSERT_TRUE(waitUntil([&] { return names->property("opened").toBool(); }));
+    EXPECT_EQ(names->property("title").toString(), QStringLiteral("Rename Folder"));
+    EXPECT_EQ(names->property("initialText").toString(), QStringLiteral("sub"));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    ASSERT_TRUE(waitUntil([&] { return !names->property("visible").toBool(); }));
+    EXPECT_TRUE(tree->hasActiveFocus()) << "the keys come back to the tree";
+
+    QTest::keyClick(f.window, Qt::Key_Delete);
+    QObject* trash = f.find(QStringLiteral("trashFolderDialog"));
+    ASSERT_NE(trash, nullptr);
+    EXPECT_TRUE(waitUntil([&] { return trash->property("opened").toBool(); })) << "it asks about the folder";
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    ASSERT_TRUE(waitUntil([&] { return !trash->property("visible").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Delete, Qt::ShiftModifier);
+    waitUntil([] { return false; }, 200);
+    EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
+}
+
 int main(int argc, char** argv) {
     // Tests run side by side, and must neither see each other's settings nor touch the user's.
     // The same goes for the trash: Qt uses the one in the home folder for files on the same

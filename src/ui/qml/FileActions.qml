@@ -64,6 +64,18 @@ Item {
         folderMenu.popup()
     }
 
+    function renameFolder(path) {
+        if (root.idle)
+            root.askName("Rename Folder", root.folderName(path), (name) => root.context.rename(path, name))
+    }
+
+    function trashFolder(path) {
+        if (!root.idle)
+            return
+        trashFolderDialog.path = path
+        trashFolderDialog.open()
+    }
+
     function folderName(path) {
         return path.substring(path.lastIndexOf("/") + 1)
     }
@@ -457,18 +469,12 @@ Item {
         AppMenuItem {
             text: "&Rename..."
             enabled: root.idle
-            onTriggered: {
-                const path = folderMenu.path
-                root.askName("Rename Folder", root.folderName(path), (name) => root.context.rename(path, name))
-            }
+            onTriggered: root.renameFolder(folderMenu.path)
         }
         AppMenuItem {
             text: "Move to &Trash..."
             enabled: root.idle
-            onTriggered: {
-                trashFolderDialog.path = folderMenu.path
-                trashFolderDialog.open()
-            }
+            onTriggered: root.trashFolder(folderMenu.path)
         }
     }
 
@@ -639,6 +645,7 @@ Item {
 
     MessageBox {
         id: trashFolderDialog
+        objectName: "trashFolderDialog"
         property string path
         kind: "question"
         title: "Move Folder to Trash"

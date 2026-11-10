@@ -101,12 +101,18 @@ The interface uses the Inter typeface, embedded in the executable, under the SIL
 | --- | --- |
 | Click a thumbnail | Select it and show it in the preview |
 | Double-click a thumbnail, Enter | Open the large view |
-| Esc | Back to the browser, or leave full screen |
+| Esc, Enter | Back to the browser; Esc also leaves full screen |
 | Right, Space | Next image |
-| Left, Backspace | Previous image |
+| Left | Previous image |
+| Backspace | Previous image in the large view; parent folder in the browser |
 | PgDown, PgUp | Move one page of thumbnails in the browser; next or previous image in the large view |
+| Home, End | First or last thumbnail |
 | Ctrl+PgDown, Ctrl+PgUp | Next or previous page of a multipage file |
 | Up, Down | Move one row in the browser |
+| Tab, click | Give the keys to the thumbnails or the folder tree; the selection of thumbnails turns paler while the tree has them |
+| In the folder tree: Up, Down | Open the folder above or below |
+| In the folder tree: Right, Left | Unfold a folder, then go into it; fold it, then go to its parent |
+| In the folder tree: F2, Del, Enter | Rename the folder, move it to the trash after asking, go to its thumbnails |
 | C | Turn colour management on or off |
 | M | Turn sharp resampling on or off (Magic Kernel Sharp 2013) |
 | Ctrl+click | Add or remove a thumbnail from the selection |

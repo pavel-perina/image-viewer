@@ -296,6 +296,14 @@ change nothing useful. The first press of a double click does this too, for that
   they looked like part of it. One star holds favourites and recent folders, kept by `FolderLists`.
 * In the large view the wheel moves between images and Ctrl+wheel zooms. The preview has no other
   use for the wheel, so there it keeps zooming, which also works with Ctrl.
+* Keys go to what has the focus. In the browser the thumbnails and the folder tree each handle the
+  arrows, Home, End, PgUp, PgDown, Backspace and Enter themselves, and start with the thumbnails;
+  the window's shortcuts keep only what means the same everywhere, and moving between images in
+  the large view. The tree takes F2 and Del from the window's shortcuts (`Keys.onShortcutOverride`)
+  for the folder, and Shift+Del too, so that it never deletes the files instead. The keys return to
+  the page when a dialog closes, a tool ends or the path bar is left with Enter or Esc: a hidden
+  text field otherwise keeps the focus and swallows the arrows. Moving through the tree opens
+  folders without unfolding them, as file managers do; unfolding is Right.
 
 * Dialogs are drawn inside the window, which the system does not decorate, so `AppDialog` brings
   a frame, title bar and shadow. Messages share `MessageBox`: caption, text, an icon for info,

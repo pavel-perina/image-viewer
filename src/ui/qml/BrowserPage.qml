@@ -20,13 +20,16 @@ SplitView {
     // A right click on the files, or on a folder of the tree.
     signal fileMenuRequested()
     signal folderMenuRequested(string path)
+    // F2 and Del in the folder tree.
+    signal folderRenameRequested(string path)
+    signal folderTrashRequested(string path)
 
-    function moveCurrent(rows) {
-        page.context.setCurrentIndex(page.context.currentIndex + rows * grid.columns)
-    }
+    readonly property bool filesFocused: grid.activeFocus
+    readonly property bool treeFocused: folderTree.activeFocus
 
-    function extendSelection(rows) {
-        page.context.extendSelectionTo(page.context.currentIndex + rows * grid.columns)
+    // The thumbnails take the keys unless the tree or the path bar has them.
+    function focusFiles() {
+        grid.forceActiveFocus()
     }
 
     // A full page of whole rows, stopping at the first or last image rather than not moving.
@@ -61,10 +64,15 @@ SplitView {
         SplitView.minimumWidth: 120
 
         FolderTree {
+            id: folderTree
+            objectName: "folderTree"
             SplitView.fillHeight: true
             SplitView.minimumHeight: 80
             context: page.context
             onFolderMenuRequested: (path) => page.folderMenuRequested(path)
+            onRenameRequested: (path) => page.folderRenameRequested(path)
+            onTrashRequested: (path) => page.folderTrashRequested(path)
+            onFilesRequested: grid.forceActiveFocus()
         }
 
         PreviewPanel {
@@ -85,10 +93,12 @@ SplitView {
             id: pathBar
             Layout.fillWidth: true
             context: page.context
+            onFinished: grid.forceActiveFocus()
         }
 
         GridView {
             id: grid
+            objectName: "thumbnailGrid"
 
             readonly property int columns: Math.max(1, Math.floor(width / cellWidth))
 
@@ -99,17 +109,49 @@ SplitView {
             cellHeight: 200
             cacheBuffer: 400
             keyNavigationEnabled: false
+            activeFocusOnTab: true
             model: page.context.files
             currentIndex: page.context.currentIndex
             onCurrentIndexChanged: positionViewAtIndex(currentIndex, GridView.Contain)
 
             ScrollBar.vertical: AppScrollBar {}
 
+            // Moving with Shift chooses everything from the anchor to where it stops.
+            Keys.onPressed: (event) => {
+                const shift = (event.modifiers & Qt.ShiftModifier) !== 0
+                if ((event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier)) !== 0)
+                    return
+                const context = page.context
+                const go = (index) => shift ? context.extendSelectionTo(index) : context.setCurrentIndex(index)
+                switch (event.key) {
+                case Qt.Key_Left: shift ? go(context.currentIndex - 1) : context.previous(); break
+                case Qt.Key_Right: shift ? go(context.currentIndex + 1) : context.next(); break
+                case Qt.Key_Up: go(context.currentIndex - grid.columns); break
+                case Qt.Key_Down: go(context.currentIndex + grid.columns); break
+                case Qt.Key_PageUp: go(page.pageTarget(-1)); break
+                case Qt.Key_PageDown: go(page.pageTarget(1)); break
+                case Qt.Key_Home: go(0); break
+                case Qt.Key_End: go(context.fileCount - 1); break
+                case Qt.Key_Space: if (!shift) context.next(); break
+                case Qt.Key_Backspace: if (!shift) context.goUp(); break
+                case Qt.Key_Return:
+                case Qt.Key_Enter:
+                    if (shift || context.currentPath === "")
+                        return
+                    page.viewRequested()
+                    break
+                default:
+                    return
+                }
+                event.accepted = true
+            }
+
             // A click between the thumbnails clears the selection.
             TapHandler {
                 onTapped: (point) => {
                     const x = point.position.x + grid.contentX
                     const y = point.position.y + grid.contentY
+                    grid.forceActiveFocus()
                     if (grid.indexAt(x, y) < 0)
                         page.context.clearSelection()
                 }
@@ -118,6 +160,7 @@ SplitView {
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: (point) => {
+                    grid.forceActiveFocus()
                     if (grid.indexAt(point.position.x + grid.contentX, point.position.y + grid.contentY) < 0)
                         page.fileMenuRequested()
                 }
@@ -137,7 +180,8 @@ SplitView {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 2
-                    color: cell.selected ? palette.highlight : "transparent"
+                    // Paler while the keys are elsewhere, as they then do not act on it.
+                    color: !cell.selected ? "transparent" : grid.activeFocus ? palette.highlight : Theme.withAlpha(palette.highlight, 0.5)
                     // The current image is shown large, and can be outside the selection.
                     border.width: cell.index === page.context.currentIndex ? 2 : 0
                     border.color: palette.highlightedText
@@ -181,6 +225,7 @@ SplitView {
                 TapHandler {
                     id: cellTap
                     onTapped: {
+                        grid.forceActiveFocus()
                         // On the handler's point: the signal's own argument has no modifiers.
                         const modifiers = cellTap.point.modifiers
                         // The second tap of a double click only views what the first one chose.
@@ -195,6 +240,7 @@ SplitView {
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: {
+                        grid.forceActiveFocus()
                         // On a selected file the menu is for the whole selection.
                         if (!cell.selected)
                             page.context.clickFile(cell.index, false, false)

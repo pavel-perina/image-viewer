@@ -21,6 +21,9 @@ Rectangle {
     readonly property int menuRowHeight: 26
 
     property bool editing: false
+    // Editing ended by Enter or Esc: the keys go back to what had them. A hidden field would keep
+    // them otherwise, and take the arrows from the thumbnails.
+    signal finished()
     // Folders opened here count as visited, for the recent folders; not in a file chooser.
     property bool recordVisits: true
     property string problem: ""
@@ -41,8 +44,10 @@ Rectangle {
 
     function submit(text) {
         problem = context.openTyped(text)
-        if (!problem)
+        if (!problem) {
             editing = false
+            finished()
+        }
     }
 
     // Pastes into the field rather than opening at once, if it cannot be opened.
@@ -294,7 +299,10 @@ Rectangle {
             onAccepted: bar.submit(text)
             onActiveFocusChanged: if (!activeFocus) bar.editing = false
             onTextEdited: bar.problem = ""
-            Keys.onEscapePressed: bar.editing = false
+            Keys.onEscapePressed: {
+                bar.editing = false
+                bar.finished()
+            }
             background: Rectangle {
                 radius: 3
                 color: palette.base
