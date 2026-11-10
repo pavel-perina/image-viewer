@@ -651,7 +651,8 @@ ApplicationWindow {
 
         function accepts(drag) {
             const paths = pathsOf(drag.urls)
-            if (browserPage.draggingFiles || window.toolActive || paths.length === 0)
+            // Not while files are being copied, as the drop would then be taken and lost.
+            if (browserPage.draggingFiles || !fileActions.idle || paths.length === 0)
                 return false
             if (window.viewing)
                 return true

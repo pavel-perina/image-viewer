@@ -122,7 +122,8 @@ TreeView {
             const folder = folderAt(drag.x, drag.y)
             const paths = pathsOf(drag.urls)
             const parentOf = (path) => path.substring(0, path.lastIndexOf("/")) || "/"
-            const usable = folder !== "" && paths.length > 0
+            // Not while files are being copied, as the drop would then be taken and lost.
+            const usable = folder !== "" && paths.length > 0 && !tree.context.busy
                     && !paths.every(path => parentOf(path) === folder)
                     && !paths.some(path => folder === path || folder.startsWith(path + "/"))
             tree.dropPath = usable ? folder : ""

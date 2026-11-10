@@ -353,6 +353,7 @@ TEST(Drop, FilesFromAnotherApplicationGoIntoTheFolderShown) {
     EXPECT_TRUE(waitUntil([&] { return QFile::exists(f.dir.filePath(QStringLiteral("first.jpg"))); }));
     EXPECT_TRUE(QFile::exists(first)) << "copied";
     EXPECT_FALSE(f.window->property("viewing").toBool()) << "and not opened";
+    ASSERT_TRUE(waitUntil([&] { return !f.context->busy(); }));  // a drop while copying is refused
     EXPECT_TRUE(dropFiles(f.window, overGrid, {second}, Qt::ShiftModifier));
     EXPECT_TRUE(waitUntil([&] { return QFile::exists(f.dir.filePath(QStringLiteral("second.jpg"))) && !QFile::exists(second); }))
         << "moved with Shift";
@@ -394,6 +395,7 @@ TEST(Drop, FilesOnAFolderOfTheTreeAreCopiedOrWithShiftMoved) {
     EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/first.jpg")); }));
     EXPECT_TRUE(QFile::exists(first)) << "copied";
     EXPECT_EQ(f.context->directory(), f.dir.path()) << "the folder shown stays";
+    ASSERT_TRUE(waitUntil([&] { return !f.context->busy(); }));
 
     EXPECT_TRUE(dropFiles(f.window, treeRowCentre(f, sub), {second}, Qt::ShiftModifier));
     EXPECT_TRUE(waitUntil([&] { return QFile::exists(sub + QStringLiteral("/second.jpg")) && !QFile::exists(second); }))

@@ -71,8 +71,9 @@ target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_core JPEG::JPEG T
 # Every UI test file includes the same Qt Quick and GoogleTest headers, which take most of the time.
 target_precompile_headers(iv_ui_tests PRIVATE ui_test_support.h)
 # The directory tree shows the system's temporary folder, where tests running at the same time make
-# their own, which moves the rows between finding one and clicking it. So these run alone.
-set(IV_TREE_TESTS "BrowserPage.Tree*:BrowserPage.ClickingAFolder*:BrowserPage.DoubleClickingAFolder*")
+# their own, which moves the rows between finding one and clicking or dropping on it. So these run
+# alone, also as a drop on the wrong row would put files in another test's folder.
+set(IV_TREE_TESTS "BrowserPage.Tree*:BrowserPage.ClickingAFolder*:BrowserPage.DoubleClickingAFolder*:Drop.FilesOnAFolderOfTheTree*:Drop.NotOnTheFolder*")
 gtest_discover_tests(iv_ui_tests
     TEST_FILTER "-${IV_TREE_TESTS}"
     PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Fusion"
