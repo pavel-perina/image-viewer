@@ -58,9 +58,18 @@ add_executable(iv_ui_tests
     test_jpeg.h
     test_tiff.cpp
     test_tiff.h
-    ui_tests.cpp
+    ui_test_support.h
+    ui_test_main.cpp
+    ui_browse_tests.cpp
+    ui_browser_page_tests.cpp
+    ui_image_view_tests.cpp
+    ui_edit_tests.cpp
+    ui_file_tests.cpp
+    ui_window_tests.cpp
 )
 target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick Qt6::Test)
+# Every UI test file includes the same Qt Quick and GoogleTest headers, which take most of the time.
+target_precompile_headers(iv_ui_tests PRIVATE ui_test_support.h)
 # The directory tree shows the system's temporary folder, where tests running at the same time make
 # their own, which moves the rows between finding one and clicking it. So these run alone.
 set(IV_TREE_TESTS "BrowserPage.Tree*:BrowserPage.ClickingAFolder*:BrowserPage.DoubleClickingAFolder*")
