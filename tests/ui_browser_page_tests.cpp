@@ -494,3 +494,30 @@ TEST(PathBar, AClickInItsListsDoesNotReachTheThumbnailsBelow) {
     EXPECT_EQ(f.selected(), selectedBefore);
     QSettings().remove(QStringLiteral("Folders"));
 }
+
+TEST(BrowserPage, TreeShowsTheOpenFolderAtStartupHoweverDeep) {
+    const QString deep = QStringLiteral("d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/"
+                                        "d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40");
+    MainFixture f([&](const QTemporaryDir& dir) {
+        QDir(dir.path()).mkpath(deep);
+        writeJpeg(dir.filePath(deep + QStringLiteral("/a.jpg")));
+    }, deep);
+    ASSERT_NE(f.window, nullptr);
+    auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));
+    ASSERT_NE(tree, nullptr);
+    auto* model = qobject_cast<iv::DirectoryTreeModel*>(tree->property("model").value<QObject*>());
+    const QString folder = f.dir.filePath(deep);
+    // Shown without anyone scrolling, and still shown once the folders on the way have loaded.
+    const auto shown = [&] {
+        QQuickItem* row = nullptr;
+        QMetaObject::invokeMethod(tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(QModelIndex, model->indexForPath(folder)));
+        if (!row || !row->isVisible()) {
+            return false;
+        }
+        const QPointF centre = row->mapToItem(tree, QPointF(row->width() / 2, row->height() / 2));
+        return tree->contains(centre);
+    };
+    EXPECT_TRUE(waitUntil(shown)) << "shown at all";
+    waitUntil([] { return false; }, 1000);
+    EXPECT_TRUE(shown()) << "still shown after the loading settles";
+}

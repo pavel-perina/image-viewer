@@ -724,6 +724,17 @@ inline bool dropFiles(QQuickWindow* window, QPointF at, const QStringList& paths
 inline QPointF treeRowCentre(MainFixture& f, const QString& folder) {
     auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));
     auto* model = qobject_cast<iv::DirectoryTreeModel*>(tree->property("model").value<QObject*>());
+    tree->setProperty("following", false);  // as when the user aims at a row: it stays put
+    // Folders that come and go elsewhere, such as other tests' in the temporary folder, move
+    // the rows, so they are let settle first.
+    QElapsedTimer clock;
+    clock.start();
+    for (int rows = -1, quiet = 0; quiet < 6 && clock.elapsed() < 3000;) {
+        const int now = tree->property("rows").toInt();
+        quiet = now == rows ? quiet + 1 : 0;
+        rows = now;
+        waitUntil([] { return false; }, 50);
+    }
     QPointF centre;
     const bool shown = waitUntil([&] {
         const QModelIndex index = model->indexForPath(folder);

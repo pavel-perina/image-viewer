@@ -31,6 +31,7 @@ W for Windows.
       Left folds, then goes to the parent; Backspace goes up; Enter goes to the thumbnails.
 - [ ] F2 and Del on the tree act on the folder, not on the selected files.
 - [ ] Tab moves between the tree and the thumbnails; the selection turns paler on the tree.
+- [ ] L [ ] W  Start in a deep folder: the tree shows it, also once the folders above have loaded.
 - [ ] Backspace on the thumbnails goes up a folder; in the large view, to the previous image.
 - [ ] Enter opens the image, Enter again goes back.
 
@@ -45,10 +46,5 @@ W for Windows.
       you open comes first. On Windows the detection has never been compiled before.
 - [ ] A network folder and a OneDrive folder on Windows: does the window freeze? Does browsing
       download every file?
-
-## Known problems to watch, not to tick
-
-- The tree often fails to scroll to the open folder at startup and shows the top of the disk.
-- Four tree tests fail at random, here and on Windows.
 
 See also "Parts never run on Windows" in `building-windows.md`.

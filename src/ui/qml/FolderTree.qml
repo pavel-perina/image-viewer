@@ -40,6 +40,38 @@ TreeView {
         const row = rowAtIndex(index)
         expand(row)
         positionViewAtRow(row, TableView.Contain)
+        following = true
+    }
+
+    // Folders above the revealed one fill in after it is shown and push it down, perhaps out of
+    // sight; until the user scrolls or presses here, it is brought back, in the middle as its
+    // own subfolders come below it. Nor once files are dragged over it.
+    property bool following: false
+
+    function showRevealed() {
+        if (!following)
+            return
+        forceLayout()
+        const index = treeModel.indexForPath(revealedPath)
+        const row = rowAtIndex(index)
+        if (row < 0)
+            return
+        const item = itemAtIndex(index)
+        if (item && item.y >= contentY && item.y + item.height <= contentY + height)
+            return
+        positionViewAtRow(row, TableView.AlignVCenter)
+    }
+
+    Timer {
+        id: followTimer
+        interval: 50
+        onTriggered: tree.showRevealed()
+    }
+    onRowsChanged: if (following) followTimer.restart()
+    onHeightChanged: if (following) followTimer.restart()
+    onMovementStarted: following = false
+    PointHandler {
+        onActiveChanged: if (active) tree.following = false
     }
 
     function pathAt(row) {
@@ -130,7 +162,10 @@ TreeView {
             drag.accepted = usable
         }
 
-        onEntered: (drag) => update(drag)
+        onEntered: (drag) => {
+            tree.following = false  // the user aims at a row, which must stay put
+            update(drag)
+        }
         onPositionChanged: (drag) => update(drag)
         onExited: tree.dropPath = ""
         onDropped: (drop) => {
@@ -202,7 +237,9 @@ TreeView {
         }
     }
 
-    ScrollBar.vertical: AppScrollBar {}
+    ScrollBar.vertical: AppScrollBar {
+        onPressedChanged: if (pressed) tree.following = false
+    }
 
     Connections {
         target: tree.context
@@ -215,19 +252,5 @@ TreeView {
     Component.onCompleted: {
         if (context.directory)
             reveal(context.directory)
-    }
-
-    // Its parents have filled in above it, which pushes it down, perhaps out of sight.
-    // In the middle, as its own subfolders come below it.
-    Connections {
-        target: treeModel
-        function onDirectoryLoaded(path) {
-            if (tree.revealedPath.startsWith(path) && path !== tree.revealedPath) {
-                Qt.callLater(() => {
-                    tree.forceLayout()
-                    tree.positionViewAtRow(tree.rowAtIndex(treeModel.indexForPath(tree.revealedPath)), TableView.AlignVCenter)
-                })
-            }
-        }
     }
 }
