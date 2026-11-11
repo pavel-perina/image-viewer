@@ -37,6 +37,9 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
     Q_PROPERTY(bool contrastAdjustable READ contrastAdjustable NOTIFY pageChanged)
     Q_PROPERTY(bool autoContrast READ autoContrast WRITE setAutoContrast NOTIFY pageChanged)
+    // Auto Contrast for every image that can have it, rather than by its kind; turning it on
+    // turns it on for the image shown too.
+    Q_PROPERTY(bool keepAutoContrast READ keepAutoContrast WRITE setKeepAutoContrast NOTIFY keepAutoContrastChanged)
     // Rows of {section, label, value} describing the file and the current page.
     Q_PROPERTY(QVariantList details READ details NOTIFY detailsChanged)
     // The same in a line: "400x300 0.12MP 24bit PNG 12kB 2021-12-24 12:34:56", and
@@ -107,6 +110,8 @@ public:
     bool contrastAdjustable() const;  // whether the image has more than 8 bits to map
     bool autoContrast() const;
     void setAutoContrast(bool enabled);
+    bool keepAutoContrast() const;
+    void setKeepAutoContrast(bool keep);
     QVariantList details() const;
     QString summary() const;
     QString cameraSummary() const;
@@ -224,6 +229,7 @@ signals:
     void histogramChanged();
     void resampleChanged();
     void wheelNavigatesChanged();
+    void keepAutoContrastChanged();
     void editChanged();
     void colorPreviewChanged();
     void linkedViewChanged();

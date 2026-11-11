@@ -876,3 +876,36 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     waitUntil([] { return false; }, 200);
     EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
 }
+
+TEST(Main, TheLockKeepsAutoContrastAndTurningItOffReleasesTheLock) {
+    MainFixture f([](const QTemporaryDir& dir) {
+        TiffImage gray;
+        gray.width = 100;
+        gray.height = 100;
+        gray.bits = 16;
+        gray.samples = 1;
+        gray.pixel = [](int x, int) { return x < 50 ? Rgb{2, 2, 2} : Rgb{4, 4, 4}; };
+        iv::test::writeTiff(QFileInfo(dir.filePath(QStringLiteral("a.tif"))).filesystemFilePath(), {gray});
+        iv::test::writeTiff(QFileInfo(dir.filePath(QStringLiteral("b.tif"))).filesystemFilePath(), {gray});
+    }, QStringLiteral("a.tif"));
+    ASSERT_NE(f.window, nullptr);
+    auto* view = f.window->property("activeView").value<ImageView*>();
+    ASSERT_NE(view, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return view->contrastAdjustable(); }));
+    QObject* lock = f.find(QStringLiteral("keepAutoContrastButton"));
+    QObject* button = f.find(QStringLiteral("autoContrastButton"));
+    ASSERT_NE(lock, nullptr);
+    ASSERT_NE(button, nullptr);
+    ASSERT_FALSE(view->autoContrast());
+
+    QMetaObject::invokeMethod(lock, "click");
+    EXPECT_TRUE(lock->property("checked").toBool());
+    EXPECT_TRUE(view->autoContrast());
+    QTest::keyClick(f.window, Qt::Key_Right);
+    ASSERT_TRUE(waitUntil([&] { return view->source().endsWith(QStringLiteral("b.tif")) && view->contrastAdjustable(); }));
+    EXPECT_TRUE(view->autoContrast()) << "kept for the next image";
+
+    QMetaObject::invokeMethod(button, "click");
+    EXPECT_FALSE(view->autoContrast());
+    EXPECT_FALSE(lock->property("checked").toBool()) << "turned off, it is no longer kept";
+}

@@ -30,7 +30,8 @@ W for Windows.
 - [ ] Click the tree: Up and Down open folders without unfolding; Right unfolds, then goes in;
       Left folds, then goes to the parent; Backspace goes up; Enter goes to the thumbnails.
 - [ ] F2 and Del on the tree act on the folder, not on the selected files.
-- [ ] Tab moves between the tree and the thumbnails; the selection turns paler on the tree.
+- [ ] Tab moves between the tree and the thumbnails; the selection of the side without the
+      keys turns paler, the folder in the tree as well as the thumbnails.
 - [ ] L [ ] W  Start in a deep folder: the tree shows it, also once the folders above have loaded.
 - [ ] Backspace on the thumbnails goes up a folder; in the large view, to the previous image.
 - [ ] Enter opens the image, Enter again goes back.

@@ -81,7 +81,10 @@ change nothing useful. The first press of a double click does this too, for that
   images keep the full range by default because stretching a
   photograph would falsify its exposure, so one that uses a small part of the range looks
   dark until auto contrast is turned on. Thumbnails follow the same default. The choice is
-  per image and does not carry over to the next one.
+  per image and does not carry over to the next one, unless it is kept with the padlock beside
+  the button (Keep Auto Contrast, remembered between sessions): then every image with more than
+  8 bits has it. Turning Auto Contrast off also stops keeping it, as the next image would
+  otherwise have it again. 8-bit images never do: they are shown as they are.
 
 ## Histogram and details
 * A histogram measures the file's values, not what is on screen, with 256 or 65536 bins,

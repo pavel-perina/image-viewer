@@ -43,7 +43,7 @@ qt_add_library(iv_ui STATIC
     thumbnail_store.h
 )
 
-set_source_files_properties(qml/Theme.qml qml/Screens.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Screens.qml qml/ViewSettings.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(iv_ui
     URI ImageViewer
@@ -69,6 +69,7 @@ qt_add_qml_module(iv_ui
         qml/ImageSurface.qml
         qml/JpegMenu.qml
         qml/LevelsControl.qml
+        qml/LockButton.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/MessageBox.qml
@@ -81,6 +82,7 @@ qt_add_qml_module(iv_ui
         qml/SaveOptionsDialog.qml
         qml/Theme.qml
         qml/Screens.qml
+        qml/ViewSettings.qml
         qml/ViewerPage.qml
 )
 

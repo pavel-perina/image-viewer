@@ -187,6 +187,7 @@ struct ImageView::Impl {
     // Everything below describes the displayed document, and is set anew for each one.
     int page = 0;  // of source, which is always 0 for an edited page
     bool autoContrast = false;
+    bool keepAutoContrast = false;  // a setting, not of the document
     DisplayRange autoDisplayRange;
     DisplayRange displayRange;
     std::shared_ptr<const ColorTransform> colorTransform;
@@ -649,7 +650,8 @@ struct ImageView::Impl {
         previewIsRough = loaded->previewIsRough;
         autoDisplayRange = loaded->autoRange;
         const SubimageInfo& info = subimage();
-        autoContrast = usesAutoRangeByDefault(info.format);
+        // 8-bit images have nothing to map, and are shown as they are.
+        autoContrast = (keepAutoContrast && info.format != PixelFormat::Bgrx8) || usesAutoRangeByDefault(info.format);
         fullSize = info.levels.front().size;
         imageToDisplay = displayFromStored(fullSize, info.orientation);
 
@@ -980,6 +982,18 @@ bool ImageView::contrastAdjustable() const {
 
 bool ImageView::autoContrast() const { return m_impl->autoContrast; }
 void ImageView::setAutoContrast(bool enabled) { m_impl->setAutoContrast(enabled); }
+bool ImageView::keepAutoContrast() const { return m_impl->keepAutoContrast; }
+
+void ImageView::setKeepAutoContrast(bool keep) {
+    if (keep == m_impl->keepAutoContrast) {
+        return;
+    }
+    m_impl->keepAutoContrast = keep;
+    emit keepAutoContrastChanged();
+    if (keep && contrastAdjustable()) {
+        m_impl->setAutoContrast(true);
+    }
+}
 
 double ImageView::zoom() const { return m_impl->viewport.zoom(); }
 

@@ -151,6 +151,36 @@ TEST(ImageView, SixteenBitGrayStretchesOnRequestAndContrastResetsPerImage) {
     EXPECT_FALSE(fixture.view->autoContrast());
 }
 
+TEST(ImageView, KeptAutoContrastCarriesOverToEveryImageWithMoreThanEightBits) {
+    QTemporaryDir dir;
+    TiffImage gray;
+    gray.width = 100;
+    gray.height = 100;
+    gray.bits = 16;
+    gray.samples = 1;
+    gray.pixel = [](int x, int) { return x < 50 ? Rgb{2, 2, 2} : Rgb{4, 4, 4}; };
+    const QString first = dir.filePath(QStringLiteral("first.tif"));
+    const QString second = dir.filePath(QStringLiteral("second.tif"));
+    iv::test::writeTiff(QFileInfo(first).filesystemFilePath(), {gray});
+    iv::test::writeTiff(QFileInfo(second).filesystemFilePath(), {gray});
+    const QString jpeg = dir.filePath(QStringLiteral("plain.jpg"));
+    writeJpeg(jpeg);
+
+    ViewFixture fixture;
+    ASSERT_TRUE(fixture.load(first));
+    ASSERT_FALSE(fixture.view->autoContrast());
+    fixture.view->setKeepAutoContrast(true);
+    EXPECT_TRUE(fixture.view->autoContrast()) << "on for the image shown too";
+    ASSERT_TRUE(fixture.load(second));
+    EXPECT_TRUE(fixture.view->autoContrast());
+    ASSERT_TRUE(fixture.load(jpeg));
+    EXPECT_FALSE(fixture.view->autoContrast()) << "8 bits are shown as they are";
+
+    fixture.view->setKeepAutoContrast(false);
+    ASSERT_TRUE(fixture.load(first));
+    EXPECT_FALSE(fixture.view->autoContrast());
+}
+
 TEST(ImageView, EightBitImagesHaveNoContrastToAdjust) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("plain.jpg"));

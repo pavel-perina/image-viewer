@@ -363,7 +363,18 @@ ApplicationWindow {
         checkable: true
         enabled: window.activeView.contrastAdjustable
         checked: window.activeView.autoContrast
-        onTriggered: window.activeView.autoContrast = checked
+        onTriggered: {
+            window.activeView.autoContrast = checked
+            if (!checked)
+                ViewSettings.keepAutoContrast = false  // or the next image would have it again
+        }
+    }
+    Action {
+        id: keepAutoContrastAction
+        text: "&Keep Auto Contrast"
+        checkable: true
+        checked: ViewSettings.keepAutoContrast
+        onTriggered: ViewSettings.keepAutoContrast = checked
     }
     Action {
         id: colorManagedAction
@@ -510,6 +521,7 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
+            AppMenuItem { action: keepAutoContrastAction }
             AppMenuItem { action: sharpResamplingAction }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }
@@ -554,7 +566,16 @@ ApplicationWindow {
             ToolButton { action: zoomOutAction }
             ToolButton { action: fitAction }
             ToolButton { action: actualSizeAction }
-            ToolButton { action: autoContrastAction; visible: window.activeView.contrastAdjustable }
+            // Auto Contrast and its lock, as one split button.
+            Row {
+                visible: window.activeView.contrastAdjustable
+                ToolButton { objectName: "autoContrastButton"; action: autoContrastAction }
+                LockButton {
+                    objectName: "keepAutoContrastButton"
+                    action: keepAutoContrastAction
+                    tip: "Keep Auto Contrast for the next images"
+                }
+            }
             ToolButton { action: infoAction; visible: window.viewing }
             ToolSeparator { visible: window.viewing }
             ToolButton { action: cropAction; visible: window.viewing }

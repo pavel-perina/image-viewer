@@ -154,4 +154,5 @@ The info panel shows a histogram and details about the file, the image and the c
 the camera recorded a GPS position, clicking the coordinates opens a page that lists maps to
 see it in, such as OpenStreetMap and Mapy.com. Its animation can be turned off in the View menu.
 
-The toolbar has Auto Contrast for images with more than 8 bits per sample.
+The toolbar has Auto Contrast for images with more than 8 bits per sample. The padlock beside it
+keeps Auto Contrast on for the next images too, until it is turned off.
