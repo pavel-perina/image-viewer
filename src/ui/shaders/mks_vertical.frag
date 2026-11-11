@@ -15,8 +15,22 @@ layout(std140, binding = 0) uniform buf {
     float boundLow;   // the first texel of the image in the source
     float boundHigh;  // the texel after its last
     vec4 imageRect;   // left, top, right and bottom of the image in the view, from 0 to 1
+    float ditherStep; // one step of the output
 };
 layout(binding = 1) uniform sampler2D source;
+
+// Triangular noise from -1 to 1 per channel, from the pixel's place: two of Dave Hoskins' hashes
+// without sine, which stay random at any position and need no integers. Added before the output
+// is rounded, a step wide, it turns bands into an even grain finer than the eye resolves.
+vec3 hashed(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.xxy + p3.yzz) * p3.zyx);
+}
+
+vec3 dither(vec2 p) {
+    return hashed(p) + hashed(p + vec2(57.31, 19.17)) - 1.0;
+}
 
 float kernel(float x) {
     x = abs(x);
@@ -50,5 +64,5 @@ void main() {
         sum += w * textureLod(source, vec2(qt_TexCoord0.x, (texel + 0.5) / texSize), 0.0).rgb;
         weights += w;
     }
-    fragColor = vec4(toDisplay(sum / weights), 1.0) * qt_Opacity;
+    fragColor = vec4(toDisplay(sum / weights) + dither(gl_FragCoord.xy) * ditherStep, 1.0) * qt_Opacity;
 }

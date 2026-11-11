@@ -29,6 +29,7 @@ ShaderEffect {
     property real ratio: view.resampleRatio
     property real phase: phasePoint.y
     property real spacing: view.resampleSpacing
+    property real ditherStep: ViewSettings.ditherStep
     property real boundLow: bounds.y
     property real boundHigh: bounds.y + bounds.height
     property vector4d imageRect: Qt.vector4d(view.resampleImageRect.x, view.resampleImageRect.y,
@@ -43,6 +44,7 @@ ShaderEffect {
         view: vertical.view
         sourceItem: vertical.view
         textureSize: vertical.composite
+        ditherStep: 0  // the kernel follows
     }
 
     ShaderEffect {

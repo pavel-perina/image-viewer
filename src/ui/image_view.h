@@ -36,6 +36,8 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(int page READ page WRITE setPage NOTIFY pageChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY pageChanged)
     Q_PROPERTY(bool contrastAdjustable READ contrastAdjustable NOTIFY pageChanged)
+    // Drawn from half floats, with more than 8 bits that the output should dither.
+    Q_PROPERTY(bool highPrecision READ highPrecision NOTIFY pageChanged)
     Q_PROPERTY(bool autoContrast READ autoContrast WRITE setAutoContrast NOTIFY pageChanged)
     // Auto Contrast for every image that can have it, rather than by its kind; turning it on
     // turns it on for the image shown too.
@@ -108,6 +110,7 @@ public:
     void setPage(int page);
     int pageCount() const;
     bool contrastAdjustable() const;  // whether the image has more than 8 bits to map
+    bool highPrecision() const;
     bool autoContrast() const;
     void setAutoContrast(bool enabled);
     bool keepAutoContrast() const;

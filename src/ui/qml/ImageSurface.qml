@@ -61,11 +61,15 @@ Item {
             }
 
             // Always there rather than loaded, as its source would keep the picture hidden until the
-            // garbage collector came for it. Sharp resampling draws its own, before the kernel.
+            // garbage collector came for it. Sharp resampling draws its own, before the kernel,
+            // and dithers at the end. Images with more than 8 bits pass through it to be dithered
+            // when nothing is adjusted.
             ColorPreviewEffect {
                 objectName: "colorPreview"
                 anchors.fill: content
-                visible: surface.colorPreviewShown && !imageView.resampleActive
+                visible: (surface.colorPreviewShown || (imageView.highPrecision && GraphicsInfo.api !== GraphicsInfo.Software))
+                         && !imageView.resampleActive
+                adjusting: surface.colorPreviewShown
                 view: imageView
                 sourceItem: content
                 textureSize: Qt.size(Math.ceil(content.width * Screen.devicePixelRatio),

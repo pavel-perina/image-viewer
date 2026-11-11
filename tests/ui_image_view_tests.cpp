@@ -936,6 +936,74 @@ TEST(ColorPreview, LevelsStretchTheBitsBeyondEight) {
     EXPECT_GT(values.size(), 100) << "distinct levels across the gradient";
 }
 
+// Needs a GPU, like the tests above. A gradient over four 8-bit steps: rounded, it shows five
+// bands; dithered, the average down each column follows the gradient, with or without sharp
+// resampling, while each pixel stays within a step of it.
+TEST(ColorPreview, DeepImagesAreDitheredRatherThanBanded) {
+    QTemporaryDir dir;
+    TiffImage image;
+    image.width = 800;
+    image.height = 600;
+    image.bits = 16;
+    image.samples = 1;
+    image.wide16 = [](int x, int) { return static_cast<std::uint16_t>((128.0 + 4.0 * x / 799) * 257); };
+    const QString path = dir.filePath(QStringLiteral("ramp.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
+
+    BrowseContext context;
+    QQuickView window;
+    window.engine()->addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    window.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                 {QStringLiteral("active"), true},
+                                 {QStringLiteral("fullScreen"), true}});
+    window.setResizeMode(QQuickView::SizeRootObjectToView);
+    window.resize(400, 400);
+    window.loadFromModule("ImageViewer", "ViewerPage");
+    window.show();
+    ASSERT_TRUE(waitUntil([&] { return window.isExposed(); }));
+    QCoreApplication::processEvents();
+    if (window.rendererInterface()->graphicsApi() == QSGRendererInterface::Software) {
+        GTEST_SKIP() << "needs a GPU";
+    }
+    auto* view = window.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(view, nullptr);
+    window.rootObject()->setProperty("sharpResampling", false);
+    context.openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+    EXPECT_TRUE(view->highPrecision());
+
+    const auto measure = [&](const char* how) {
+        waitUntil([] { return false; }, 500);
+        const QImage shot = grabIfShown(window);
+        ASSERT_FALSE(shot.isNull());
+        const QRect rect = QRectF(view->imageToItem({0, 0}) * window.devicePixelRatio(), view->imageToItem({800, 600}) * window.devicePixelRatio())
+                               .toRect()
+                               .intersected(shot.rect())
+                               .adjusted(4, 4, -4, -4);
+        ASSERT_GT(rect.width(), 300);
+        QSet<int> means;
+        int worst = 0;
+        for (int x = rect.left(); x <= rect.right(); ++x) {
+            int sum = 0;
+            for (int y = rect.top(); y <= rect.bottom(); ++y) {
+                sum += shot.pixelColor(x, y).red();
+            }
+            const double mean = static_cast<double>(sum) / rect.height();
+            means.insert(static_cast<int>(std::lround(mean * 8)));
+            for (int y = rect.top(); y <= rect.bottom(); ++y) {
+                worst = std::max(worst, static_cast<int>(std::ceil(std::abs(shot.pixelColor(x, y).red() - mean))));
+            }
+        }
+        // Four steps in eighths are 32 at most, and rounded they would be 5.
+        EXPECT_GT(means.size(), 20) << how << ": distinct column averages, in eighths of a step";
+        EXPECT_LE(worst, 2) << how << ": the grain";
+    };
+    measure("shown as it is");
+    window.rootObject()->setProperty("sharpResampling", true);
+    ASSERT_TRUE(waitUntil([&] { return view->resampleActive(); }));
+    measure("with sharp resampling");
+}
+
 // Needs a GPU, like the tests above.
 TEST(ColorPreview, BeforeAndAfterSplitTheShaderAtTheLine) {
     QTemporaryDir dir;

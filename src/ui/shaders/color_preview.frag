@@ -15,11 +15,26 @@ layout(std140, binding = 0) uniform buf {
     float gamutMap;      // 1 to fit colours by chroma rather than clipping them
     vec4 domainMin;      // of the cube, R, G, B
     vec4 domainMax;
+    float adjust;        // 0 passes the colours through, to be dithered
+    float ditherStep;    // one step of the output, or 0 when another pass follows
 };
 layout(binding = 1) uniform sampler2D source;
 layout(binding = 2) uniform sampler2D lut;
 
 const int kCurveSamples = 256;
+
+// Triangular noise from -1 to 1 per channel, from the pixel's place: two of Dave Hoskins' hashes
+// without sine, which stay random at any position and need no integers. Added before the output
+// is rounded, a step wide, it turns bands into an even grain finer than the eye resolves.
+vec3 hashed(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yxz + 33.33);
+    return fract((p3.xxy + p3.yzz) * p3.zyx);
+}
+
+vec3 dither(vec2 p) {
+    return hashed(p) + hashed(p + vec2(57.31, 19.17)) - 1.0;
+}
 
 vec3 decode(vec3 c) {
     return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
@@ -120,11 +135,11 @@ void main() {
         return;
     }
     vec3 c = sampled.rgb / sampled.a;
-    const int n = int(cubeSize + 0.5);
-    if (useTone > 0.5) {
+    const int n = adjust > 0.5 ? int(cubeSize + 0.5) : 0;
+    if (adjust > 0.5 && useTone > 0.5) {
         c = vec3(curveAt(n, c.r), curveAt(n, c.g), curveAt(n, c.b));
     }
-    if (useLightness > 0.5 || chroma != 1.0) {
+    if (adjust > 0.5 && (useLightness > 0.5 || chroma != 1.0)) {
         vec3 lab = toOklab(decode(clamp(c, 0.0, 1.0)));
         if (useLightness > 0.5) {
             lab.x = curveAt(n + 1, lab.x);
@@ -135,5 +150,9 @@ void main() {
     if (n >= 2) {
         c = throughCube(c, n);
     }
-    fragColor = vec4(clamp(c, 0.0, 1.0) * sampled.a, sampled.a) * qt_Opacity;
+    c = clamp(c, 0.0, 1.0);
+    if (ditherStep > 0.0) {
+        c += dither(gl_FragCoord.xy) * ditherStep;
+    }
+    fragColor = vec4(c * sampled.a, sampled.a) * qt_Opacity;
 }

@@ -81,6 +81,11 @@ change nothing useful. The first press of a double click does this too, for that
   near white and more below, and the shaders work in float.
 * The colour preview's shader runs on the level's pixels before Magic Kernel Sharp, as the
   adjustment comes before resampling once it is applied, and both read half-float textures.
+* The last pass dithers: Magic Kernel Sharp's second, or else the colour preview's, which deeper
+  images pass through for that even when nothing is adjusted. Triangular noise a step of the
+  output wide (`ViewSettings.ditherStep`, 1/255 for an 8-bit window) keeps the average of each
+  area at its true value, so smooth gradients show grain finer than the eye resolves instead of
+  bands. The hash needs no integers, as the kernel's shaders still build for GLSL ES 1.
 * Float images default to auto contrast (0.1% percentiles of the coarsest level), because
   they have no natural range. 16-bit and 8-bit gray images default to the full range, and offer
   auto contrast, since gray images are often measurements that use a small part of it. 16-bit

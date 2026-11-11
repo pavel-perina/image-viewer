@@ -10,6 +10,7 @@ ShaderEffect {
     required property ImageView view
     required property Item sourceItem
     property size textureSize: Qt.size(width, height)
+    property bool adjusting: true  // otherwise the colours only pass through, to be dithered
 
     fragmentShader: "qrc:/shaders/color_preview.frag.qsb"
     property var source: ShaderEffectSource {
@@ -28,6 +29,8 @@ ShaderEffect {
     property real gamutMap: view.colorPreviewGamutMap ? 1 : 0
     property vector4d domainMin: view.colorPreviewDomainMin
     property vector4d domainMax: view.colorPreviewDomainMax
+    property real adjust: adjusting ? 1 : 0
+    property real ditherStep: ViewSettings.ditherStep
 
     ColorLutTexture {
         id: lutTexture

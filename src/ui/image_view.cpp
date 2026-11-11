@@ -1000,6 +1000,14 @@ bool ImageView::contrastAdjustable() const {
     return m_impl->source && m_impl->subimage().format != PixelFormat::Bgrx8;
 }
 
+bool ImageView::highPrecision() const {
+    if (!m_impl->source || !m_impl->wideTiles) {
+        return false;
+    }
+    const PixelFormat format = m_impl->subimage().format;
+    return format != PixelFormat::Bgrx8 && format != PixelFormat::Gray8;
+}
+
 bool ImageView::autoContrast() const { return m_impl->autoContrast; }
 void ImageView::setAutoContrast(bool enabled) { m_impl->setAutoContrast(enabled); }
 bool ImageView::keepAutoContrast() const { return m_impl->keepAutoContrast; }
