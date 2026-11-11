@@ -1,4 +1,6 @@
-qt_add_executable(imageviewer main.cpp)
+# WIN32: a windowed program on Windows, without a console beside it. Messages still go to the
+# debugger's output, or to DebugView outside one.
+qt_add_executable(imageviewer WIN32 main.cpp)
 
 # Inter 4.1 (SIL Open Font License, fonts/Inter-LICENSE.txt), every weight in the one variable file.
 qt_add_resources(imageviewer "fonts"
