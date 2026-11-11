@@ -804,11 +804,8 @@ ApplicationWindow {
         standardButtons: Dialog.Ok
     }
 
-    MessageBox {
+    AboutDialog {
         id: aboutDialog
-        kind: "info"
-        title: "About Image Viewer"
-        text: "A fast, multiplatform image viewer and basic editor."
-        standardButtons: Dialog.Ok
+        objectName: "aboutDialog"
     }
 }

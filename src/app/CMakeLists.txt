@@ -8,6 +8,9 @@ qt_add_resources(imageviewer "fonts"
     FILES fonts/InterVariable.ttf
 )
 
+# Shown in the About dialog.
+target_compile_definitions(imageviewer PRIVATE IV_VERSION="${PROJECT_VERSION}")
+
 target_link_libraries(imageviewer PRIVATE
     iv_ui
     iv_uiplugin

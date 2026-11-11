@@ -40,6 +40,8 @@ add_library(iv_core STATIC
     jpeg_source.h
     jpeg_transform.cpp
     jpeg_transform.h
+    libraries.cpp
+    libraries.h
     xmp.cpp
     xmp.h
     overview_source.cpp

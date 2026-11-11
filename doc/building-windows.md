@@ -81,7 +81,8 @@ in the top-level `CMakeLists.txt`. Build first, as the script only packages what
 The script runs `cmake --install` into `build\stage`, which is the exact content of the installer:
 the app, a `windeployqt` copy of Qt without the plugins it doesn't need or the software OpenGL
 renderer, the Visual C++ runtime DLLs, and the licence texts of the project, the Conan packages
-and Qt (taken from Qt's `Src\LICENSES`, so the Qt sources must be installed).
+and Qt (taken from Qt's `Src\LICENSES`, so the Qt sources must be installed). They go in a
+`licenses` folder beside the executable, which Help > About opens with its Licence Texts button.
 
 The installer is per-user, so it needs no admin rights. It installs to
 `%LOCALAPPDATA%\Programs\Image Viewer`, adds a Start Menu shortcut and optionally a desktop one,

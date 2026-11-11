@@ -1,4 +1,6 @@
 qt_add_library(iv_ui STATIC
+    app_info.cpp
+    app_info.h
     browse_context.cpp
     browse_context.h
     browse_context_files.cpp
@@ -50,6 +52,7 @@ qt_add_qml_module(iv_ui
     VERSION 1.0
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewer
     QML_FILES
+        qml/AboutDialog.qml
         qml/AdjustPanel.qml
         qml/AppDialog.qml
         qml/AppMenu.qml

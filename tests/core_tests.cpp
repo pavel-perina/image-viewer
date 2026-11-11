@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <future>
+#include <regex>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -15,6 +17,7 @@
 #include "core/image_buffer.h"
 #include "core/image_source.h"
 #include "core/jpeg_source.h"
+#include "core/libraries.h"
 #include "core/overview_source.h"
 #include "core/thumbnail.h"
 #include "core/viewport.h"
@@ -765,4 +768,35 @@ TEST(ImageSource, DetectsFormatFromContentsNotExtension) {
 
     EXPECT_FALSE(openImageSource(dir / "does-not-exist.jpg").has_value());
     std::filesystem::remove_all(dir);
+}
+
+TEST(Libraries, NameTheFormatsOfThisBuildWithTheirVersions) {
+    const std::vector<iv::Library> list = iv::libraries();
+    const auto has = [&](std::string_view name) {
+        return std::ranges::any_of(list, [&](const iv::Library& library) { return library.name == name; });
+    };
+    for (const iv::Library& library : list) {
+        SCOPED_TRACE(library.name);
+        EXPECT_FALSE(library.licence.empty());
+        EXPECT_TRUE(library.url.starts_with("https://"));
+        // A number with at least one dot, and nothing after it such as a copyright line.
+        EXPECT_TRUE(std::regex_match(library.version, std::regex(R"(\d+(\.\d+)+)"))) << library.version;
+    }
+    EXPECT_TRUE(has("LibTIFF"));
+    EXPECT_TRUE(has("Little CMS"));
+    EXPECT_TRUE(has("SQLite"));
+#ifdef IV_HAVE_PNG
+    EXPECT_TRUE(has("libpng"));
+#endif
+#ifdef IV_HAVE_WEBP
+    EXPECT_TRUE(has("libwebp"));
+#else
+    EXPECT_FALSE(has("libwebp"));
+#endif
+#ifdef IV_HAVE_AVIF
+    EXPECT_TRUE(has("libavif"));
+#endif
+#ifdef IV_HAVE_JXL
+    EXPECT_TRUE(has("libjxl"));
+#endif
 }

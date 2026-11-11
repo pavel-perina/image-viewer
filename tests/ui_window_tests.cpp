@@ -1,4 +1,5 @@
 #include "ui_test_support.h"
+#include "ui/app_info.h"
 
 TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
     QTemporaryDir dir;
@@ -908,4 +909,40 @@ TEST(Main, TheLockKeepsAutoContrastAndTurningItOffReleasesTheLock) {
     QMetaObject::invokeMethod(button, "click");
     EXPECT_FALSE(view->autoContrast());
     EXPECT_FALSE(lock->property("checked").toBool()) << "turned off, it is no longer kept";
+}
+
+TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
+    QCoreApplication::setApplicationVersion(QStringLiteral("1.2.3"));
+    {
+        MainFixture f(0);
+        ASSERT_NE(f.window, nullptr);
+        QObject* dialog = f.find(QStringLiteral("aboutDialog"));
+        ASSERT_NE(dialog, nullptr);
+        QMetaObject::invokeMethod(dialog, "open");
+        ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+        EXPECT_EQ(f.find(QStringLiteral("aboutVersion"))->property("text").toString(), QStringLiteral("Version 1.2.3"));
+        // Without the installer's folder, as in a build folder, there is nothing to open.
+        EXPECT_FALSE(f.find(QStringLiteral("licenceTextsButton"))->property("visible").toBool());
+
+        QVariant text;
+        QMetaObject::invokeMethod(dialog, "plainText", Q_RETURN_ARG(QVariant, text));
+        const QString copied = text.toString();
+        EXPECT_TRUE(copied.startsWith(QStringLiteral("Image Viewer 1.2.3\n"))) << copied.toStdString();
+        EXPECT_TRUE(copied.contains(QStringLiteral("\nQt ") + QString::fromLatin1(qVersion()) + QStringLiteral(" (LGPL-3.0)")));
+        EXPECT_TRUE(copied.contains(QStringLiteral("\nLittle CMS ")));
+        EXPECT_TRUE(copied.contains(QStringLiteral("\nInter typeface 4.1 (SIL OFL 1.1)")));
+        EXPECT_EQ(f.warnings, QStringList());
+    }
+    QTemporaryDir licences;
+    iv::AppInfo::setLicencesFolderForTesting(licences.path());
+    {
+        MainFixture f(0);
+        ASSERT_NE(f.window, nullptr);
+        QObject* dialog = f.find(QStringLiteral("aboutDialog"));
+        QMetaObject::invokeMethod(dialog, "open");
+        ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+        EXPECT_TRUE(f.find(QStringLiteral("licenceTextsButton"))->property("visible").toBool());
+    }
+    iv::AppInfo::setLicencesFolderForTesting({});
+    QCoreApplication::setApplicationVersion({});
 }
