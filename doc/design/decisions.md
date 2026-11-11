@@ -74,7 +74,13 @@ is anything to pan to. An image enlarged or at 100% and shown whole has neither,
 change nothing useful. The first press of a double click does this too, for that moment.
 
 ## Display range
-* Pixels are converted to `Bgrx8` on the worker thread, with a low and high value per image.
+* Pixels are converted for display on the worker thread, with a low and high value per image:
+  8-bit images to `Bgrx8`, deeper ones to `Rgba16` (`toDisplayWide`, colour managed 16 to 16
+  bits) and then to half-float textures, so that stretching and adjusting them do not band. The
+  software renderer gets `Bgrx8` throughout, as it shows no more. Half floats hold about 11 bits
+  near white and more below, and the shaders work in float.
+* The colour preview's shader runs on the level's pixels before Magic Kernel Sharp, as the
+  adjustment comes before resampling once it is applied, and both read half-float textures.
 * Float images default to auto contrast (0.1% percentiles of the coarsest level), because
   they have no natural range. 16-bit and 8-bit gray images default to the full range, and offer
   auto contrast, since gray images are often measurements that use a small part of it. 16-bit

@@ -201,6 +201,20 @@ std::vector<std::uint8_t> makeLut(DisplayRange range, int count) {
     return lut;
 }
 
+std::vector<std::uint16_t> makeWideLut(DisplayRange range, int count) {
+    std::vector<std::uint16_t> lut(static_cast<std::size_t>(count));
+    const double scale = 65535.0 / std::max(range.high - range.low, 1e-9);
+    for (int i = 0; i < count; ++i) {
+        lut[static_cast<std::size_t>(i)] = static_cast<std::uint16_t>(std::clamp((i - range.low) * scale + 0.5, 0.0, 65535.0));
+    }
+    return lut;
+}
+
+std::uint16_t mapFloatWide(float value, double low, double scale) {
+    const double mapped = (value - low) * scale + 0.5;  // NaN maps to black, as below
+    return mapped >= 0 ? static_cast<std::uint16_t>(std::min(mapped, 65535.0)) : std::uint16_t{0};
+}
+
 std::uint8_t mapFloat(float value, double low, double scale) {
     // The comparison is written so NaN maps to black.
     const double mapped = (value - low) * scale + 0.5;
@@ -953,6 +967,54 @@ ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const Color
         }
     }
     return target;
+}
+
+ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+    const PixelFormat format = source.format();
+    if (format == PixelFormat::Bgrx8 || format == PixelFormat::Gray8) {
+        return toDisplay(source, range, transform);  // nothing to keep beyond 8 bits
+    }
+    const ImageBuffer target = ImageBuffer::create(source.size(), PixelFormat::Rgba16);
+    const int width = source.width();
+    const auto put = [](std::uint16_t* out, std::uint16_t r, std::uint16_t g, std::uint16_t b) {
+        out[0] = r;
+        out[1] = g;
+        out[2] = b;
+        out[3] = 65535;
+    };
+    if (format == PixelFormat::Gray32F || format == PixelFormat::Rgba32F) {
+        const double scale = 65535.0 / std::max(range.high - range.low, 1e-30);
+        const bool gray = format == PixelFormat::Gray32F;
+        for (int y = 0; y < source.height(); ++y) {
+            const auto* in = reinterpret_cast<const float*>(source.row(y));
+            auto* out = reinterpret_cast<std::uint16_t*>(target.row(y));
+            for (int x = 0; x < width; ++x, out += 4) {
+                if (gray) {
+                    const std::uint16_t v = mapFloatWide(in[x], range.low, scale);
+                    put(out, v, v, v);
+                } else {
+                    const float* p = in + 4 * x;
+                    put(out, mapFloatWide(p[0], range.low, scale), mapFloatWide(p[1], range.low, scale), mapFloatWide(p[2], range.low, scale));
+                }
+            }
+        }
+    } else {
+        const auto lut = makeWideLut(range, 65536);
+        for (int y = 0; y < source.height(); ++y) {
+            const auto* in = reinterpret_cast<const std::uint16_t*>(source.row(y));
+            auto* out = reinterpret_cast<std::uint16_t*>(target.row(y));
+            for (int x = 0; x < width; ++x, out += 4) {
+                if (format == PixelFormat::Gray16) {
+                    put(out, lut[in[x]], lut[in[x]], lut[in[x]]);
+                } else {
+                    put(out, lut[in[4 * x]], lut[in[4 * x + 1]], lut[in[4 * x + 2]]);
+                }
+            }
+        }
+    }
+    // As in toDisplay: stretched floats are data rather than colours.
+    const bool stretchedFloat = (format == PixelFormat::Gray32F || format == PixelFormat::Rgba32F) && range != fullRange(format);
+    return transform && !stretchedFloat ? transform->applyWide(target) : target;
 }
 
 ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation) {

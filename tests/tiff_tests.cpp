@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <set>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -1148,6 +1149,49 @@ TEST(DisplayRange, FloatsHandleNansAndNegativeValues) {
     EXPECT_EQ(out[4], 0);
     EXPECT_EQ(out[8], 255);
     EXPECT_EQ(out[12], 255);    // infinity clips
+}
+
+TEST(DisplayRange, TheWideConversionKeepsTheStepsBeyondEightBits) {
+    // 12-bit values in a 16-bit image: the bottom sixteenth of the range.
+    const ImageBuffer image = ImageBuffer::create({4096, 1}, PixelFormat::Gray16);
+    auto* row = reinterpret_cast<std::uint16_t*>(image.row(0));
+    for (int x = 0; x < 4096; ++x) {
+        row[x] = static_cast<std::uint16_t>(x);
+    }
+    const ImageBuffer narrow = toDisplay(image, fullRange(PixelFormat::Gray16));
+    const ImageBuffer wide = toDisplayWide(image, fullRange(PixelFormat::Gray16));
+    ASSERT_EQ(wide.format(), PixelFormat::Rgba16);
+    std::set<int> narrowValues;
+    std::set<int> wideValues;
+    for (int x = 0; x < 4096; ++x) {
+        narrowValues.insert(reinterpret_cast<const std::uint8_t*>(narrow.row(0))[4 * x]);
+        const auto* p = reinterpret_cast<const std::uint16_t*>(wide.row(0)) + 4 * x;
+        wideValues.insert(p[0]);
+        EXPECT_TRUE(p[0] == p[1] && p[1] == p[2] && p[3] == 65535) << x;
+    }
+    EXPECT_LE(narrowValues.size(), 17U);
+    EXPECT_EQ(wideValues.size(), 4096U);
+
+    // Stretched, the top of the range reaches white.
+    const ImageBuffer stretched = toDisplayWide(image, {0, 4095});
+    EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(stretched.row(0))[4 * 4095], 65535);
+}
+
+TEST(DisplayRange, TheWideConversionHandlesNansAndClips) {
+    const ImageBuffer image = ImageBuffer::create({3, 1}, PixelFormat::Gray32F);
+    auto* row = reinterpret_cast<float*>(image.row(0));
+    row[0] = std::numeric_limits<float>::quiet_NaN();
+    row[1] = -1.0F;
+    row[2] = std::numeric_limits<float>::infinity();
+    const ImageBuffer shown = toDisplayWide(image, {0, 1});
+    const auto* out = reinterpret_cast<const std::uint16_t*>(shown.row(0));
+    EXPECT_EQ(out[0], 0);
+    EXPECT_EQ(out[4], 0);
+    EXPECT_EQ(out[8], 65535);
+
+    // 8-bit images have nothing more to keep, and go the usual way.
+    const ImageBuffer eight = ImageBuffer::create({4, 4}, PixelFormat::Bgrx8);
+    EXPECT_EQ(toDisplayWide(eight, {0, 255}).data(), eight.data());
 }
 
 TEST(DisplayRange, EightBitImagesAreNotCopied) {

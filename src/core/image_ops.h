@@ -84,4 +84,8 @@ bool usesAutoRangeByDefault(PixelFormat format);
 // colours, and their encoding may be linear, which 8 bits could not hold before converting.
 ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
 
+// The same in Rgba16, R, G, B and opaque alpha, for images with more than 8 bits, whose steps
+// 8 bits would lose when they are stretched or adjusted further. 8-bit images go to toDisplay.
+ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
+
 }  // namespace iv

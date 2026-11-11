@@ -889,6 +889,53 @@ TEST(ColorPreview, SharpResamplingSharpensTheAdjustedPicture) {
     EXPECT_LE(off * 100, samples) << off << " of " << samples << " differ by more than 3";
 }
 
+// Needs a GPU, like the tests above. A 12-bit gradient in a 16-bit file uses only the bottom
+// sixteenth of the range; levels that stretch it must show the steps between, not sixteen bands.
+TEST(ColorPreview, LevelsStretchTheBitsBeyondEight) {
+    QTemporaryDir dir;
+    TiffImage image;
+    image.width = 300;
+    image.height = 100;
+    image.bits = 16;
+    image.samples = 1;
+    // TiffImage takes 8-bit values for 16-bit files too, so the 16-bit ones come from wide16.
+    image.wide16 = [](int x, int) { return static_cast<std::uint16_t>(x * 4095 / 299); };
+    const QString path = dir.filePath(QStringLiteral("twelve.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
+
+    BrowseContext context;
+    QQuickView window;
+    window.engine()->addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    window.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                 {QStringLiteral("active"), true},
+                                 {QStringLiteral("fullScreen"), true}});
+    window.setResizeMode(QQuickView::SizeRootObjectToView);
+    window.resize(400, 400);
+    window.loadFromModule("ImageViewer", "ViewerPage");
+    window.show();
+    ASSERT_TRUE(waitUntil([&] { return window.isExposed(); }));
+    QCoreApplication::processEvents();
+    if (window.rendererInterface()->graphicsApi() == QSGRendererInterface::Software) {
+        GTEST_SKIP() << "needs a GPU";
+    }
+    auto* view = window.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(view, nullptr);
+    context.openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+    ASSERT_FALSE(view->autoContrast());
+    view->actualSize();
+    view->previewColors({{QStringLiteral("white"), 16.0 / 255.0}});
+    waitUntil([] { return false; }, 500);
+    const QImage shot = grabIfShown(window);
+    ASSERT_FALSE(shot.isNull());
+    const QPointF topLeft = view->imageToItem({0, 0}) * window.devicePixelRatio();
+    QSet<int> values;
+    for (int x = 2; x < 298; ++x) {
+        values.insert(shot.pixelColor(static_cast<int>(topLeft.x()) + x, static_cast<int>(topLeft.y()) + 50).red());
+    }
+    EXPECT_GT(values.size(), 100) << "distinct levels across the gradient";
+}
+
 // Needs a GPU, like the tests above.
 TEST(ColorPreview, BeforeAndAfterSplitTheShaderAtTheLine) {
     QTemporaryDir dir;

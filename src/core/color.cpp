@@ -83,10 +83,10 @@ cmsUInt32Number directInput(PixelFormat format, bool gray) {
     return gray ? kGrayFloat : TYPE_RGBA_FLT;
 }
 
-cmsHTRANSFORM makeTransform(cmsHPROFILE source, cmsUInt32Number input, cmsHPROFILE display) {
+cmsHTRANSFORM makeTransform(cmsHPROFILE source, cmsUInt32Number input, cmsHPROFILE display, cmsUInt32Number output = TYPE_BGRA_8) {
     // Colorimetric keeps colours inside the display's gamut exactly, and black point
     // compensation keeps shadows from clipping. NOCACHE makes the handle safe across threads.
-    return cmsCreateTransform(source, input, display, TYPE_BGRA_8, INTENT_RELATIVE_COLORIMETRIC,
+    return cmsCreateTransform(source, input, display, output, INTENT_RELATIVE_COLORIMETRIC,
                               cmsFLAGS_BLACKPOINTCOMPENSATION | cmsFLAGS_NOCACHE);
 }
 
@@ -151,14 +151,20 @@ std::shared_ptr<const ColorTransform> buildTransform(const IccBytes& sourceBytes
         return nullptr;
     }
     void* direct = nullptr;
+    void* wide = nullptr;
     if (format != PixelFormat::Bgrx8) {
         direct = makeTransform(source.get(), directInput(format, gray), display.get());
-        if (!direct) {
-            cmsDeleteTransform(eightBit);
+        wide = makeTransform(source.get(), directInput(PixelFormat::Rgba16, gray), display.get(), TYPE_RGBA_16);
+        if (!direct || !wide) {
+            for (void* transform : {eightBit, direct, wide}) {
+                if (transform) {
+                    cmsDeleteTransform(transform);
+                }
+            }
             return nullptr;
         }
     }
-    return std::make_shared<const ColorTransform>(eightBit, direct, format);
+    return std::make_shared<const ColorTransform>(eightBit, direct, wide, format);
 }
 
 struct CacheEntry {
@@ -308,8 +314,8 @@ std::string displayProfileProblem(std::span<const std::uint8_t> bytes) {
     return {};
 }
 
-ColorTransform::ColorTransform(void* eightBit, void* direct, PixelFormat format)
-    : m_eightBit(eightBit), m_direct(direct), m_format(format) {}
+ColorTransform::ColorTransform(void* eightBit, void* direct, void* wide, PixelFormat format)
+    : m_eightBit(eightBit), m_direct(direct), m_wide(wide), m_format(format) {}
 
 ColorTransform::~ColorTransform() {
     if (m_eightBit) {
@@ -317,6 +323,9 @@ ColorTransform::~ColorTransform() {
     }
     if (m_direct) {
         cmsDeleteTransform(m_direct);
+    }
+    if (m_wide) {
+        cmsDeleteTransform(m_wide);
     }
 }
 
@@ -330,6 +339,19 @@ ImageBuffer ColorTransform::apply(const ImageBuffer& source) const {
     for (int y = 0; y < source.height(); ++y) {
         std::memset(target.row(y), 0xFF, width * 4);  // lcms leaves the fourth byte alone
         cmsDoTransform(transform, source.row(y), target.row(y), static_cast<cmsUInt32Number>(width));
+    }
+    return target;
+}
+
+ImageBuffer ColorTransform::applyWide(const ImageBuffer& source) const {
+    if (!m_wide || source.format() != PixelFormat::Rgba16) {
+        return source;
+    }
+    const ImageBuffer target = ImageBuffer::create(source.size(), PixelFormat::Rgba16);
+    const auto width = static_cast<std::size_t>(source.width());
+    for (int y = 0; y < source.height(); ++y) {
+        std::memset(target.row(y), 0xFF, width * 8);  // lcms leaves alpha alone
+        cmsDoTransform(m_wide, source.row(y), target.row(y), static_cast<cmsUInt32Number>(width));
     }
     return target;
 }
