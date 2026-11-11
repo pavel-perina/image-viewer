@@ -191,6 +191,10 @@ TreeView {
             treeRow.model.display  // rows sorted in place keep their number and change their folder
             return treeModel.pathForIndex(tree.index(row, 0)) === tree.context.directory
         }
+        // Paler while the keys are elsewhere, as the selected thumbnails are while the tree has them.
+        background: Rectangle {
+            color: !treeRow.highlighted ? "transparent" : tree.activeFocus ? palette.highlight : Theme.withAlpha(palette.highlight, 0.5)
+        }
         // Framed while files are dragged over it.
         Rectangle {
             anchors.fill: parent
