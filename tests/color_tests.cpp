@@ -108,6 +108,31 @@ TEST(Color, AdobeRgbIsConvertedLikeThePublishedFormula) {
     expectNear(shownAt(transform->apply(onePixel8(0, 255, 0)), 0, 0), {0, 255, 0}, 1);
 }
 
+TEST(Color, SixteenBitsAreConvertedAtFullPrecisionToo) {
+    const auto transform = displayTransform(rgbImage(adobeRgbProfile(), PixelFormat::Rgba16), {});
+    ASSERT_NE(transform, nullptr);
+    // Two values a 16-bit step apart, which 8 bits would merge, stay apart.
+    const ImageBuffer image = ImageBuffer::create({3, 1}, PixelFormat::Rgba16);
+    auto* in = reinterpret_cast<std::uint16_t*>(image.row(0));
+    const std::array<std::array<std::uint16_t, 3>, 3> pixels{{{32768, 32768, 32768}, {32800, 32800, 32800}, {15420, 51400, 23130}}};
+    for (std::size_t i = 0; i < pixels.size(); ++i) {
+        in[4 * i] = pixels[i][0];
+        in[4 * i + 1] = pixels[i][1];
+        in[4 * i + 2] = pixels[i][2];
+        in[4 * i + 3] = 65535;
+    }
+    const ImageBuffer shown = toDisplayWide(image, fullRange(PixelFormat::Rgba16), transform.get());
+    ASSERT_EQ(shown.format(), PixelFormat::Rgba16);
+    const auto* out = reinterpret_cast<const std::uint16_t*>(shown.row(0));
+    EXPECT_LT(out[0], out[4]);
+    EXPECT_EQ(out[3], 65535);
+    // And they agree with the conversion that ends in 8 bits.
+    for (std::size_t i = 0; i < pixels.size(); ++i) {
+        const std::array<int, 3> expected = adobeInSrgb(pixels[i][0] / 65535.0, pixels[i][1] / 65535.0, pixels[i][2] / 65535.0);
+        expectNear({(out[4 * i] + 128) / 257, (out[4 * i + 1] + 128) / 257, (out[4 * i + 2] + 128) / 257}, expected, 2);
+    }
+}
+
 TEST(Color, ADisplayProfileReceivesSrgb) {
     ColorTarget target;
     target.displayProfile = std::make_shared<const IccBytes>(adobeRgbProfile());

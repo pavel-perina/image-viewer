@@ -54,7 +54,7 @@ struct ColorTarget {
 // Converts the pixels of a subimage for a display. Safe to use from several threads.
 class ColorTransform {
 public:
-    ColorTransform(void* eightBit, void* direct, PixelFormat format);
+    ColorTransform(void* eightBit, void* direct, void* wide, PixelFormat format);
     ~ColorTransform();
     ColorTransform(const ColorTransform&) = delete;
     ColorTransform& operator=(const ColorTransform&) = delete;
@@ -62,10 +62,14 @@ public:
     // Takes either the subimage's own format, or Bgrx8 with its colours in the same encoding.
     // Returns Bgrx8.
     ImageBuffer apply(const ImageBuffer& source) const;
+    // Takes Rgba16 with the colours in the subimage's encoding, as toDisplayWide makes it, and
+    // returns Rgba16 for the display. The same buffer back for 8-bit subimages, which have none.
+    ImageBuffer applyWide(const ImageBuffer& source) const;
 
 private:
     void* m_eightBit;
     void* m_direct;
+    void* m_wide;
     PixelFormat m_format;
 };
 

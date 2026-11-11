@@ -53,38 +53,27 @@ Item {
                 Loader {
                     anchors.fill: imageView
                     active: imageView.resampleActive
-                    sourceComponent: ResampledView { view: imageView }
+                    sourceComponent: ResampledView {
+                        view: imageView
+                        colorPreview: surface.colorPreviewShown
+                    }
                 }
             }
 
             // Always there rather than loaded, as its source would keep the picture hidden until the
-            // garbage collector came for it.
-            ShaderEffect {
+            // garbage collector came for it. Sharp resampling draws its own, before the kernel,
+            // and dithers at the end. Images with more than 8 bits pass through it to be dithered
+            // when nothing is adjusted.
+            ColorPreviewEffect {
                 objectName: "colorPreview"
                 anchors.fill: content
-                visible: surface.colorPreviewShown
-                fragmentShader: "qrc:/shaders/color_preview.frag.qsb"
-                property var source: ShaderEffectSource {
-                    sourceItem: content
-                    hideSource: surface.colorPreviewShown
-                    live: surface.colorPreviewShown
-                    smooth: false
-                    textureSize: Qt.size(Math.ceil(content.width * Screen.devicePixelRatio),
-                                         Math.ceil(content.height * Screen.devicePixelRatio))
-                }
-                property var lut: lutTexture
-                property real cubeSize: imageView.colorPreviewCubeSize
-                property real chroma: imageView.colorPreviewChroma
-                property real useTone: imageView.colorPreviewTone ? 1 : 0
-                property real useLightness: imageView.colorPreviewLightness ? 1 : 0
-                property real gamutMap: imageView.colorPreviewGamutMap ? 1 : 0
-                property vector4d domainMin: imageView.colorPreviewDomainMin
-                property vector4d domainMax: imageView.colorPreviewDomainMax
-
-                ColorLutTexture {
-                    id: lutTexture
-                    image: imageView.colorPreviewLut
-                }
+                visible: (surface.colorPreviewShown || (imageView.highPrecision && GraphicsInfo.api !== GraphicsInfo.Software))
+                         && !imageView.resampleActive
+                adjusting: surface.colorPreviewShown
+                view: imageView
+                sourceItem: content
+                textureSize: Qt.size(Math.ceil(content.width * Screen.devicePixelRatio),
+                                     Math.ceil(content.height * Screen.devicePixelRatio))
             }
         }
     }

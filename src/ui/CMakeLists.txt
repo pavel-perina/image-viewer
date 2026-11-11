@@ -58,6 +58,7 @@ qt_add_qml_module(iv_ui
         qml/BarButton.qml
         qml/BrowserPage.qml
         qml/Caret.qml
+        qml/ColorPreviewEffect.qml
         qml/CompareSplitter.qml
         qml/CropPanel.qml
         qml/FileActions.qml

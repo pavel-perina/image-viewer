@@ -57,6 +57,22 @@ namespace iv {
 
 namespace {
 
+// The pixels of a tile's texture. Half floats where the image has more than 8 bits, so that the
+// colour preview and sharp resampling work on all of them; 8 bits for the software renderer,
+// which shows no more, and for 8-bit images.
+QImage tileImage(const ImageBuffer& tile, DisplayRange range, const ColorTransform* color, bool wide) {
+    if (!wide) {
+        return toQImage(toDisplay(tile, range, color));
+    }
+    const ImageBuffer shown = toDisplayWide(tile, range, color);
+    if (shown.format() != PixelFormat::Rgba16) {
+        return toQImage(shown);
+    }
+    const QImage pixels(reinterpret_cast<const uchar*>(shown.data()), shown.width(), shown.height(),
+                        static_cast<qsizetype>(shown.stride()), QImage::Format_RGBA64);
+    return pixels.convertToFormat(QImage::Format_RGBA16FPx4);  // a copy, so shown may go
+}
+
 constexpr int kOpenPriority = 1000;
 constexpr int kTilePriority = 500;
 constexpr int kHistogramPriority = 100;
@@ -188,6 +204,7 @@ struct ImageView::Impl {
     int page = 0;  // of source, which is always 0 for an edited page
     bool autoContrast = false;
     bool keepAutoContrast = false;  // a setting, not of the document
+    bool wideTiles = false;  // half-float textures, as tileImage makes them
     DisplayRange autoDisplayRange;
     DisplayRange displayRange;
     std::shared_ptr<const ColorTransform> colorTransform;
@@ -464,11 +481,12 @@ struct ImageView::Impl {
     void requestTile(const TileKey& key) {
         const std::uint64_t doc = document;
         const auto id = queue.submit(group, kTilePriority,
-                                     [this, source = source, key, doc, page = page, range = displayRange, color = colorTransform](std::stop_token stop) {
-            Result<ImageBuffer> tile = source->readTile({page, key.level, key.col, key.row}, stop);
-            if (tile) {
+                                     [this, source = source, key, doc, page = page, range = displayRange, color = colorTransform, wide = wideTiles](std::stop_token stop) {
+            const Result<ImageBuffer> read = source->readTile({page, key.level, key.col, key.row}, stop);
+            Result<QImage> tile = std::unexpected(read ? std::string() : read.error());
+            if (read) {
                 try {
-                    tile = toDisplay(*tile, range, color.get());
+                    tile = tileImage(*read, range, color.get(), wide);
                 } catch (const std::bad_alloc&) {
                     tile = std::unexpected("not enough memory for tile");
                 }
@@ -480,14 +498,14 @@ struct ImageView::Impl {
         inFlight.emplace(key, id);
     }
 
-    void onTileRead(const TileKey& key, std::uint64_t doc, const Result<ImageBuffer>& tile) {
+    void onTileRead(const TileKey& key, std::uint64_t doc, const Result<QImage>& tile) {
         if (doc != document) {
             return;
         }
         inFlight.erase(key);
         if (tile) {
             rough.erase(key);
-            pendingUpload.insert_or_assign(key, toQImage(*tile));
+            pendingUpload.insert_or_assign(key, *tile);
             q->update();
         } else if (tile.error() != "cancelled") {
             qWarning() << "Cannot read tile of" << path << ":" << QString::fromStdString(tile.error());
@@ -744,13 +762,15 @@ struct ImageView::Impl {
         const PixelFormat format = subimage().format;
         displayRange = autoContrast ? autoDisplayRange : fullRange(format);
         colorTransform = displayTransform(subimage(), ColorSettings::target());
+        const QQuickWindow* window = q->window();
+        wideTiles = !window || window->rendererInterface()->graphicsApi() != QSGRendererInterface::Software;
         inFlight.clear();
         uploaded.clear();
         failed.clear();
         pendingUpload.clear();
         rough.clear();
         for (const auto& [key, tile] : preview) {
-            pendingUpload.emplace(key, toQImage(toDisplay(tile, displayRange, colorTransform.get())));
+            pendingUpload.emplace(key, tileImage(tile, displayRange, colorTransform.get(), wideTiles));
             if (previewIsRough) {
                 rough.insert(key);
             }
@@ -978,6 +998,14 @@ int ImageView::pageCount() const { return m_impl->fileSource ? static_cast<int>(
 
 bool ImageView::contrastAdjustable() const {
     return m_impl->source && m_impl->subimage().format != PixelFormat::Bgrx8;
+}
+
+bool ImageView::highPrecision() const {
+    if (!m_impl->source || !m_impl->wideTiles) {
+        return false;
+    }
+    const PixelFormat format = m_impl->subimage().format;
+    return format != PixelFormat::Bgrx8 && format != PixelFormat::Gray8;
 }
 
 bool ImageView::autoContrast() const { return m_impl->autoContrast; }
