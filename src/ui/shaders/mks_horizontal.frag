@@ -29,8 +29,10 @@ float kernel(float x) {
     return 0.0;
 }
 
-// The sRGB curve for each 8-bit value. This runs for every texel the kernel reads, up to about 10
-// per pixel, where a table takes about 1 ms off a frame of 18 on an integrated GPU compared to pow.
+// The sRGB curve at each 8-bit value, read between them, as tiles of deeper images hold more.
+// This runs for every texel the kernel reads, up to about 10 per pixel, where a table takes about
+// 1 ms off a frame of 18 on an integrated GPU compared to pow. Read between, it is off by less
+// than 0.00001, as the curve is smooth.
 const float kToLinear[256] = float[256](
 0.00000000, 0.00030353, 0.00060705, 0.00091058, 0.00121411, 0.00151763, 0.00182116, 0.00212469,
 0.00242822, 0.00273174, 0.00303527, 0.00334654, 0.00367651, 0.00402472, 0.00439144, 0.00477695,
@@ -65,8 +67,11 @@ const float kToLinear[256] = float[256](
 0.87136712, 0.87962240, 0.88792312, 0.89626935, 0.90466117, 0.91309865, 0.92158186, 0.93011086,
 0.93868573, 0.94730654, 0.95597335, 0.96468625, 0.97344529, 0.98225055, 0.99110210, 1.00000000);
 vec3 toLinear(vec3 c) {
-    const ivec3 i = ivec3(c * 255.0 + 0.5);
-    return vec3(kToLinear[i.r], kToLinear[i.g], kToLinear[i.b]);
+    const vec3 x = clamp(c, 0.0, 1.0) * 255.0;
+    const ivec3 i = ivec3(min(x, vec3(254.0)));
+    const vec3 f = x - vec3(i);
+    return mix(vec3(kToLinear[i.r], kToLinear[i.g], kToLinear[i.b]),
+               vec3(kToLinear[i.r + 1], kToLinear[i.g + 1], kToLinear[i.b + 1]), f);
 }
 
 void main() {
