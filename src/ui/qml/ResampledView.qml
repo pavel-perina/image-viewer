@@ -8,6 +8,7 @@ ShaderEffect {
     id: vertical
 
     required property ImageView view
+    property bool colorPreview: false  // the view's colour adjustment, drawn before the kernel
 
     readonly property size composite: view.resampleTextureSize
     readonly property point phasePoint: view.resamplePhase
@@ -34,6 +35,16 @@ ShaderEffect {
                                              view.resampleImageRect.x + view.resampleImageRect.width,
                                              view.resampleImageRect.y + view.resampleImageRect.height)
 
+    // The level's pixels adjusted one for one, at the size the kernel reads them.
+    ColorPreviewEffect {
+        id: colored
+        anchors.fill: parent
+        visible: vertical.colorPreview
+        view: vertical.view
+        sourceItem: vertical.view
+        textureSize: vertical.composite
+    }
+
     ShaderEffect {
         id: horizontal
         anchors.fill: parent
@@ -43,9 +54,10 @@ ShaderEffect {
         // with this source and the view would stay hidden until then.
         Component.onDestruction: source.hideSource = false
         property var source: ShaderEffectSource {
-            sourceItem: vertical.view
+            sourceItem: vertical.colorPreview ? colored : vertical.view
             hideSource: true
             smooth: false
+            format: ShaderEffectSource.RGBA16F
             textureSize: vertical.composite
         }
         property real destSize: vertical.deviceWidth
