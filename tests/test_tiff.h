@@ -26,8 +26,8 @@ struct TiffImage {
     bool reduced = false;  // mark as a reduced resolution image
     std::vector<std::uint8_t> iccProfile;
     std::function<Rgb(int x, int y)> pixel = [](int, int) { return Rgb{128, 128, 128}; };
-    // For 16-bit unsigned files, every sample of a pixel at full precision instead of pixel.
-    std::function<std::uint16_t(int x, int y)> wide16;
+    // For 16-bit unsigned files, each sample at full precision instead of pixel.
+    std::function<std::uint16_t(int x, int y, int sample)> wide16;
     std::vector<TiffImage> subIfds;  // written as SubIFDs of this image
 };
 

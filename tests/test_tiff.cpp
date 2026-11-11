@@ -52,7 +52,7 @@ void writeBlock(TIFF* tiff, const TiffImage& image, int x0, int y0, int width, i
             const std::size_t base = (static_cast<std::size_t>(y) * width + x) * perPixel;
             for (int s = 0; s < perPixel; ++s) {
                 if (image.wide16 && image.bits == 16) {
-                    const std::uint16_t v = inside ? image.wide16(x0 + x, y0 + y) : 0;
+                    const std::uint16_t v = inside ? image.wide16(x0 + x, y0 + y, oneSample ? sample : s) : 0;
                     std::memcpy(bytes.data() + (base + s) * 2, &v, sizeof(v));
                 } else {
                     putSample(bytes, base + s, channel(pixel, oneSample ? sample : s), image);

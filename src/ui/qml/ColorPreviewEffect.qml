@@ -13,6 +13,9 @@ ShaderEffect {
     property bool adjusting: true  // otherwise the colours only pass through, to be dithered
 
     fragmentShader: "qrc:/shaders/color_preview.frag.qsb"
+    // Shown again by hand when the effect goes, with sharp resampling, as the garbage collector
+    // may take its time with this source and the item would stay hidden until then.
+    Component.onDestruction: source.hideSource = false
     property var source: ShaderEffectSource {
         sourceItem: effect.sourceItem
         hideSource: effect.visible

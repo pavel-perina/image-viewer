@@ -887,6 +887,17 @@ TEST(ColorPreview, SharpResamplingSharpensTheAdjustedPicture) {
     }
     ASSERT_GT(samples, 1000);
     EXPECT_LE(off * 100, samples) << off << " of " << samples << " differ by more than 3";
+
+    // Previewing again and leaving sharp resampling, which takes its adjustment along, leaves the
+    // picture shown.
+    view->previewColors(settings);
+    waitUntil([] { return false; }, 300);
+    view->actualSize();
+    ASSERT_TRUE(waitUntil([&] { return !view->resampleActive(); }));
+    const QImage after = grab();
+    ASSERT_FALSE(after.isNull());
+    const QPointF middle = view->imageToItem({300, 250}) * window.devicePixelRatio();
+    EXPECT_NE(after.pixelColor(middle.toPoint()), QColor(0x20, 0x20, 0x20)) << "not the background";
 }
 
 // Needs a GPU, like the tests above. A 12-bit gradient in a 16-bit file uses only the bottom
@@ -899,7 +910,7 @@ TEST(ColorPreview, LevelsStretchTheBitsBeyondEight) {
     image.bits = 16;
     image.samples = 1;
     // TiffImage takes 8-bit values for 16-bit files too, so the 16-bit ones come from wide16.
-    image.wide16 = [](int x, int) { return static_cast<std::uint16_t>(x * 4095 / 299); };
+    image.wide16 = [](int x, int, int) { return static_cast<std::uint16_t>(x * 4095 / 299); };
     const QString path = dir.filePath(QStringLiteral("twelve.tif"));
     iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
 
@@ -946,7 +957,7 @@ TEST(ColorPreview, DeepImagesAreDitheredRatherThanBanded) {
     image.height = 600;
     image.bits = 16;
     image.samples = 1;
-    image.wide16 = [](int x, int) { return static_cast<std::uint16_t>((128.0 + 4.0 * x / 799) * 257); };
+    image.wide16 = [](int x, int, int) { return static_cast<std::uint16_t>((128.0 + 4.0 * x / 799) * 257); };
     const QString path = dir.filePath(QStringLiteral("ramp.tif"));
     iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
 
@@ -1002,6 +1013,49 @@ TEST(ColorPreview, DeepImagesAreDitheredRatherThanBanded) {
     window.rootObject()->setProperty("sharpResampling", true);
     ASSERT_TRUE(waitUntil([&] { return view->resampleActive(); }));
     measure("with sharp resampling");
+}
+
+// Needs a GPU, like the tests above. Deep colour keeps its channels in their places on the way
+// to the screen, which gray images would not show.
+TEST(ColorPreview, DeepColourKeepsItsChannels) {
+    QTemporaryDir dir;
+    TiffImage image;
+    image.width = 100;
+    image.height = 100;
+    image.bits = 16;
+    image.samples = 3;
+    image.wide16 = [](int, int, int sample) { return std::uint16_t{sample == 0 ? std::uint16_t{0x8080} : sample == 1 ? std::uint16_t{0x4040} : std::uint16_t{0x2020}}; };
+    const QString path = dir.filePath(QStringLiteral("colour.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {image});
+
+    BrowseContext context;
+    QQuickView window;
+    window.engine()->addImageProvider(QLatin1StringView(iv::ThumbnailProvider::kProviderId), new iv::ThumbnailProvider);
+    window.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                 {QStringLiteral("active"), true},
+                                 {QStringLiteral("fullScreen"), true}});
+    window.setResizeMode(QQuickView::SizeRootObjectToView);
+    window.resize(400, 400);
+    window.loadFromModule("ImageViewer", "ViewerPage");
+    window.show();
+    ASSERT_TRUE(waitUntil([&] { return window.isExposed(); }));
+    QCoreApplication::processEvents();
+    if (window.rendererInterface()->graphicsApi() == QSGRendererInterface::Software) {
+        GTEST_SKIP() << "needs a GPU";
+    }
+    auto* view = window.rootObject()->property("view").value<ImageView*>();
+    ASSERT_NE(view, nullptr);
+    context.openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return view->status() == ImageView::Status::Ready; }));
+    ASSERT_TRUE(view->highPrecision());
+    view->actualSize();
+    waitUntil([] { return false; }, 500);
+    const QImage shot = grabIfShown(window);
+    ASSERT_FALSE(shot.isNull());
+    const QColor shown = shot.pixelColor((view->imageToItem({50, 50}) * window.devicePixelRatio()).toPoint());
+    EXPECT_NEAR(shown.red(), 128, 1);
+    EXPECT_NEAR(shown.green(), 64, 1);
+    EXPECT_NEAR(shown.blue(), 32, 1);
 }
 
 // Needs a GPU, like the tests above.
