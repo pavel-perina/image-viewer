@@ -293,7 +293,8 @@ TEST(Document, DrawingInColourTurnsAGrayPictureIntoAColourOne) {
 
     edit.colour = true;
     document.apply(edit);
-    const SubimageInfo& after = document.source()->subimages()[0];
+    const auto source = document.source();
+    const SubimageInfo& after = source->subimages()[0];
     EXPECT_EQ(after.format, PixelFormat::Bgrx8);
     EXPECT_EQ(after.stored.colorModel, "RGB");
     EXPECT_TRUE(after.iccProfile.empty());
