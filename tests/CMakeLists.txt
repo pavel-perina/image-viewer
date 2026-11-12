@@ -20,6 +20,7 @@ add_executable(iv_core_tests
     writer_tests.cpp
     xmp_tests.cpp
     save_tests.cpp
+    shape_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp

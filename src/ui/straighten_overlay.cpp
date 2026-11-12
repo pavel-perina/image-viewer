@@ -14,11 +14,7 @@ namespace {
 constexpr double kMinLength = 12;  // shorter new lines, in item units, are dropped
 
 double distanceToSegment(QPointF p, QPointF a, QPointF b) {
-    const QPointF d = b - a;
-    const double lengthSquared = QPointF::dotProduct(d, d);
-    const double t = lengthSquared > 0 ? std::clamp(QPointF::dotProduct(p - a, d) / lengthSquared, 0.0, 1.0) : 0.0;
-    const QPointF nearest = a + t * d;
-    return std::hypot(p.x() - nearest.x(), p.y() - nearest.y());
+    return iv::distanceToSegment(PointD{p.x(), p.y()}, PointD{a.x(), a.y()}, PointD{b.x(), b.y()});
 }
 
 }  // namespace

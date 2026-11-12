@@ -1,8 +1,17 @@
 #include "core/geometry.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace iv {
+
+double distanceToSegment(PointD p, PointD a, PointD b) {
+    const double dx = b.x - a.x;
+    const double dy = b.y - a.y;
+    const double lengthSquared = dx * dx + dy * dy;
+    const double t = lengthSquared > 0 ? std::clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared, 0.0, 1.0) : 0.0;
+    return std::hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
 
 void Affine::apply(double x, double y, double& outX, double& outY) const {
     outX = a * x + c * y + tx;

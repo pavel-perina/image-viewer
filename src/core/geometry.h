@@ -11,7 +11,11 @@ struct Size {
 struct PointD {
     double x = 0;
     double y = 0;
+    bool operator==(const PointD&) const = default;
 };
+
+// How far a point is from the nearest point of the segment from a to b.
+double distanceToSegment(PointD p, PointD a, PointD b);
 
 struct RectD {
     double x = 0;

@@ -52,6 +52,8 @@ add_library(iv_core STATIC
     pixel_probe.cpp
     pixel_probe.h
     save_image.cpp
+    shapes.cpp
+    shapes.h
     save_image.h
     thumbnail.cpp
     thumbnail.h
