@@ -33,8 +33,8 @@ Size sizeAfter(Size before, const Edit& edit) {
 }
 
 ImageBuffer draw(ImageBuffer pixels, const DrawEdit& edit) {
-    for (const PixelRect& rect : edit.pixelated) {
-        pixels = pixelate(pixels, rect, edit.block);
+    for (const DrawEdit::Pixelated& part : edit.pixelated) {
+        pixels = pixelate(pixels, part.rect, part.block);
     }
     if (edit.colour) {
         pixels = toColour(pixels);

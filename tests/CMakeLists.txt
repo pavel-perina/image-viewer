@@ -65,6 +65,7 @@ add_executable(iv_ui_tests
     ui_browse_tests.cpp
     ui_browser_page_tests.cpp
     ui_image_view_tests.cpp
+    ui_annotate_tests.cpp
     ui_edit_tests.cpp
     ui_file_tests.cpp
     ui_window_tests.cpp

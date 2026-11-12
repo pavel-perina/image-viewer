@@ -51,8 +51,11 @@ struct GrayEdit {
 // may be missing. With colour set, a gray picture becomes a colour one first, so that what
 // is drawn keeps its colours; its gray colour profile then no longer fits and is dropped.
 struct DrawEdit {
-    std::vector<PixelRect> pixelated;
-    int block = 8;
+    struct Pixelated {
+        PixelRect rect;
+        int block = 8;
+    };
+    std::vector<Pixelated> pixelated;
     ImageBuffer markers;
     ImageBuffer drawing;
     int x = 0;

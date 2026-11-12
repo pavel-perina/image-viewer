@@ -52,6 +52,7 @@
 #include "ui/edited_image.h"
 #include "ui/histogram_handle.h"
 #include "ui/qimage_bridge.h"
+#include "ui/shape_painter.h"
 
 namespace iv {
 
@@ -250,6 +251,8 @@ struct ImageView::Impl {
     std::uint64_t probeRequest = 0;
     // A reduced copy of the image as shown, ready to display, for straightening.
     ImageBuffer straightenBase;
+    ImageBuffer drawBase;  // the picture at full size and upright, as stored, while annotating
+    std::uint64_t drawRequest = 0;
     double straightenBaseScale = 1;  // its pixels per pixel of the image
     std::uint64_t straightenRequest = 0;
 
@@ -1328,6 +1331,92 @@ void ImageView::grayscale(int method) {
     }
     d.edit->apply(GrayEdit{method == 1 ? GrayMethod::Lightness : GrayMethod::Luma});
     d.showEdit();
+}
+
+void ImageView::draw(const std::vector<Shape>& shapes) {
+    Impl& d = *m_impl;
+    if (!editable() || d.status != Status::Ready || shapes.empty()) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    d.edit->apply(renderShapes(shapes, d.edit->size(), d.displayRange));
+    d.showEdit();
+}
+
+void ImageView::prepareDraw() {
+    Impl& d = *m_impl;
+    d.drawBase = {};
+    const std::uint64_t request = ++d.drawRequest;
+    if (!d.source || d.status != Status::Ready) {
+        return;
+    }
+    d.queue.submit(d.group, kStraightenPriority,
+                   [this, source = d.source, page = d.page, orientation = d.subimage().orientation, request](std::stop_token stop) {
+        auto pixels = readLevel(*source, page, 0, stop);
+        if (!pixels) {
+            return;
+        }
+        ImageBuffer base;
+        try {
+            base = applyOrientation(*pixels, orientation);
+        } catch (const std::bad_alloc&) {
+            return;
+        }
+        QMetaObject::invokeMethod(this, [this, base = std::move(base), request] {
+            if (request == m_impl->drawRequest) {
+                m_impl->drawBase = base;
+                emit drawReady();
+            }
+        });
+    });
+}
+
+void ImageView::endDraw() {
+    ++m_impl->drawRequest;
+    m_impl->drawBase = {};
+}
+
+QImage ImageView::drawPreview(const Shape& shape, QRect* where) const {
+    const Impl& d = *m_impl;
+    if (d.drawBase.isNull()) {
+        return {};
+    }
+    const QRect area = shapeArea(shape, d.drawBase.size());
+    if (area.isEmpty()) {
+        return {};
+    }
+    *where = area;
+    // More pixels than this are reduced first: quick enough to follow the mouse, and a part
+    // that large is shown smaller than it is anyway.
+    constexpr double kMostPixels = 1.5e6;
+    const double scale = std::min(1.0, std::sqrt(kMostPixels / (static_cast<double>(area.width()) * area.height())));
+    try {
+        ImageBuffer part = d.drawBase.view(area.x(), area.y(), area.width(), area.height());
+        Shape local = shape;
+        moveBy(local, {-static_cast<double>(area.x()), -static_cast<double>(area.y())});
+        if (scale < 1) {
+            const Size reduced{std::max(1, static_cast<int>(area.width() * scale)), std::max(1, static_cast<int>(area.height() * scale))};
+            const double sx = static_cast<double>(reduced.width) / area.width();
+            const double sy = static_cast<double>(reduced.height) / area.height();
+            part = shrink(part, reduced);
+            for (PointD& p : local.points) {
+                p = {p.x * sx, p.y * sy};
+            }
+            local.style.width = std::max(1.0, local.style.width * sx);
+        }
+        const DrawEdit edit = renderShapes(std::span(&local, 1), part.size(), d.displayRange);
+        for (const DrawEdit::Pixelated& box : edit.pixelated) {
+            part = pixelate(part, box.rect, box.block);
+        }
+        if (!edit.markers.isNull()) {
+            part = blendLayer(edit.colour ? toColour(part) : part, edit.markers, edit.x, edit.y, LayerBlend::Multiply, edit.range);
+        }
+        return toQImage(toDisplay(part, d.displayRange, d.colorTransform.get()));
+    } catch (const std::bad_alloc&) {
+        return {};
+    }
 }
 
 void ImageView::undo() {

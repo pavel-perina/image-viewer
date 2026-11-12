@@ -1,6 +1,8 @@
 qt_add_library(iv_ui STATIC
     app_info.cpp
     app_info.h
+    annotate_overlay.cpp
+    annotate_overlay.h
     browse_context.cpp
     browse_context.h
     browse_context_files.cpp
@@ -40,6 +42,8 @@ qt_add_library(iv_ui STATIC
     overlay_style.h
     probe_overlay.cpp
     probe_overlay.h
+    shape_painter.cpp
+    shape_painter.h
     image_view.cpp
     image_view.h
     subfolder_list.cpp
@@ -59,6 +63,7 @@ qt_add_qml_module(iv_ui
     QML_FILES
         qml/AboutDialog.qml
         qml/AdjustPanel.qml
+        qml/AnnotatePanel.qml
         qml/AppDialog.qml
         qml/AppMenu.qml
         qml/AppMenuItem.qml

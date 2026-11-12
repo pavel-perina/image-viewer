@@ -578,7 +578,7 @@ the question before leaving an edited image. Still planned lists the rest.
   photographs, not on panels.
 * No shape or style model yet. It waits for the decision on how annotations are stored.
 
-### Annotations (being built)
+### Annotations
 * Annotations are burned into the pixels when applied, as one edit in the edit list, so undo,
   Save and Save As treat them like any other edit and every format can hold them. Keeping
   them editable after saving would need a sidecar or a metadata block, and is left open.
@@ -601,6 +601,21 @@ the question before leaving an edited image. Still planned lists the rest.
   sRGB. On a wide-gamut picture a red is therefore that space's red.
 * Drawing in colour on a gray picture turns it into a colour one, so a red arrow stays red.
   A gray colour profile then no longer fits and is dropped.
+* Edit > Annotate (D) has Select, Line, Arrow, Rectangle, Marker and Pixelate. With a drawing
+  tool a drag draws and a click selects; with Select a drag moves. Grips reshape the shape
+  selected, Delete removes it, and Esc lets go of it before it leaves the tool. Nothing is in
+  the picture or the edit list until Apply.
+* The style shown is that of the shape selected, or else of the tool. Each tool remembers
+  its own between runs, so the marker stays yellow while arrows stay red. Until a width is
+  set, lines start at 1/500 of the picture's long edge and blocks at 1/60.
+* Rectangles and boxes keep their corners on whole pixels and draw their line inside them, so
+  every edge lies between pixels and stays sharp.
+* A marker and a pixelated box depend on the picture under them, so they are previewed from
+  its real pixels with the code that applies them: the view reads the picture at full size
+  when the tool starts and hands out the changed part for each such shape. Parts above 1.5
+  megapixels are reduced first, to keep up with the mouse.
+* Still to come: text, polygons, freehand strokes, a marker mode for dark pictures, and
+  asking before shapes not yet applied are thrown away.
 
 ### Crop
 * A mode of the large view rather than a window of its own, so zoom, panning and full screen

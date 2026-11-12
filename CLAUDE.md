@@ -38,7 +38,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
 * **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
-  from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`.
+  from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
+  `shape_painter` (draws annotation shapes, for the screen and for burning in).
 * **Browsing:** `browse_context` (one folder, its files, the current image), `file_list_model`,
   `directory_tree_model`, `folder_listing`, `subfolder_list`, `folder_lists`, `thumbnail_store`,
   `thumbnail_provider`.

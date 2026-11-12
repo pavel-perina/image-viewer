@@ -9,7 +9,7 @@ namespace iv {
 namespace {
 
 bool isBox(ShapeKind kind) {
-    return kind == ShapeKind::Rectangle || kind == ShapeKind::Pixelate || kind == ShapeKind::Text;
+    return snapsToPixels(kind);
 }
 
 // The corners of a box around two opposite ones, the first corner first and the second third.
@@ -77,6 +77,10 @@ bool hits(const Shape& shape, PointD at, double reach) {
 }
 
 }  // namespace
+
+bool snapsToPixels(ShapeKind kind) {
+    return kind == ShapeKind::Rectangle || kind == ShapeKind::Pixelate || kind == ShapeKind::Text;
+}
 
 Shape startShape(ShapeKind kind, const ShapeStyle& style, PointD at) {
     const bool grows = kind == ShapeKind::Polygon || kind == ShapeKind::Freehand;

@@ -58,6 +58,9 @@ QtObject {
     readonly property color toolDim: "#96000000"      // over what a tool leaves out
     readonly property color guideVertical: "#4fc3f7"
     readonly property color guideHorizontal: "#ffb74d"
+    // The colours offered for annotations. These are drawn into pictures, not part of the look.
+    readonly property list<color> annotationColours: ["#e53935", "#ffeb3b", "#43a047", "#1e88e5", "#8e24aa",
+                                                      "#ff9800", "#ffffff", "#000000"]
 
     function withAlpha(color, alpha) { return Qt.rgba(color.r, color.g, color.b, alpha) }
 }

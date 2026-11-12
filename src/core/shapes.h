@@ -47,7 +47,12 @@ struct Shape {
     std::vector<PointD> points;
     ShapeStyle style;
     std::string text;
+    bool operator==(const Shape&) const = default;
 };
+
+// Whether a kind keeps its points on whole pixels: the boxes, whose straight edges would
+// otherwise fall between pixels and blur.
+bool snapsToPixels(ShapeKind kind);
 
 // A shape while it is being drawn from a press at one point: both of its points there, or
 // for a polygon and a stroke the first.

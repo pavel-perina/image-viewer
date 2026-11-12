@@ -241,8 +241,7 @@ TEST(Document, DrawingPutsALayerOnAndUndoes) {
     edit.x = 5;
     edit.y = 5;
     edit.range = {0, 255};
-    edit.pixelated = {{0, 30, 40, 20}};
-    edit.block = 100;
+    edit.pixelated = {{{0, 30, 40, 20}, 100}};
     document.apply(edit);
     EXPECT_TRUE(document.modified());
     EXPECT_EQ(document.size(), (Size{40, 80}));

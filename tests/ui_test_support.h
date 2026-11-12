@@ -542,8 +542,9 @@ struct ComparePage {
     bool active() const { return splitter->property("active").toBool(); }
 };
 
-// The large view on one tilted picture of 400 pixels across, with a tool started and the
-// picture enlarged beyond the view, so that it can be moved every way.
+// The large view on one picture of 400 by 300 pixels, a dark tilted rectangle on a light
+// ground, with a tool started. Enlarged, the picture reaches beyond the view, so that it can
+// be moved every way; otherwise all of it shows, at its own size.
 struct ToolPage {
     QTemporaryDir dir;
     BrowseContext context;
@@ -551,7 +552,7 @@ struct ToolPage {
     QObject* page = nullptr;
     ImageView* image = nullptr;
 
-    explicit ToolPage(const char* start) {
+    explicit ToolPage(const char* start, bool enlarged = true) {
         writeTiltedJpeg(dir);
         view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
         view.setResizeMode(QQuickView::SizeRootObjectToView);
@@ -566,12 +567,31 @@ struct ToolPage {
         // The panel slides in and the image refits to the room left.
         EXPECT_TRUE(waitUntil([&] { return image->width() < 700; }));
         waitUntil([] { return false; }, 300);
-        while (image->imageToItem(QPointF(400, 0)).x() - image->imageToItem(QPointF(0, 0)).x() < 3 * image->width()) {
+        while (enlarged && image->imageToItem(QPointF(400, 0)).x() - image->imageToItem(QPointF(0, 0)).x() < 3 * image->width()) {
             image->zoomIn();
         }
     }
 
     QPointF origin() const { return image->imageToItem(QPointF(0, 0)); }
+
+    // Where a point of the picture is in the window.
+    QPoint at(double x, double y) const { return image->mapToScene(image->imageToItem(QPointF(x, y))).toPoint(); }
+
+    // Drags with the left button between two points of the picture.
+    void dragOnImage(QPointF from, QPointF to) {
+        QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, at(from.x(), from.y()));
+        QTest::mouseMove(&view, at((from.x() + to.x()) / 2, (from.y() + to.y()) / 2));
+        QTest::mouseMove(&view, at(to.x(), to.y()));
+        QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, at(to.x(), to.y()));
+    }
+
+    // The colour of a pixel of the picture as it is now, edits included: "#rrggbb".
+    QString hexAt(int x, int y) {
+        QSignalSpy probed(image, &ImageView::probed);
+        image->probe(QPointF(x + 0.5, y + 0.5));
+        EXPECT_TRUE(waitUntil([&] { return probed.count() == 1; }));
+        return probed.isEmpty() ? QString() : probed.front().front().toMap().value(QStringLiteral("hex")).toString();
+    }
 
     // Drags from the middle of the picture's view, and tells how far the picture moved.
     QPointF drag(Qt::MouseButton button, QPoint by) {
