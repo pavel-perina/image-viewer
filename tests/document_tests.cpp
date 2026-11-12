@@ -4,6 +4,7 @@
 
 #include "core/document.h"
 #include "core/jpeg_source.h"
+#include "core/whole_image_source.h"
 #include "test_jpeg.h"
 
 using namespace iv;
@@ -221,4 +222,90 @@ TEST(Document, ScaleFollowsResizing) {
     EXPECT_DOUBLE_EQ(document.scale(), 0.5);
     document.apply(ResizeEdit{{30, 10}, true});  // the middle 20 x 6.67 to 30 x 10
     EXPECT_DOUBLE_EQ(document.scale(), 0.75);
+}
+
+// Why: applied annotations are one edit like any other: they change the pixels where the
+// layer is, keep the size, and undo. Here a 10 x 10 opaque green layer is put at 5, 5 of the
+// picture that is red on top, and a rectangle over the border of red and blue is pixelated
+// into one block, which mixes the two.
+TEST(Document, DrawingPutsALayerOnAndUndoes) {
+    Document document(turnedJpeg(), 0);
+    DrawEdit edit;
+    edit.drawing = ImageBuffer::create({10, 10}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 10; ++y) {
+        auto* out = reinterpret_cast<std::uint8_t*>(edit.drawing.row(y));
+        for (int x = 0; x < 10; ++x, out += 4) {
+            out[0] = 0, out[1] = 255, out[2] = 0, out[3] = 255;
+        }
+    }
+    edit.x = 5;
+    edit.y = 5;
+    edit.range = {0, 255};
+    edit.pixelated = {{0, 30, 40, 20}};
+    edit.block = 100;
+    document.apply(edit);
+    EXPECT_TRUE(document.modified());
+    EXPECT_EQ(document.size(), (Size{40, 80}));
+
+    const ImageBuffer pixels = pixelsOf(document);
+    const auto* green = reinterpret_cast<const std::uint8_t*>(pixels.row(10)) + 4 * 10;
+    EXPECT_EQ(green[1], 255);
+    EXPECT_EQ(green[2], 0);
+    EXPECT_TRUE(isRed(pixels, 30, 10)) << "beside the layer";
+    EXPECT_FALSE(isRed(pixels, 20, 32));
+    EXPECT_FALSE(isBlue(pixels, 20, 48)) << "red and blue averaged";
+    EXPECT_TRUE(isBlue(pixels, 20, 60));
+
+    document.undo();
+    EXPECT_TRUE(isRed(pixelsOf(document), 10, 10));
+}
+
+// Why: a red arrow on a gray picture should stay red, so drawing in colour turns the picture
+// into a colour one. The source then has to say so too: its format, its colour model, and no
+// gray colour profile, which a colour picture cannot be read with. The gray source here is
+// made by hand: 4 x 4 pixels of 50 with a stand-in profile that only claims to be gray.
+TEST(Document, DrawingInColourTurnsAGrayPictureIntoAColourOne) {
+    SubimageInfo info;
+    info.format = PixelFormat::Gray8;
+    info.levels.push_back({{4, 4}, {4, 4}});
+    info.stored.colorModel = "Grayscale";
+    info.iccProfile.assign(128, 0);
+    std::copy_n("GRAY", 4, info.iccProfile.begin() + 16);
+    const auto gray = makeWholeImageSource(info, {4, 4}, [](const std::stop_token&) -> Result<ImageBuffer> {
+        const ImageBuffer pixels = ImageBuffer::create({4, 4}, PixelFormat::Gray8);
+        for (int y = 0; y < 4; ++y) {
+            std::fill_n(reinterpret_cast<std::uint8_t*>(pixels.row(y)), 4, std::uint8_t{50});
+        }
+        return pixels;
+    });
+    Document document(gray, 0);
+    DrawEdit edit;
+    edit.drawing = ImageBuffer::create({1, 1}, PixelFormat::Bgrx8);
+    const std::uint8_t red[4] = {0, 0, 255, 255};
+    std::copy_n(red, 4, reinterpret_cast<std::uint8_t*>(edit.drawing.row(0)));
+    edit.range = {0, 255};
+
+    // Not in colour: the picture stays gray and takes the luma of red, 76.
+    document.apply(edit);
+    EXPECT_EQ(document.source()->subimages()[0].format, PixelFormat::Gray8);
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(pixelsOf(document).row(0))[0], 76);
+    EXPECT_FALSE(document.source()->subimages()[0].iccProfile.empty());
+    document.undo();
+
+    edit.colour = true;
+    document.apply(edit);
+    const SubimageInfo& after = document.source()->subimages()[0];
+    EXPECT_EQ(after.format, PixelFormat::Bgrx8);
+    EXPECT_EQ(after.stored.colorModel, "RGB");
+    EXPECT_TRUE(after.iccProfile.empty());
+    const ImageBuffer pixels = pixelsOf(document);
+    ASSERT_EQ(pixels.format(), PixelFormat::Bgrx8);
+    const auto* first = reinterpret_cast<const std::uint8_t*>(pixels.row(0));
+    EXPECT_EQ(first[2], 255);
+    EXPECT_EQ(first[0], 0);
+    EXPECT_EQ(first[4], 50) << "the next pixel, gray as before";
+    EXPECT_EQ(first[6], 50);
+
+    document.undo();
+    EXPECT_EQ(document.source()->subimages()[0].format, PixelFormat::Gray8);
 }

@@ -26,7 +26,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Colour:** `color` (ICC, display transform), `color_edit` (levels, curves, cube tables),
   `oklab.h`, `histogram`, `pixel_probe`.
 * **Editing:** `document` (the edit list, undo), `crop`, `perspective` (straighten),
-  `image_ops` (resize, grayscale).
+  `image_ops` (resize, grayscale), `shapes` (annotation shapes: points, grips, hit-testing),
+  `image_layer` (blending a drawn layer into the picture, pixelate).
 * **Saving:** `image_writer` (every format), `save_image`, `jpeg_transform` (lossless JPEG),
   `jxl_transcode`, `file_io`.
 * **Background work:** `work_queue` (priorities, cancelling), `disk_gate`, `thumbnail`,

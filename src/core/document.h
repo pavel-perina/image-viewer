@@ -8,6 +8,7 @@
 
 #include "core/color_edit.h"
 #include "core/crop.h"
+#include "core/image_layer.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/perspective.h"
@@ -44,7 +45,23 @@ struct GrayEdit {
     bool operator==(const GrayEdit&) const = default;
 };
 
-using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit>;
+// Draws on the picture what annotations were turned into: first rectangles are pixelated,
+// then a layer of markers darkens what is under it, then a layer of everything else covers.
+// Both layers are as blendLayer takes them, with their top left corner at x, y, and either
+// may be missing. With colour set, a gray picture becomes a colour one first, so that what
+// is drawn keeps its colours; its gray colour profile then no longer fits and is dropped.
+struct DrawEdit {
+    std::vector<PixelRect> pixelated;
+    int block = 8;
+    ImageBuffer markers;
+    ImageBuffer drawing;
+    int x = 0;
+    int y = 0;
+    DisplayRange range;
+    bool colour = false;
+};
+
+using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit, DrawEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.

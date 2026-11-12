@@ -578,6 +578,30 @@ the question before leaving an edited image. Still planned lists the rest.
   photographs, not on panels.
 * No shape or style model yet. It waits for the decision on how annotations are stored.
 
+### Annotations (being built)
+* Annotations are burned into the pixels when applied, as one edit in the edit list, so undo,
+  Save and Save As treat them like any other edit and every format can hold them. Keeping
+  them editable after saving would need a sidecar or a metadata block, and is left open.
+* While being made, a shape is a kind, a list of points in image pixels and a style
+  (`core/shapes.h`). Moving, selecting and removing are written once for all kinds. A kind
+  decides where it is grabbed and what moving a grip does, since grips are not always points:
+  a rectangle has four corners from two points, and a freehand stroke the corners of the box
+  around it. Measurement is to reuse this, with rules such as lines kept parallel in the
+  same place.
+* Sizes are in image pixels, so a shape looks the same at any zoom and in the saved file.
+* A highlighter is a style, not a kind, so rectangles and polygons can both be one. It
+  multiplies, as ink does: white paper turns yellow and black text stays black. On dark
+  pictures it barely shows; replacing the hue would suit those and may be added as a mode.
+* Shapes are drawn by Qt, which has the fonts and curves, into an 8-bit layer, and the core
+  blends the layer into the picture (`core/image_layer.h`), so a 16-bit picture stays 16-bit.
+  Pixelating changes what is under it, so it is done on the picture first, not in the layer.
+* The layer's black and white are the ends of the range the picture is shown in. On a 12-bit
+  picture in a 16-bit file, white drawn at 65535 would be far above everything shown.
+* Colours drawn are taken as values of the picture's own colour space, not converted from
+  sRGB. On a wide-gamut picture a red is therefore that space's red.
+* Drawing in colour on a gray picture turns it into a colour one, so a red arrow stays red.
+  A gray colour profile then no longer fits and is dropped.
+
 ### Crop
 * A mode of the large view rather than a window of its own, so zoom, panning and full screen
   stay as they are. Its panel takes the place of the info panel, and at full screen it comes
