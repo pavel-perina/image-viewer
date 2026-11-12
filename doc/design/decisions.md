@@ -693,23 +693,51 @@ the question before leaving an edited image. Still planned lists the rest.
 ### Plugins
 * For extensibility, and so filters and formats can be prototyped without rebuilding the
   application.
-* Filters and image format decoders can be plugins, through a versioned C API loaded at
-  run time. No C++ standard library or Qt types cross the boundary.
+* There are three kinds, each with its own small interface: filters, metadata interpreters
+  and decoders. All go through a versioned C API loaded at run time. No C++ standard library
+  or Qt types cross the boundary.
 * Each plugin exports one init function, which checks the API version and registers what
   the plugin provides through a host callback. Load-time constructors are avoided.
 * Plugins load once on a worker thread at startup and stay loaded until exit, with no
   dependency ordering between them.
-* A filter describes its parameters and the host builds the UI, so plugins need no Qt and
-  the edit list can store the values.
-* A filter can provide a cheap check of whether it applies to an image, given its format,
-  size and metadata. Filters depend on metadata, never on other plugins.
-* Built-in filters use the same API, so it stays honest and serves as public examples.
-* A filter declares its name, parameters, pixel formats and how many neighbouring pixels
-  it needs, and receives input and output buffers.
-* A decoder maps onto `ImageSource`: open a file, list subimages, read tiles. It also adds
-  file extensions and metadata, so neither can stay a fixed list.
 * Plugins load only from folders the user configures, with no paths built into the app.
 * Plugins run inside the application process, so a crash takes the application down.
+
+Filters:
+* A filter describes its parameters and the host builds the UI, so plugins need no Qt and
+  the edit list can store the values.
+* A filter declares its name, parameters, one pixel format and how many neighbouring pixels
+  it needs, and receives input and output buffers of the same size. The host converts to and
+  from that format, so a prototype needs one code path, not one per bit depth.
+* A filter can provide a cheap check of whether it applies to an image, given its format,
+  size and metadata.
+* A filter can read metadata entries by key, including those an interpreter plugin produced.
+  The host hands them over, so filters depend on metadata, never on other plugins.
+* Built-in filters use the same API, so it stays honest and serves as public examples.
+* Tools that change the image size or need drawing on the image, such as crop and
+  straighten, are not filters and stay built in.
+
+Metadata interpreters:
+* An interpreter explains metadata in formats the application already opens, which it keeps
+  but cannot read itself. It needs no decoder of its own.
+* It declares what it reads: TIFF tag numbers, an XMP namespace, a PNG chunk name, or a JPEG
+  APPn marker with the signature it starts with.
+* The host hands it the raw bytes of those blocks (see Metadata). It returns entries, each a
+  group, label, value and unit, which the info panel shows beside the built-in ones.
+* It can also answer normalised facts, such as physical pixel size and capture time, and its
+  block then takes part in the rules for which block wins, like any other.
+* Interpreters only read. Writing stays with the host, which writes the original bytes back.
+
+Decoders:
+* A decoder maps onto `ImageSource`: open a file, list subimages, read tiles. It also adds
+  file extensions and metadata, so neither can stay a fixed list.
+* It hands over metadata as blocks, the same way an interpreter's input arrives, so the two
+  share that half of the API.
+
+Left out for now:
+* Commands on a selection of files, such as batch conversion and geotagging. They are built
+  in first, against an internal interface that takes a list of files, their metadata and
+  parameters. A plugin API can be cut from them once several exist.
 
 ### Saving over the original
 * File > Save (Ctrl+S) overwrites the file with the edited image; no copy of the original is
@@ -788,6 +816,11 @@ the question before leaving an edited image. Still planned lists the rest.
   handles with functions to list blocks and to read the schema, raw bytes and entries. A
   decoder plugin hands over the same three things and the host wraps them in a generic block.
 * XML in XMP and OME-TIFF can use pugixml (MIT), which needs no Qt.
+* Decoders must keep what they don't interpret as raw blocks, for display, for writing back
+  and for interpreter plugins. They don't yet: TIFF reads only the tags it names, so private
+  tags and the image description are dropped; JPEG keeps only the APP1 and APP2 markers; PNG
+  keeps only the EXIF chunk and the XMP text chunk. libtiff reads unknown tags as anonymous
+  fields and can list them (`TIFFGetTagListCount`), so TIFF needs no parser of its own.
 
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
