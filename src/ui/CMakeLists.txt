@@ -37,6 +37,9 @@ qt_add_library(iv_ui STATIC
     histogram_view.h
     image_overlay.cpp
     image_overlay.h
+    overlay_style.h
+    probe_overlay.cpp
+    probe_overlay.h
     image_view.cpp
     image_view.h
     subfolder_list.cpp

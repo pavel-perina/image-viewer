@@ -532,6 +532,28 @@ TEST(Straighten, ThePictureCanBeMovedWhileDrawingLines) {
     EXPECT_EQ(overlay->property("lines").toList().size(), 1);
 }
 
+// The tools take their colours from outside, which in the program is Theme: a line drawn across
+// the middle shows in the colour given for horizontal lines, read back from the window.
+TEST(Straighten, LinesAreDrawnInTheColoursGiven) {
+    ToolPage f("startStraighten");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    EXPECT_EQ(overlay->property("horizontalColor").value<QColor>(), QColor(0xff, 0xb7, 0x4d)) << "Theme.guideHorizontal";
+    overlay->setProperty("horizontalColor", QColor(Qt::magenta));
+
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(120, 0)), QPointF(0, 0));
+    ASSERT_EQ(overlay->property("lines").toList().size(), 1);
+    const QImage shown = grabIfShown(f.view);
+    if (shown.isNull()) {
+        GTEST_SKIP() << "nothing to grab on this platform";
+    }
+    const QPointF middle = f.image->mapToScene(QPointF(f.image->width() / 2 + 60, f.image->height() / 2));
+    const QColor at = shown.pixelColor((middle * shown.devicePixelRatio()).toPoint());
+    EXPECT_GT(at.red(), 200);
+    EXPECT_LT(at.green(), 80);
+    EXPECT_GT(at.blue(), 200);
+}
+
 TEST(Probe, ThePictureCanBeMovedWhileProbing) {
     ToolPage f("startProbe");
     auto* panel = f.page->findChild<QObject*>(QStringLiteral("probePanel"));
@@ -540,6 +562,9 @@ TEST(Probe, ThePictureCanBeMovedWhileProbing) {
 
     EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
     EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    QTest::keyPress(&f.view, Qt::Key_Space);
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(-30, -20));
+    QTest::keyRelease(&f.view, Qt::Key_Space);
     waitUntil([] { return false; }, 200);
     EXPECT_FALSE(panel->property("probed").isValid() && !panel->property("probed").isNull()) << "panning reads nothing";
 

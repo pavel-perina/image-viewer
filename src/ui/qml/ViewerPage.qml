@@ -270,111 +270,23 @@ Rectangle {
         }
     }
 
-    // Reads the pixel under a press and while dragging; arrow keys step by a pixel. The right or
-    // middle button pans and the wheel goes on to the view.
-    Item {
+    ProbeOverlay {
         id: probeArea
         objectName: "probeArea"
         anchors.fill: surface
+        view: surface.view
+        style: overlayStyle
         visible: page.probing
         enabled: page.probing
+        onPixelChanged: probePanel.probed = pixel
+        onPicked: (pixel) => probePanel.remember(pixel)
+    }
 
-        property point requested: Qt.point(-1, -1)  // the pixel asked for last, as shown
-        property bool rememberWhenRead: false
-        property int viewRevision: 0  // for the marker to follow zooming and panning
-
-        function probeImagePoint(point) {
-            requested = Qt.point(Math.floor(point.x), Math.floor(point.y))
-            surface.view.probe(point)
-        }
-
-        function probeAt(x, y) {
-            probeImagePoint(surface.view.itemToImage(mapToItem(surface.view, x, y)))
-        }
-
-        // Once the pixel asked for has been read.
-        function rememberIfRead() {
-            const read = probePanel.probed
-            if (rememberWhenRead && read && read.x === requested.x && read.y === requested.y) {
-                rememberWhenRead = false
-                probePanel.remember(read)
-            }
-        }
-
-        Connections {
-            target: surface.view
-            function onZoomChanged() { probeArea.viewRevision++ }
-            function onProbed(pixel) {
-                probePanel.probed = pixel
-                probeArea.rememberIfRead()
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-            cursorShape: panning ? Qt.ClosedHandCursor : Qt.CrossCursor
-            property bool panning: false
-            property point last
-            onPressed: (mouse) => {
-                probeArea.forceActiveFocus()
-                last = Qt.point(mouse.x, mouse.y)
-                panning = mouse.button !== Qt.LeftButton
-                if (!panning)
-                    probeArea.probeAt(mouse.x, mouse.y)
-            }
-            onPositionChanged: (mouse) => {
-                if (panning) {
-                    surface.view.panBy(mouse.x - last.x, mouse.y - last.y)
-                    last = Qt.point(mouse.x, mouse.y)
-                } else {
-                    probeArea.probeAt(mouse.x, mouse.y)
-                }
-            }
-            onReleased: {
-                if (!panning) {
-                    probeArea.rememberWhenRead = true
-                    probeArea.rememberIfRead()
-                }
-                panning = false
-            }
-            onWheel: (wheel) => wheel.accepted = false
-        }
-
-        Keys.onPressed: (event) => {
-            const read = probePanel.probed
-            const steps = { [Qt.Key_Left]: [-1, 0], [Qt.Key_Right]: [1, 0], [Qt.Key_Up]: [0, -1], [Qt.Key_Down]: [0, 1] }
-            const step = steps[event.key]
-            if (step && read) {
-                probeArea.probeImagePoint(Qt.point(read.x + step[0] + 0.5, read.y + step[1] + 0.5))
-                event.accepted = true
-            } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && read) {
-                probePanel.remember(read)
-                event.accepted = true
-            }
-        }
-
-        // Around the pixel read, never smaller than a few screen pixels.
-        Item {
-            id: marker
-            readonly property var pixel: probePanel.probed
-            readonly property rect bounds: {
-                probeArea.viewRevision
-                if (!pixel)
-                    return Qt.rect(0, 0, 0, 0)
-                const a = probeArea.mapFromItem(surface.view, surface.view.imageToItem(Qt.point(pixel.x, pixel.y)))
-                const b = probeArea.mapFromItem(surface.view, surface.view.imageToItem(Qt.point(pixel.x + 1, pixel.y + 1)))
-                const size = Math.max(7, b.x - a.x)
-                return Qt.rect((a.x + b.x - size) / 2, (a.y + b.y - size) / 2, size, size)
-            }
-            visible: !!pixel
-            x: bounds.x - 1
-            y: bounds.y - 1
-            width: bounds.width + 2
-            height: bounds.height + 2
-            Rectangle { anchors.fill: parent; color: "transparent"; border.color: "black" }
-            Rectangle { anchors.fill: parent; anchors.margins: 1; color: "transparent"; border.color: "white" }
-        }
+    OverlayStyle {
+        id: overlayStyle
+        line: Theme.toolLine
+        outline: Theme.toolOutline
+        dim: Theme.toolDim
     }
 
     CropOverlay {
@@ -382,6 +294,7 @@ Rectangle {
         objectName: "cropOverlay"
         anchors.fill: surface
         view: surface.view
+        style: overlayStyle
         visible: page.cropping
         enabled: page.cropping
     }
@@ -391,6 +304,9 @@ Rectangle {
         objectName: "straightenOverlay"
         anchors.fill: surface
         view: surface.view
+        style: overlayStyle
+        verticalColor: Theme.guideVertical
+        horizontalColor: Theme.guideHorizontal
         visible: page.straightening
         enabled: page.straightening
     }
@@ -411,7 +327,7 @@ Rectangle {
                 page.straightening = false
                 if (page.adjusting)
                     page.cancelAdjust()
-                probePanel.probed = null  // its pixel may be elsewhere in what comes
+                probeArea.clear()  // its pixel may be elsewhere in what comes
             }
         }
     }

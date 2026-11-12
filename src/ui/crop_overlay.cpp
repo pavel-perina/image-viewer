@@ -152,7 +152,7 @@ void CropOverlay::paint(QPainter* painter) {
     const QRectF all = boundingRect();
 
     painter->setRenderHint(QPainter::Antialiasing, false);
-    const QColor dim(0, 0, 0, 150);
+    const QColor dim = style().dim();
     painter->fillRect(QRectF(all.left(), all.top(), all.width(), crop.top() - all.top()), dim);
     painter->fillRect(QRectF(all.left(), crop.bottom(), all.width(), all.bottom() - crop.bottom()), dim);
     painter->fillRect(QRectF(all.left(), crop.top(), crop.left() - all.left(), crop.height()), dim);
@@ -160,7 +160,9 @@ void CropOverlay::paint(QPainter* painter) {
 
     const double line = devicePixel();
     if (m_grid) {
-        painter->setPen(QPen(QColor(255, 255, 255, 110), line));
+        QColor faint = style().line();
+        faint.setAlphaF(faint.alphaF() * 0.43F);
+        painter->setPen(QPen(faint, line));
         for (int i = 1; i < 3; ++i) {
             const double x = snap(crop.left() + crop.width() * i / 3);
             const double y = snap(crop.top() + crop.height() * i / 3);
@@ -171,16 +173,16 @@ void CropOverlay::paint(QPainter* painter) {
 
     // Light inside, dark outside, so that the edge shows on any picture.
     painter->setBrush(Qt::NoBrush);
-    painter->setPen(QPen(QColor(0, 0, 0, 200), line));
+    painter->setPen(QPen(style().outline(), line));
     painter->drawRect(crop.adjusted(-line, -line, line, line));
-    painter->setPen(QPen(Qt::white, line));
+    painter->setPen(QPen(style().line(), line));
     painter->drawRect(crop.adjusted(0, 0, -line, -line));
 
     // Handles where there is room for them; a tiny rectangle keeps its corners only.
     const bool roomy = crop.width() > 4 * kHandleSize && crop.height() > 4 * kHandleSize;
     const double h = kHandleSize;
-    painter->setPen(QPen(QColor(0, 0, 0, 200), line));
-    painter->setBrush(Qt::white);
+    painter->setPen(QPen(style().outline(), line));
+    painter->setBrush(style().line());
     const auto handle = [&](double x, double y) { painter->drawRect(QRectF(snap(x - h / 2), snap(y - h / 2), h, h)); };
     handle(crop.left(), crop.top());
     handle(crop.right(), crop.top());

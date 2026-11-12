@@ -12,8 +12,6 @@ namespace iv {
 namespace {
 
 constexpr double kMinLength = 12;  // shorter new lines, in item units, are dropped
-const QColor kVertical(79, 195, 247);
-const QColor kHorizontal(255, 183, 77);
 
 double distanceToSegment(QPointF p, QPointF a, QPointF b) {
     const QPointF d = b - a;
@@ -25,7 +23,9 @@ double distanceToSegment(QPointF p, QPointF a, QPointF b) {
 
 }  // namespace
 
-StraightenOverlay::StraightenOverlay(QQuickItem* parent) : ImageOverlay(parent) {}
+StraightenOverlay::StraightenOverlay(QQuickItem* parent) : ImageOverlay(parent) {
+    connect(this, &StraightenOverlay::coloursChanged, this, [this] { update(); });
+}
 
 void StraightenOverlay::viewAttached() {
     if (view()) {
@@ -299,8 +299,8 @@ void StraightenOverlay::paint(QPainter* painter) {
         QPainterPath inside;
         inside.addPolygon(outline);
         inside.closeSubpath();
-        painter->fillPath(outside.subtracted(inside), QColor(0, 0, 0, 110));
-        QPen dashed(Qt::white, thin);
+        painter->fillPath(outside.subtracted(inside), style().dim());
+        QPen dashed(style().line(), thin);
         dashed.setDashPattern({4, 4});
         painter->setPen(dashed);
         painter->setBrush(Qt::NoBrush);
@@ -314,24 +314,11 @@ void StraightenOverlay::paint(QPainter* painter) {
         const QPointF a = toItem(line.a);
         const QPointF b = toItem(line.b);
         const bool left = i < m_used.size() && !m_used[i].toBool();
-        const QColor colour = line.isVertical() ? kVertical : kHorizontal;
+        const QColor colour = line.isVertical() ? m_verticalColor : m_horizontalColor;
         const bool chosen = i == m_selected;
-        const Qt::PenStyle style = left ? Qt::DashLine : Qt::SolidLine;
-        painter->setPen(QPen(QColor(0, 0, 0, 170), chosen ? 4.5 : 3.0, Qt::SolidLine, Qt::RoundCap));
-        painter->drawLine(a, b);
-        painter->setPen(QPen(colour, chosen ? 2.5 : 1.5, style, Qt::FlatCap));
-        painter->drawLine(a, b);
-        painter->setPen(QPen(QColor(0, 0, 0, 200), 1));
-        painter->setBrush(chosen ? QColor(Qt::white) : left ? QColor(0, 0, 0, 120) : colour);
-        const double r = chosen ? 4.5 : 3.5;
-        painter->drawEllipse(a, r, r);
-        painter->drawEllipse(b, r, r);
-        if (left && !chosen) {
-            painter->setPen(QPen(colour, 1.5));
-            painter->setBrush(Qt::NoBrush);
-            painter->drawEllipse(a, r - 1, r - 1);
-            painter->drawEllipse(b, r - 1, r - 1);
-        }
+        strokeLine(painter, a, b, colour, {.chosen = chosen, .dashed = left});
+        drawGrip(painter, a, colour, {.chosen = chosen, .hollow = left});
+        drawGrip(painter, b, colour, {.chosen = chosen, .hollow = left});
     }
 }
 

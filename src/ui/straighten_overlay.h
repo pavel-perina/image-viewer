@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QPointF>
 #include <QVariantList>
@@ -29,6 +30,9 @@ class StraightenOverlay : public ImageOverlay {
     Q_PROPERTY(double focal35mm READ focal35mm WRITE setFocal35mm NOTIFY tiltChanged)
     Q_PROPERTY(bool keepRatio READ keepRatio WRITE setKeepRatio NOTIFY tiltChanged)
     Q_PROPERTY(bool showResult READ showResult WRITE setShowResult NOTIFY showResultChanged)
+    // What the lines meant to be vertical and horizontal are drawn in.
+    Q_PROPERTY(QColor verticalColor MEMBER m_verticalColor NOTIFY coloursChanged)
+    Q_PROPERTY(QColor horizontalColor MEMBER m_horizontalColor NOTIFY coloursChanged)
 
 public:
     explicit StraightenOverlay(QQuickItem* parent = nullptr);
@@ -61,6 +65,7 @@ signals:
     void selectedChanged();
     void tiltChanged();
     void showResultChanged();
+    void coloursChanged();
     // The user drew, moved or removed a line, as opposed to lines being set.
     void linesEdited();
 
@@ -89,6 +94,8 @@ private:
     double m_focal35mm = 0;
     bool m_keepRatio = true;
     bool m_showResult = false;
+    QColor m_verticalColor{79, 195, 247};
+    QColor m_horizontalColor{255, 183, 77};
     mutable QImage m_preview;
     mutable bool m_previewValid = false;
 

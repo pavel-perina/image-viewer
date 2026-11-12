@@ -3,6 +3,7 @@
 #include <QCursor>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QQuickWindow>
 
 #include <cmath>
@@ -34,6 +35,47 @@ void ImageOverlay::setView(ImageView* view) {
     }
     viewAttached();
     emit viewChanged();
+}
+
+void ImageOverlay::setStyle(OverlayStyle* style) {
+    if (style == m_style) {
+        return;
+    }
+    if (m_style) {
+        disconnect(m_style, nullptr, this, nullptr);
+    }
+    m_style = style;
+    if (m_style) {
+        connect(m_style, &OverlayStyle::changed, this, [this] { update(); });
+    }
+    update();
+    emit styleChanged();
+}
+
+const OverlayStyle& ImageOverlay::style() const {
+    static const OverlayStyle plain;
+    return m_style ? *m_style : plain;
+}
+
+void ImageOverlay::strokeLine(QPainter* painter, QPointF a, QPointF b, const QColor& colour, Stroke stroke) const {
+    painter->setPen(QPen(style().outline(), stroke.chosen ? 4.5 : 3.0, Qt::SolidLine, Qt::RoundCap));
+    painter->drawLine(a, b);
+    painter->setPen(QPen(colour, stroke.chosen ? 2.5 : 1.5, stroke.dashed ? Qt::DashLine : Qt::SolidLine, Qt::FlatCap));
+    painter->drawLine(a, b);
+}
+
+void ImageOverlay::drawGrip(QPainter* painter, QPointF at, const QColor& colour, Grip grip) const {
+    const double r = grip.chosen ? 4.5 : 3.5;
+    QColor faint = style().outline();
+    faint.setAlphaF(faint.alphaF() * 0.6F);
+    painter->setPen(QPen(style().outline(), 1));
+    painter->setBrush(grip.chosen ? style().line() : grip.hollow ? faint : colour);
+    painter->drawEllipse(at, r, r);
+    if (grip.hollow && !grip.chosen) {
+        painter->setPen(QPen(colour, 1.5));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawEllipse(at, r - 1, r - 1);
+    }
 }
 
 PointD ImageOverlay::toImage(QPointF itemPoint) const {

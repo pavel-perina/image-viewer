@@ -52,5 +52,12 @@ QtObject {
     readonly property color onImageShade: "#404040"
     readonly property color swatchFrame: "#606060"  // neutral, so it does not tint the swatch
 
+    // What the tools draw on the image: see OverlayStyle.
+    readonly property color toolLine: "#ffffff"
+    readonly property color toolOutline: "#c8000000"  // under and around lines
+    readonly property color toolDim: "#96000000"      // over what a tool leaves out
+    readonly property color guideVertical: "#4fc3f7"
+    readonly property color guideHorizontal: "#ffb74d"
+
     function withAlpha(color, alpha) { return Qt.rgba(color.r, color.g, color.b, alpha) }
 }
