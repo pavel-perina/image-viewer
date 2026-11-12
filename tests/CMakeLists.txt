@@ -21,6 +21,7 @@ add_executable(iv_core_tests
     xmp_tests.cpp
     save_tests.cpp
     shape_tests.cpp
+    layer_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp
