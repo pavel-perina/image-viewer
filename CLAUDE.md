@@ -36,7 +36,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
-* **Tools drawn on the image:** `crop_overlay`, `straighten_overlay`.
+* **Tools drawn on the image:** `image_overlay` (the base), `crop_overlay`,
+  `straighten_overlay`.
 * **Browsing:** `browse_context` (one folder, its files, the current image), `file_list_model`,
   `directory_tree_model`, `folder_listing`, `subfolder_list`, `folder_lists`, `thumbnail_store`,
   `thumbnail_provider`.
@@ -73,9 +74,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
    rule worth a test goes in C++.
 4. **QML uses the shared controls and `Theme`.** No colours, sizes or fonts written into a
    page. A dialog is an `AppDialog`, a menu an `AppMenu`.
-5. **Tools on the image share one overlay layer** (to be built before annotations): shapes and
-   hit-testing in core, one overlay base in the UI for the view binding, coordinates, panning
-   and handles. Crop, straighten, measurement and annotations sit on it.
+5. **Tools on the image derive from `ImageOverlay`** (`src/ui/image_overlay.h`), which owns
+   the view binding, the coordinates, panning and click against drag. A tool adds its own
+   model and painting, nothing of those.
 6. **UI headers hide their insides** behind pimpl. Core types stay out of them.
 7. **Nothing blocks the UI thread.** Disk and decoding go through the work queue. An object
    that receives results cancels its group and waits in its destructor.

@@ -8,6 +8,11 @@ struct Size {
     bool operator==(const Size&) const = default;
 };
 
+struct PointD {
+    double x = 0;
+    double y = 0;
+};
+
 struct RectD {
     double x = 0;
     double y = 0;

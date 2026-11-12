@@ -493,6 +493,61 @@ TEST(Editing, APressOutsideTheImageTakesAnEdgeAndAClickDrawsNothing) {
     EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(4, 8, 20, 40));
 }
 
+// Every tool on the image leaves moving the picture alone: the right and middle buttons pan,
+// and so does the left one while Space is held, without changing what the tool has. Compared
+// with where the picture was, as ImageView reports it.
+TEST(Editing, ThePictureCanBeMovedWhileCropping) {
+    ToolPage f("startCrop");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("cropOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    // In a corner, so that the drags from the middle start outside it.
+    overlay->setProperty("cropRect", QRect(0, 0, 20, 20));
+    const QRect rect = overlay->property("cropRect").toRect();
+
+    EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
+    EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    QTest::keyPress(&f.view, Qt::Key_Space);
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(-30, -20));
+    QTest::keyRelease(&f.view, Qt::Key_Space);
+    EXPECT_EQ(overlay->property("cropRect").toRect(), rect);
+
+    // Without Space the left button is the tool's again.
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(0, 0));
+    EXPECT_NE(overlay->property("cropRect").toRect(), rect);
+}
+
+TEST(Straighten, ThePictureCanBeMovedWhileDrawingLines) {
+    ToolPage f("startStraighten");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+
+    EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
+    EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    QTest::keyPress(&f.view, Qt::Key_Space);
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(-30, -20));
+    QTest::keyRelease(&f.view, Qt::Key_Space);
+    EXPECT_TRUE(overlay->property("lines").toList().isEmpty());
+
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(0, 0));
+    EXPECT_EQ(overlay->property("lines").toList().size(), 1);
+}
+
+TEST(Probe, ThePictureCanBeMovedWhileProbing) {
+    ToolPage f("startProbe");
+    auto* panel = f.page->findChild<QObject*>(QStringLiteral("probePanel"));
+    ASSERT_NE(panel, nullptr);
+    QMetaObject::invokeMethod(panel, "clearHistory");
+
+    EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
+    EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    waitUntil([] { return false; }, 200);
+    EXPECT_FALSE(panel->property("probed").isValid() && !panel->property("probed").isNull()) << "panning reads nothing";
+
+    // The left button reads, and moves nothing.
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(0, 0));
+    EXPECT_TRUE(waitUntil([&] { return panel->property("entries").toList().size() == 1; }));
+}
+
 TEST(Probe, ReadsThePixelShownAsTheFileStoresIt) {
     QTemporaryDir dir;
     ViewFixture f;

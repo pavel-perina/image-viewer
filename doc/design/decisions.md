@@ -554,6 +554,25 @@ the question before leaving an edited image. Still planned lists the rest.
 * After a crop the view fits the image again, as the old zoom and position mean little for the
   new picture.
 
+### Tools drawn on the image
+* Crop and straighten each had their own copy of the view binding, the coordinates and the
+  panning, and the probe a third in QML. `ImageOverlay` now holds what they share, so the next
+  tools (measurement, annotations) start from it.
+* The base owns the view, the mapping between image pixels and the item, panning (the right
+  or middle button, or the left one with Space held) and telling a drag from a click. Its
+  mouse and key handlers are final: a tool sees only a press, drag and release of the left
+  button, and keys other than Space.
+* Each tool keeps its own model in C++, in pixels of the image as shown, and paints it with
+  `QPainter`. Drawing in QML over a C++ model would put the geometry in two places.
+* A painted item redraws its whole layer on the CPU when the view moves. That has been fast
+  enough; if it stops being so, the base can change how it draws without the tools changing
+  what they draw.
+* Tools may look different. Crop is drawn on whole device pixels with square handles.
+  Lines, grips, arcs and text for the other tools are to share one drawing kit, with its
+  colours given from `Theme` through a style object (not built yet).
+* No shape or style model yet. It waits for the decision on how annotations are stored.
+* Still to move: the probe, which is QML and pans without Space.
+
 ### Crop
 * A mode of the large view rather than a window of its own, so zoom, panning and full screen
   stay as they are. Its panel takes the place of the info panel, and at full screen it comes

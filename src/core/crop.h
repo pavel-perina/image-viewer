@@ -16,11 +16,6 @@ struct PixelRect {
     bool operator==(const PixelRect&) const = default;
 };
 
-struct PointD {
-    double x = 0;
-    double y = 0;
-};
-
 // Width to height, such as 3:2. Zero in either means free.
 struct AspectRatio {
     int width = 0;
