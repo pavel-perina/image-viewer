@@ -19,7 +19,9 @@ TEST(BrowserPage, DoubleClickWithCtrlTogglesOnce) {
     EXPECT_EQ(f.selected(), QStringLiteral("ac"));
 }
 
-TEST(BrowserPage, ClickBetweenThumbnailsClearsTheSelection) {
+// Why: a click on empty space, here below the only row, clears the selection; the current image
+// stays current.
+TEST(BrowserPage, ClickOnEmptySpaceClearsTheSelection) {
     BrowserPageFixture f;
     f.clickFile(1);
     QQuickItem* grid = f.find("QQuickGridView");
@@ -63,6 +65,42 @@ TEST(BrowserPage, AClickSelectsAThumbnailWhenTheGridIsScrolled) {
     QTest::mousePress(&f.view, Qt::RightButton, Qt::NoModifier, at);
     QTest::mouseRelease(&f.view, Qt::RightButton, Qt::NoModifier, at, 120);
     EXPECT_EQ(menu.count(), 1) << "for the thumbnail, not also for the space between";
+}
+
+// Why: a click on a thumbnail that is half out of view scrolls the grid to show it, during the
+// release that the handler for empty space looks at too; what lies under the release has then
+// moved. Input: 60 more images, the grid scrolled so that the last row is half hidden at the
+// bottom, a click near the bottom of the visible half of its first thumbnail. The truth is that
+// the grid scrolled and the thumbnail is selected.
+TEST(BrowserPage, AClickOnAHalfHiddenThumbnailScrollsToItAndSelectsIt) {
+    BrowserPageFixture f;
+    for (int i = 0; i < 60; ++i) {
+        writeJpeg(f.dir.filePath(QStringLiteral("m%1.jpg").arg(i, 2, 10, QLatin1Char('0'))));
+    }
+    f.context.refresh();
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 64; }, 5000));
+    auto* grid = qobject_cast<QQuickItem*>(f.find("QQuickGridView"));
+    ASSERT_NE(grid, nullptr);
+    const int columns = grid->property("columns").toInt();
+    const int firstOfLastRow = (63 / columns) * columns;
+    QMetaObject::invokeMethod(grid, "positionViewAtEnd");
+    ASSERT_TRUE(waitUntil([&] { return grid->property("contentY").toDouble() > 400; }));
+    grid->setProperty("contentY", grid->property("contentY").toDouble() - 100);  // half of the last row
+    QQuickItem* cell = nullptr;
+    QMetaObject::invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, cell), Q_ARG(int, firstOfLastRow));
+    ASSERT_NE(cell, nullptr);
+    const double visible = grid->height() - grid->mapFromItem(cell, QPointF(0, 0)).y();
+    ASSERT_GT(visible, 20);
+    ASSERT_LT(visible, cell->height() - 20);
+    const double before = grid->property("contentY").toDouble();
+
+    const QPoint at = cell->mapToScene(QPointF(cell->width() / 2, visible - 10)).toPoint();
+    QTest::mouseMove(&f.view, at);
+    QTest::mousePress(&f.view, Qt::LeftButton, Qt::NoModifier, at);
+    QTest::mouseRelease(&f.view, Qt::LeftButton, Qt::NoModifier, at, 120);
+    EXPECT_GT(grid->property("contentY").toDouble(), before) << "scrolled to show it";
+    EXPECT_EQ(f.context.currentIndex(), firstOfLastRow);
+    EXPECT_TRUE(cell->property("selected").toBool());
 }
 
 TEST(BrowserPage, TreeLabelsStayRightWhenASubfolderAppears) {

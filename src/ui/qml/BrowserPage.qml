@@ -154,22 +154,27 @@ SplitView {
                 event.accepted = true
             }
 
-            // A click between the thumbnails clears the selection. Handlers declared in a grid
-            // belong to its content item, so the point is where it is in the content already,
-            // scrolled or not.
+            // A click on empty space clears the selection: the free places after the last
+            // thumbnail, the strip right of the last column, and below the last row. Where it
+            // was pressed counts, not where it was let go: the thumbnail's own handler takes the
+            // release first and may scroll the grid to show it, which moves what lies under the
+            // release. The handlers of a grid belong to its content item, so the point is in
+            // the content already, scrolled or not.
             TapHandler {
-                onTapped: (point) => {
+                id: emptyTap
+                onTapped: {
                     grid.forceActiveFocus()
-                    if (grid.indexAt(point.position.x, point.position.y) < 0)
+                    if (grid.indexAt(emptyTap.point.pressPosition.x, emptyTap.point.pressPosition.y) < 0)
                         page.context.clearSelection()
                 }
             }
 
             TapHandler {
+                id: emptyMenuTap
                 acceptedButtons: Qt.RightButton
-                onTapped: (point) => {
+                onTapped: {
                     grid.forceActiveFocus()
-                    if (grid.indexAt(point.position.x, point.position.y) < 0)
+                    if (grid.indexAt(emptyMenuTap.point.pressPosition.x, emptyMenuTap.point.pressPosition.y) < 0)
                         page.fileMenuRequested()
                 }
             }
