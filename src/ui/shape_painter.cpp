@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <numbers>
 
 namespace iv {
 
@@ -202,16 +203,25 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour) {
         const QPointF across(-unit.y(), unit.x());
         const double head = std::min(headLength(shape), length);
         const QPointF base = to - unit * head;
-        QPainterPath shaft;
-        shaft.moveTo(from);
-        shaft.lineTo(base);
-        QPainterPathStroker stroker;
-        stroker.setWidth(width);
-        stroker.setCapStyle(Qt::RoundCap);
-        QPainterPath tip;
-        tip.addPolygon(QPolygonF{to, base + across * head * 0.4, base - across * head * 0.4});
-        tip.closeSubpath();
-        painter->fillPath(stroker.createStroke(shaft).united(tip), colour);
+        // One outline, walked round: the round tail, a side of the shaft, the head, the other
+        // side. Joining a stroked shaft and a head with a path operation lost the shaft at
+        // some widths and places.
+        const double half = width / 2;
+        const double wing = head * 0.4;
+        QPolygonF outline;
+        constexpr int kTailSteps = 16;
+        for (int i = 0; i <= kTailSteps; ++i) {
+            const double turn = std::numbers::pi * i / kTailSteps;
+            outline << from + (across * std::cos(turn) - unit * std::sin(turn)) * half;
+        }
+        outline << base - across * half << base - across * wing << to << base + across * wing << base + across * half;
+        QPainterPath arrow;
+        // Nonzero, for an arrow so short that its head is narrower than its shaft, whose
+        // outline crosses itself.
+        arrow.setFillRule(Qt::WindingFill);
+        arrow.addPolygon(outline);
+        arrow.closeSubpath();
+        painter->fillPath(arrow, colour);
         break;
     }
     case ShapeKind::Rectangle:

@@ -555,3 +555,26 @@ TEST(Annotate, ShiftKeepsALineLevel) {
     EXPECT_GT(ends[1].x, ends[0].x + 90);
     QMetaObject::invokeMethod(f.page, "cancelAnnotate");
 }
+
+// Why: an arrow's shaft must be there at every width. It once vanished at some widths, as
+// the shaft and the head were joined by a path operation that fails on certain shapes. For
+// every whole width from 3 to 40 and ends at several places, also between pixels, the pixel in
+// the middle of the shaft, a quarter of the way along, is in the arrow's colour.
+TEST(Annotate, AnArrowHasItsShaftAtEveryWidth) {
+    const std::vector<std::pair<PointD, PointD>> places{
+        {{50, 100}, {300, 100}}, {{50.3, 80.7}, {310.2, 140.4}}, {{300, 250}, {60, 40}}, {{200, 30}, {200, 280}}, {{61.5, 200.25}, {333.1, 190.8}}};
+    for (const auto& [from, to] : places) {
+        for (int width = 3; width <= 40; ++width) {
+            Shape arrow;
+            arrow.kind = ShapeKind::Arrow;
+            arrow.points = {from, to};
+            arrow.style.width = width;
+            arrow.style.colour = {16, 160, 240, 255};
+            const DrawEdit edit = renderShapes(std::span(&arrow, 1), {400, 300}, {0, 255});
+            ASSERT_FALSE(edit.drawing.isNull());
+            const int x = static_cast<int>(from.x + (to.x - from.x) / 4);
+            const int y = static_cast<int>(from.y + (to.y - from.y) / 4);
+            EXPECT_EQ(drawnAt(edit, x, y), (std::array<int, 4>{240, 160, 16, 255})) << "width " << width << " from " << from.x << "," << from.y;
+        }
+    }
+}
