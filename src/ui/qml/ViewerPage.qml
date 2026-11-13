@@ -451,36 +451,22 @@ Rectangle {
         objectName: "cropPanel"
         overlay: cropOverlay
         view: surface.view
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.cropPanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.cropPanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyCrop()
         onCancelRequested: page.cancelCrop()
         onDoneEditing: cropOverlay.forceActiveFocus()
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
     }
 
     AnnotatePanel {
         id: annotatePanel
         objectName: "annotatePanel"
         overlay: annotateOverlay
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.annotatePanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.annotatePanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyAnnotate()
         onCancelRequested: page.cancelAnnotate()
         onDoneEditing: annotateOverlay.forceActiveFocus()
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
     }
 
     StraightenPanel {
@@ -488,18 +474,11 @@ Rectangle {
         objectName: "straightenPanel"
         overlay: straightenOverlay
         view: surface.view
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.straightenPanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.straightenPanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyStraighten()
         onCancelRequested: page.cancelStraighten()
         onDoneEditing: straightenOverlay.forceActiveFocus()
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
     }
 
     AdjustPanel {
@@ -507,32 +486,18 @@ Rectangle {
         objectName: "adjustPanel"
         view: surface.view
         active: page.adjusting
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.adjustPanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.adjustPanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyAdjust()
         onCancelRequested: page.cancelAdjust()
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
     }
 
     ProbePanel {
         id: probePanel
         objectName: "probePanel"
         context: page.context
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.probePanelShown ? page.width - width : page.width
-        visible: x < page.width
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
+        revealed: page.probePanelShown
+        animated: page.panelAnimated
     }
 
     // Large images without reduced versions take a moment. Quick switches between ordinary

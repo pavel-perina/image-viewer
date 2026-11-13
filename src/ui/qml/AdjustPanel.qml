@@ -8,15 +8,18 @@ import ImageViewer
 // Levels, lightness, saturation and a colour table from a .cube file, shown over the picture by
 // the view's shader while they change and applied as one edit. A gray picture takes the levels
 // and lightness only.
-Rectangle {
+ToolPanel {
     id: panel
+
+    title: "Adjust Colours"
+    applyName: "adjustApply"
+    applyEnabled: panel.changes
+    extraText: "Reset"
+    onExtraRequested: panel.reset()
 
     required property ImageView view
     // While the tool is open; only then do changes show over the picture.
     property bool active: false
-
-    signal applyRequested()
-    signal cancelRequested()
 
     // Levels from 0 to 255 of the samples as stored, whatever their depth: the input range that
     // becomes the output range, which can turn black gray or white darker.
@@ -42,9 +45,6 @@ Rectangle {
     readonly property bool changes: black !== 0 || white !== 255 || gamma !== 1 || outBlack !== 0 || outWhite !== 255
                                     || brightness !== 0 || contrast !== 100 || midtones !== 1
                                     || (!view.grayImage && (saturation !== 100 || view.colorCubeName !== ""))
-
-    width: Theme.panelWidth
-    color: Theme.panel
 
     function start() {
         view.clearColorCube()
@@ -77,11 +77,20 @@ Rectangle {
 
     onSettingsChanged: preview()
 
-    // Made on first use, and kept so that it opens where it was left.
-    Loader {
-        id: cubeDialog
-        active: false
-        sourceComponent: FileChooser {
+    // One grid, so the sliders of both groups line up.
+    // The chooser of a colour table: made on first use, and kept so that it opens where it was
+    // left. It is made by hand, so that it is not one of the rows of the panel.
+    property FileChooser cubeDialog: null
+
+    function chooseCube() {
+        if (!cubeDialog)
+            cubeDialog = cubeChooser.createObject(panel)
+        cubeDialog.start("", "")
+    }
+
+    Component {
+        id: cubeChooser
+        FileChooser {
             title: "Load a Colour Table"
             types: [{ label: "Colour tables", extensions: ["cube"] }, { label: "All files", extensions: [] }]
             onChosen: (path) => {
@@ -89,182 +98,135 @@ Rectangle {
                 panel.preview()
             }
         }
-        function start() {
-            active = true
-            item.start("", "")
-        }
     }
 
-    // Keeps the mouse from reaching the image underneath.
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        onWheel: (wheel) => wheel.accepted = true
-    }
+    GridLayout {
+        columns: 3
+        columnSpacing: 8
+        Layout.fillWidth: true
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.panelMargin
-        spacing: Theme.panelSpacing
-
-        Label {
-            text: "Adjust Colours"
-            font.bold: true
-            font.pointSize: Theme.titleSize
-        }
-
-        // One grid, so the sliders of both groups line up.
-        GridLayout {
-            columns: 3
-            columnSpacing: 8
+        Label { text: "Levels"; color: Theme.textMuted; Layout.columnSpan: 3 }
+        LevelsControl {
+            objectName: "levels"
+            Layout.columnSpan: 3
             Layout.fillWidth: true
-
-            Label { text: "Levels"; color: Theme.textMuted; Layout.columnSpan: 3 }
-            LevelsControl {
-                objectName: "levels"
-                Layout.columnSpan: 3
-                Layout.fillWidth: true
-                histogram: panel.view.histogram
-                black: panel.black
-                white: panel.white
-                gamma: panel.gamma
-                outBlack: panel.outBlack
-                outWhite: panel.outWhite
-                onInputPicked: (black, gamma, white) => {
-                    panel.black = black
-                    panel.gamma = gamma
-                    panel.white = white
-                }
-                onOutputPicked: (outBlack, outWhite) => {
-                    panel.outBlack = outBlack
-                    panel.outWhite = outWhite
-                }
+            histogram: panel.view.histogram
+            black: panel.black
+            white: panel.white
+            gamma: panel.gamma
+            outBlack: panel.outBlack
+            outWhite: panel.outWhite
+            onInputPicked: (black, gamma, white) => {
+                panel.black = black
+                panel.gamma = gamma
+                panel.white = white
             }
-
-            Label { text: "In Oklab, keeping the colours"; color: Theme.textMuted; Layout.columnSpan: 3; Layout.topMargin: 6 }
-            Label { text: "Brightness" }
-            Slider {
-                objectName: "adjustBrightness"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                from: -50
-                to: 50
-                stepSize: 1
-                value: panel.brightness
-                onMoved: panel.brightness = value
-            }
-            ValueLabel { text: (panel.brightness > 0 ? "+" : "") + Math.round(panel.brightness) }
-
-            Label { text: "Contrast" }
-            Slider {
-                objectName: "adjustContrast"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                from: 0
-                to: 200
-                stepSize: 1
-                value: panel.contrast
-                onMoved: panel.contrast = value
-            }
-            ValueLabel { text: Math.round(panel.contrast) + "%" }
-
-            Label { text: "Midtones" }
-            PowerSlider {
-                objectName: "adjustMidtones"
-                power: panel.midtones
-                onPicked: (v) => panel.midtones = v
-            }
-            ValueLabel { text: panel.midtones.toFixed(2) }
-
-            Label { text: "Saturation"; enabled: !panel.view.grayImage }
-            Slider {
-                objectName: "adjustSaturation"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                enabled: !panel.view.grayImage
-                from: 0
-                to: 200
-                stepSize: 1
-                value: panel.saturation
-                onMoved: panel.saturation = value
-            }
-            ValueLabel {
-                text: Math.round(panel.saturation) + "%"
-                enabled: !panel.view.grayImage
+            onOutputPicked: (outBlack, outWhite) => {
+                panel.outBlack = outBlack
+                panel.outWhite = outWhite
             }
         }
 
-        CheckBox {
-            objectName: "adjustGamutMap"
+        Label { text: "In Oklab, keeping the colours"; color: Theme.textMuted; Layout.columnSpan: 3; Layout.topMargin: 6 }
+        Label { text: "Brightness" }
+        Slider {
+            objectName: "adjustBrightness"
             focusPolicy: Qt.NoFocus
+            Layout.fillWidth: true
+            from: -50
+            to: 50
+            stepSize: 1
+            value: panel.brightness
+            onMoved: panel.brightness = value
+        }
+        ValueLabel { text: (panel.brightness > 0 ? "+" : "") + Math.round(panel.brightness) }
+
+        Label { text: "Contrast" }
+        Slider {
+            objectName: "adjustContrast"
+            focusPolicy: Qt.NoFocus
+            Layout.fillWidth: true
+            from: 0
+            to: 200
+            stepSize: 1
+            value: panel.contrast
+            onMoved: panel.contrast = value
+        }
+        ValueLabel { text: Math.round(panel.contrast) + "%" }
+
+        Label { text: "Midtones" }
+        PowerSlider {
+            objectName: "adjustMidtones"
+            power: panel.midtones
+            onPicked: (v) => panel.midtones = v
+        }
+        ValueLabel { text: panel.midtones.toFixed(2) }
+
+        Label { text: "Saturation"; enabled: !panel.view.grayImage }
+        Slider {
+            objectName: "adjustSaturation"
+            focusPolicy: Qt.NoFocus
+            Layout.fillWidth: true
             enabled: !panel.view.grayImage
-            text: "Fit strong colours by chroma"
-            checked: panel.gamutMap
-            onToggled: panel.gamutMap = checked
-            ToolTip.visible: hovered
-            ToolTip.delay: 600
-            ToolTip.text: "Colours pushed beyond what the image can hold lose saturation at the same hue and "
-                          + "lightness. Off, they are clipped per channel, which shifts hue and flattens detail."
+            from: 0
+            to: 200
+            stepSize: 1
+            value: panel.saturation
+            onMoved: panel.saturation = value
         }
-
-        Label { text: "Colour table"; color: Theme.textMuted }
-        RowLayout {
-            Layout.fillWidth: true
+        ValueLabel {
+            text: Math.round(panel.saturation) + "%"
             enabled: !panel.view.grayImage
-            Button {
-                objectName: "adjustLoadCube"
-                focusPolicy: Qt.NoFocus
-                text: "Load .cube..."
-                onClicked: cubeDialog.start()
-            }
-            Button {
-                focusPolicy: Qt.NoFocus
-                text: "Clear"
-                enabled: panel.view.colorCubeName !== ""
-                onClicked: {
-                    panel.view.clearColorCube()
-                    panel.preview()
-                }
-            }
-            Item { Layout.fillWidth: true }
         }
-        Label {
-            Layout.fillWidth: true
-            elide: Text.ElideMiddle
-            color: Theme.textMuted
-            text: panel.view.grayImage ? "A gray picture takes levels and lightness only."
-                                       : panel.view.colorCubeName !== "" ? panel.view.colorCubeName : "None"
-        }
-        Label {
-            visible: panel.message !== ""
-            text: panel.message
-            color: Theme.warning
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-        }
+    }
 
-        Item { Layout.fillHeight: true }
+    CheckBox {
+        objectName: "adjustGamutMap"
+        focusPolicy: Qt.NoFocus
+        enabled: !panel.view.grayImage
+        text: "Fit strong colours by chroma"
+        checked: panel.gamutMap
+        onToggled: panel.gamutMap = checked
+        ToolTip.visible: hovered
+        ToolTip.delay: 600
+        ToolTip.text: "Colours pushed beyond what the image can hold lose saturation at the same hue and "
+                      + "lightness. Off, they are clipped per channel, which shifts hue and flattens detail."
+    }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Button {
-                focusPolicy: Qt.NoFocus
-                text: "Reset"
-                onClicked: panel.reset()
-            }
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Cancel"
-                onClicked: panel.cancelRequested()
-            }
-            Button {
-                objectName: "adjustApply"
-                text: "Apply"
-                highlighted: true
-                enabled: panel.changes
-                onClicked: panel.applyRequested()
+    Label { text: "Colour table"; color: Theme.textMuted }
+    RowLayout {
+        Layout.fillWidth: true
+        enabled: !panel.view.grayImage
+        Button {
+            objectName: "adjustLoadCube"
+            focusPolicy: Qt.NoFocus
+            text: "Load .cube..."
+            onClicked: panel.chooseCube()
+        }
+        Button {
+            focusPolicy: Qt.NoFocus
+            text: "Clear"
+            enabled: panel.view.colorCubeName !== ""
+            onClicked: {
+                panel.view.clearColorCube()
+                panel.preview()
             }
         }
+        Item { Layout.fillWidth: true }
+    }
+    Label {
+        Layout.fillWidth: true
+        elide: Text.ElideMiddle
+        color: Theme.textMuted
+        text: panel.view.grayImage ? "A gray picture takes levels and lightness only."
+                                   : panel.view.colorCubeName !== "" ? panel.view.colorCubeName : "None"
+    }
+    Label {
+        visible: panel.message !== ""
+        text: panel.message
+        color: Theme.warning
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
     }
 
     // An exponent from 1/4 to 4, even steps either side of 1.

@@ -48,8 +48,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **QML pages:** `Main.qml` (window, menus, dialogs), `BrowserPage.qml`, `ViewerPage.qml`,
   `FileActions.qml` (what the file menus do), `FileChooser.qml`.
 * **QML shared controls:** `AppDialog`, `AppMenu`, `AppMenuItem`, `BarButton`, `AppScrollBar`,
-  `MessageBox`, `NumberRow` (a label with a number to set), `Theme` (every colour, and the
-  sizes pages share).
+  `MessageBox`, `NumberRow` (a label with a number to set), `ToolPanel` (the base of every
+  tool's panel: heading, rows, Cancel and Apply), `Theme` (every colour, and the sizes pages
+  share).
 
 ## Build and test
 

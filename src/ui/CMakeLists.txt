@@ -97,6 +97,7 @@ qt_add_qml_module(iv_ui
         qml/SaveOptionsDialog.qml
         qml/Theme.qml
         qml/Screens.qml
+        qml/ToolPanel.qml
         qml/ViewSettings.qml
         qml/ViewerPage.qml
 )

@@ -587,6 +587,23 @@ the question before leaving an edited image. Still planned lists the rest.
   photographs, not on panels.
 * No shape or style model yet. It waits for the decision on how annotations are stored.
 
+### Panels of the tools
+* Crop, straighten, adjust, annotate and the probe each had their own copy of the same sheet:
+  the background, the block against the mouse, the heading, the column, and at the bottom
+  Reset, Cancel and Apply, while the page repeated the slide from the right five times.
+  `ToolPanel` now holds all of it, and a tool's panel derives from it and adds its rows.
+* The base has the buttons every tool ends in, Cancel and Apply, and one more on the left
+  where a tool asks for it by giving it a text; so far that is always Reset. The apply button
+  can be renamed (Crop) and disabled. A tool that changes nothing (the probe) turns the
+  buttons off.
+* The rows are the default property, so a derived panel reads as a list of its controls. Only
+  items become rows: `Settings`, `Binding`, `Connections` and the like may sit among them. A
+  dialog a panel opens must not be an item among the rows; Adjust makes its chooser of colour
+  tables on first use instead.
+* The page says only whether a panel is `revealed` and whether to animate. The place and the
+  slide are the panel's.
+* The Info panel is not one of these: it is no tool, it scrolls, and it has no buttons.
+
 ### Annotations
 * Annotations are burned into the pixels when applied, as one edit in the edit list, so undo,
   Save and Save As treat them like any other edit and every format can hold them. Keeping
