@@ -615,6 +615,12 @@ the question before leaving an edited image. Still planned lists the rest.
 * Each tool keeps its own start, apply and cancel under the old names, as what they do
   differs: Crop reads its rectangle before it ends, Adjust ends before it applies, the probe
   outlives an edit, and comparing goes with Adjust and no other tool.
+* Enter and Esc are the page's to decide, so the window has one shortcut for each instead of
+  one per tool. `applyTool()` applies the tool at work, and `enterApplies` says when Enter may:
+  not in the probe, and not while a field of the panel has the keys. `stepBack()` takes one step
+  back (a selected shape let go, an editing tool given up, a comparison ended, the probe
+  stopped) and says whether there was one; only when there was none does the window leave full
+  screen or the image.
 * The rule stays in QML: it is state of the page, and each step calls into a panel or an
   overlay there. If it grows conditions worth testing apart from the page, it moves to C++.
 

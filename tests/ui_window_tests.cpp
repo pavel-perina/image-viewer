@@ -946,3 +946,54 @@ TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
     iv::AppInfo::setLicencesFolderForTesting({});
     QCoreApplication::setApplicationVersion({});
 }
+
+// Why: Enter and Esc are one rule for every tool, kept by the page, not a shortcut per tool.
+// Input: the window showing a picture, each tool started in turn. The truth is the window's
+// own state: Esc leaves the tool and stays on the image, Enter applies an edit and stays too,
+// and Enter in a field of the tool's panel is the field's, so the tool goes on.
+TEST(Main, EnterAppliesAndEscLeavesWhicheverToolIsAtWork) {
+    MainFixture f([](const QTemporaryDir& dir) { writeTiltedJpeg(dir); }, QStringLiteral("tilted.jpg"));
+    ASSERT_NE(f.window, nullptr);
+    auto* image = f.window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 400; }));
+    auto* adjust = f.window->findChild<QQuickItem*>(QStringLiteral("adjustPanel"));
+    auto* straighten = f.window->findChild<QQuickItem*>(QStringLiteral("straightenPanel"));
+    ASSERT_NE(adjust, nullptr);
+    ASSERT_NE(straighten, nullptr);
+    QQuickItem* page = adjust->parentItem();
+
+    for (const char* start : {"startCrop", "startStraighten", "startAdjust", "startAnnotate", "startProbe"}) {
+        QMetaObject::invokeMethod(page, start);
+        ASSERT_TRUE(f.window->property("toolActive").toBool()) << start;
+        QTest::keyClick(f.window, Qt::Key_Escape);
+        EXPECT_FALSE(f.window->property("toolActive").toBool()) << start;
+        EXPECT_TRUE(f.window->property("viewing").toBool()) << start;
+    }
+    EXPECT_FALSE(image->modified());
+
+    // A field with the keys keeps Enter.
+    QMetaObject::invokeMethod(page, "startStraighten");
+    QQuickItem* field = nullptr;
+    for (QQuickItem* item : straighten->findChildren<QQuickItem*>()) {
+        if (item->inherits("QQuickTextField") && item->isVisible()) {
+            field = item;
+            break;
+        }
+    }
+    ASSERT_NE(field, nullptr);
+    field->forceActiveFocus();
+    ASSERT_TRUE(straighten->property("editing").toBool());
+    EXPECT_FALSE(page->property("enterApplies").toBool());
+    QTest::keyClick(f.window, Qt::Key_Return);
+    EXPECT_TRUE(f.window->property("straightening").toBool());
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_FALSE(f.window->property("toolActive").toBool());
+
+    // Enter applies, and does not go on to leave the image.
+    QMetaObject::invokeMethod(page, "startAdjust");
+    adjust->setProperty("midtones", 1.5);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    EXPECT_FALSE(f.window->property("toolActive").toBool());
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
+    EXPECT_TRUE(f.window->property("viewing").toBool());
+}

@@ -215,19 +215,9 @@ ApplicationWindow {
     }
 
     function leaveCurrentMode() {
-        if (window.cropping)
-            viewerPage.cancelCrop()
-        else if (window.straightening)
-            viewerPage.cancelStraighten()
-        else if (window.adjusting)
-            viewerPage.cancelAdjust()
-        else if (window.annotating)
-            viewerPage.escapeAnnotate()
-        else if (viewerPage.comparing !== "")
-            viewerPage.stopCompare()
-        else if (window.probing)
-            viewerPage.stopProbe()
-        else if (window.visibility === Window.FullScreen)
+        if (viewerPage.stepBack())
+            return
+        if (window.visibility === Window.FullScreen)
             window.visibility = Window.Windowed
         else
             window.leaveImage(() => window.viewing = false)
@@ -428,10 +418,7 @@ ApplicationWindow {
     // take these keys themselves, each while it has the focus. Space pans while cropping.
     Shortcut { sequences: ["Right", "Space", "PgDown"]; enabled: window.viewing && !window.toolActive; onActivated: window.next() }
     Shortcut { sequences: ["Left", "Backspace", "PgUp"]; enabled: window.viewing && !window.toolActive; onActivated: window.previous() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.straightening && !viewerPage.straightenPanelEditing; onActivated: viewerPage.applyStraighten() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.adjusting; onActivated: viewerPage.applyAdjust() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.annotating && !viewerPage.annotatePanelEditing; onActivated: viewerPage.applyAnnotate() }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: viewerPage.enterApplies; onActivated: viewerPage.applyTool() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Ctrl+A"; enabled: !window.viewing; onActivated: context.selectAll() }

@@ -33,9 +33,9 @@ Rectangle {
     readonly property Item sidePanel: cropping ? cropPanel : probing ? probePanel : straightening ? straightenPanel
                                     : adjusting ? adjustPanel : annotating ? annotatePanel : panel
     readonly property bool toolPanelShown: fullScreen ? panelRevealed : true
-    readonly property bool cropPanelEditing: cropPanel.editing
-    readonly property bool straightenPanelEditing: straightenPanel.editing
-    readonly property bool annotatePanelEditing: annotatePanel.editing
+    // Whether Enter applies the tool at work. The probe has nothing to apply, and a field of
+    // the tool's panel that has the keys takes Enter for its own value; Adjust has no fields.
+    readonly property bool enterApplies: toolActive && !probing && (adjusting || !sidePanel.editing)
     // Comparing two pictures of the same size, one each side of a line: "edit" for before and
     // after editing, "files" for the image shown against another file. Not a tool, so it goes
     // with Adjust Colours.
@@ -223,6 +223,34 @@ Rectangle {
         drop("annotate")
         view.endDraw()
         annotateOverlay.clear()
+    }
+
+    // Applies the tool at work, as Enter does.
+    function applyTool() {
+        if (cropping)
+            applyCrop()
+        else if (straightening)
+            applyStraighten()
+        else if (adjusting)
+            applyAdjust()
+        else if (annotating)
+            applyAnnotate()
+    }
+
+    // What Esc does on this page, one step at a time: a tool that edits is given up, then a
+    // comparison ends, then the probe. False when there was nothing to leave.
+    function stepBack() {
+        if (annotating)
+            escapeAnnotate()
+        else if (toolActive && !probing)
+            leaveTool()
+        else if (comparing !== "")
+            stopCompare()
+        else if (probing)
+            stopProbe()
+        else
+            return false
+        return true
     }
 
     // Esc lets go of the shape selected first, and leaves only with none.
