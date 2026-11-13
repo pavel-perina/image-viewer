@@ -1043,3 +1043,16 @@ Left out for now:
     the cube is not offered.
   * The loaded `.cube` is cleared each time the tool opens, so a look has to be loaded again for
     each image.
+
+## The build is named by its commit, not a version number
+
+The About dialog shows `git describe --tags --dirty --always` and the time of the build, as in
+"c388af9-dirty, built 2026-11-13 16:00 UTC", in place of the project's 0.1.0.
+
+* There are no releases yet, so a number would say nothing; the commit says exactly which source
+  a bug report is about, and `-dirty` says when it is not quite that.
+* `cmake/build_info.cmake` writes the header at every build, not at configure time, or it would
+  go stale after the first commit. The file is rewritten only when its text changes, so a
+  rebuild within one minute recompiles nothing; only `main.cpp` includes it.
+* Without git, as in an unpacked archive, it says "unknown".
+* The project version stays in `CMakeLists.txt` for the installer's file name.

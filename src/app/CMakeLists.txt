@@ -8,8 +8,17 @@ qt_add_resources(imageviewer "fonts"
     FILES fonts/InterVariable.ttf
 )
 
-# Shown in the About dialog.
-target_compile_definitions(imageviewer PRIVATE IV_VERSION="${PROJECT_VERSION}")
+# Which build this is, for the About dialog: the commit, "-dirty" if changed, and the time.
+# Made at every build, not at configure time, so it never goes stale.
+set(IV_BUILD_INFO ${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.h)
+add_custom_target(iv_build_info
+    COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR} -DOUTPUT=${IV_BUILD_INFO}
+            -P ${CMAKE_SOURCE_DIR}/cmake/build_info.cmake
+    BYPRODUCTS ${IV_BUILD_INFO}
+    COMMENT "Writing build_info.h"
+    VERBATIM)
+add_dependencies(imageviewer iv_build_info)
+target_include_directories(imageviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 target_link_libraries(imageviewer PRIVATE
     iv_ui
