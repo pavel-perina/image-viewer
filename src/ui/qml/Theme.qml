@@ -38,6 +38,10 @@ QtObject {
     readonly property color danger: "#e06c60"
     readonly property color warningFill: "#d9992b"  // behind a white glyph
     readonly property color dangerFill: "#c9443f"
+    readonly property color onFill: "#ffffff"       // a glyph on warningFill and the like
+    readonly property color caret: withAlpha(text, 0.55)  // the small triangles that unfold
+    readonly property color scrim: "#59000000"      // over the window, under a dialog
+    readonly property color dialogShadow: "#0d000000"  // one of the layers that make it
     readonly property color folder: "#e2b955"
     readonly property color folderShade: "#c9a043"
 
@@ -51,11 +55,14 @@ QtObject {
     readonly property color onImageBright: "#f0f0f0"
     readonly property color onImageShade: "#404040"
     readonly property color swatchFrame: "#606060"  // neutral, so it does not tint the swatch
+    readonly property color scrollHandle: "#a6ffffff"      // the bars over the image
+    readonly property color scrollHandleEdge: "#99000000"
 
     // What the tools draw on the image: see OverlayStyle.
     readonly property color toolLine: "#ffffff"
     readonly property color toolOutline: "#c8000000"  // under and around lines
     readonly property color toolDim: "#96000000"      // over what a tool leaves out
+    readonly property color toolFaint: "#46ffffff"    // a grid to judge by
     readonly property color guideVertical: "#4fc3f7"
     readonly property color guideHorizontal: "#ffb74d"
     // The colours offered for annotations. These are drawn into pictures, not part of the look.

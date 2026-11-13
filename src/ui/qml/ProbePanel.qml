@@ -220,7 +220,7 @@ ToolPanel {
             width: 28
             height: 28
             color: modelData.color
-            border.color: swatchArea.containsMouse ? "white" : Theme.swatchFrame
+            border.color: swatchArea.containsMouse ? Theme.onImageBright : Theme.swatchFrame
             ToolTip.visible: swatchArea.containsMouse
             ToolTip.text: modelData.hex + "  " + modelData.values
             MouseArea {

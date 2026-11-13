@@ -123,7 +123,7 @@ ColumnLayout {
             x: control.inset
             width: bar.trackWidth
             height: 10
-            border.color: "#505050"
+            border.color: Theme.swatchFrame
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0; color: "black" }

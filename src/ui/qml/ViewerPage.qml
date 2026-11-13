@@ -351,6 +351,8 @@ Rectangle {
         line: Theme.toolLine
         outline: Theme.toolOutline
         dim: Theme.toolDim
+        faint: Theme.toolFaint
+        surround: Theme.imageBackground
     }
 
     CropOverlay {

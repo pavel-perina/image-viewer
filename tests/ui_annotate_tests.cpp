@@ -9,6 +9,7 @@
 #include "ui_test_support.h"
 
 #include "ui/annotate_overlay.h"
+#include "ui/overlay_style.h"
 #include "ui/shape_painter.h"
 
 using namespace iv;
@@ -669,4 +670,50 @@ TEST(Annotate, OffersSet1WithWhiteAndBlackAndStartsInOneOfThem) {
     EXPECT_EQ(f.overlay->colour().name(), QStringLiteral("#377eb8"));
     EXPECT_TRUE(blue->property("current").toBool());
     QSettings().remove(QStringLiteral("Annotate"));
+}
+
+// Why: no colour of a tool is written into the C++; they come from Theme through the style.
+// The pattern that stands in for a pixelated box, until its pixels are ready, is one such.
+// Input: a pixelated box painted for preview with a style of made-up colours, on a clear
+// image. The truth is that only those two colours appear, and that burning in draws nothing.
+TEST(Annotate, ThePatternStandingInForPixelsTakesTheStylesColours) {
+    Shape box;
+    box.kind = ShapeKind::Pixelate;
+    box.points = {{4, 4}, {36, 28}};
+    OverlayStyle style;
+    style.setProperty("line", QColor(250, 0, 250));
+    style.setProperty("dim", QColor(0, 250, 0));
+
+    const auto painted = [&](const OverlayStyle* preview) {
+        QImage image(40, 32, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        paintShape(&painter, box, preview);
+        painter.end();
+        return image;
+    };
+    const QImage shown = painted(&style);
+    int lines = 0, fills = 0, others = 0;
+    for (int y = 0; y < shown.height(); ++y) {
+        for (int x = 0; x < shown.width(); ++x) {
+            const QColor c = shown.pixelColor(x, y);
+            if (c.alpha() == 0) {
+                continue;
+            }
+            // Where the smoothed line meets the pattern the two are mixed, so each pixel is
+            // some of one colour and the rest of the other: red and blue go together, and
+            // with green they make up the 250 of either.
+            const bool mixed = std::abs(c.red() - c.blue()) <= 8 && std::abs(c.red() + c.green() - 250) <= 16;
+            lines += mixed && c.red() > 200;
+            fills += mixed && c.green() > 200;
+            others += !mixed;
+        }
+    }
+    EXPECT_GT(lines, 50);
+    EXPECT_GT(fills, 50);
+    EXPECT_EQ(others, 0) << "white or black would be a colour written into the painter";
+
+    QImage clear(shown.size(), shown.format());
+    clear.fill(Qt::transparent);
+    EXPECT_EQ(painted(nullptr), clear) << "a pixelated box has no drawing of its own";
 }

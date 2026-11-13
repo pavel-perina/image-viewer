@@ -437,7 +437,7 @@ void AnnotateOverlay::paintPreview(QPainter* painter, std::size_t index) {
         preview.pixels = view()->drawPreview(shape, &preview.where);
     }
     if (preview.pixels.isNull()) {
-        paintShape(painter, shape, true);
+        paintShape(painter, shape, &style());
         return;
     }
     // Enlarged, its pixels stay squares, as those of the picture under it do.
@@ -455,7 +455,7 @@ void AnnotateOverlay::paint(QPainter* painter) {
             if (dependsOnPicture(m_shapes[i])) {
                 paintPreview(target, i);
             } else {
-                paintShape(target, m_shapes[i], true, raster);
+                paintShape(target, m_shapes[i], &style(), raster);
             }
         }
     };

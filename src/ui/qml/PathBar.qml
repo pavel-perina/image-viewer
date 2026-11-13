@@ -15,8 +15,6 @@ Rectangle {
     implicitHeight: 34
     color: palette.window
 
-    // Carets stay behind the names they separate.
-    readonly property color caretColor: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.55)
     readonly property color hoverColor: Theme.hover
     readonly property int menuRowHeight: 26
 
@@ -257,7 +255,7 @@ Rectangle {
                             Caret {
                                 anchors.centerIn: parent
                                 rotationAngle: caretButton.isOpen ? 90 : 0
-                                fill: caretHover.hovered || caretButton.isOpen ? palette.windowText : bar.caretColor
+                                fill: caretHover.hovered || caretButton.isOpen ? palette.windowText : Theme.caret
                             }
                             HoverHandler { id: caretHover }
                             TapHandler {

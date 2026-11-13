@@ -583,6 +583,14 @@ the question before leaving an edited image. Still planned lists the rest.
   from `Theme` and gives it to every tool, so `Theme` stays the one place for colours. Colours
   only one tool has, such as straighten's two for vertical and horizontal lines, are
   properties of that tool, set from `Theme` the same way.
+* The last colours written into pages and overlays moved to `Theme` on 2026-11-13: the frame,
+  scrim and shadow of a dialog, the carets, the scroll handles over the image, the glyph of a
+  message box, and through `OverlayStyle` the surround and grid of straighten's result and the
+  pattern standing in for a pixelated box. The pattern and the dialog frame changed a shade by
+  taking colours that were already there. Left where they are, on purpose: black, gray and
+  white in the levels control, which are the tones it sets and not its look; the magnifying
+  glass cursor, black and white like a system cursor; and the number on a numbered point,
+  dark or light by the colour under it, which is drawn into the picture.
 * What is drawn on pictures does not follow a light or dark palette: it has to show on
   photographs, not on panels.
 * No shape or style model yet. It waits for the decision on how annotations are stored.

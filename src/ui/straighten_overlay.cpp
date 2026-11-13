@@ -259,7 +259,7 @@ void StraightenOverlay::paint(QPainter* painter) {
 
     if (m_showResult) {
         // The straightened picture over the whole view, fitted, with a grid to judge it by.
-        painter->fillRect(boundingRect(), QColor(32, 32, 32));
+        painter->fillRect(boundingRect(), style().surround());
         if (!m_previewValid) {
             m_preview = view()->straightenPreview(m_tilt, m_focal35mm, m_keepRatio);
             m_previewValid = true;
@@ -272,7 +272,7 @@ void StraightenOverlay::paint(QPainter* painter) {
         const QRectF target(QPointF((width() - size.width()) / 2, (height() - size.height()) / 2), size);
         painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
         painter->drawImage(target, m_preview);
-        painter->setPen(QPen(QColor(255, 255, 255, 70), thin));
+        painter->setPen(QPen(style().faint(), thin));
         constexpr int kCells = 8;
         for (int i = 1; i < kCells; ++i) {
             const double x = target.left() + target.width() * i / kCells;

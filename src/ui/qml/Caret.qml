@@ -1,11 +1,12 @@
 import QtQuick
+import ImageViewer
 
 // A small triangle, pointing the way it leads.
 Canvas {
     id: caret
 
     property int rotationAngle: 0  // 0 points right
-    property color fill: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.55)
+    property color fill: Theme.caret
 
     implicitWidth: 10
     implicitHeight: 10

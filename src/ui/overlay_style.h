@@ -17,6 +17,10 @@ class OverlayStyle : public QObject {
     Q_PROPERTY(QColor outline MEMBER m_outline NOTIFY changed)
     // Over what a tool leaves out.
     Q_PROPERTY(QColor dim MEMBER m_dim NOTIFY changed)
+    // A grid over a picture, to judge it by without hiding it.
+    Q_PROPERTY(QColor faint MEMBER m_faint NOTIFY changed)
+    // Around a picture a tool shows in place of the view's.
+    Q_PROPERTY(QColor surround MEMBER m_surround NOTIFY changed)
 
 public:
     using QObject::QObject;
@@ -24,6 +28,8 @@ public:
     QColor line() const { return m_line; }
     QColor outline() const { return m_outline; }
     QColor dim() const { return m_dim; }
+    QColor faint() const { return m_faint; }
+    QColor surround() const { return m_surround; }
 
 signals:
     void changed();
@@ -32,6 +38,8 @@ private:
     QColor m_line{Qt::white};
     QColor m_outline{0, 0, 0, 200};
     QColor m_dim{0, 0, 0, 150};
+    QColor m_faint{255, 255, 255, 70};
+    QColor m_surround{32, 32, 32};
 };
 
 }  // namespace iv

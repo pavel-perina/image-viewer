@@ -554,6 +554,33 @@ TEST(Straighten, LinesAreDrawnInTheColoursGiven) {
     EXPECT_GT(at.blue(), 200);
 }
 
+// Why: what straighten paints around its result and the grid over it are colours of Theme,
+// given through the style like the lines, not written into the overlay.
+// Input: the Straighten tool as the page sets it up. The truth is the style the overlay was
+// given, against Theme's values, and the corner of the result when it can be grabbed.
+TEST(Straighten, TheResultIsShownOnTheSurroundOfTheStyle) {
+    ToolPage f("startStraighten");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    auto* style = overlay->property("style").value<QObject*>();
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->property("surround").value<QColor>(), QColor(0x20, 0x20, 0x20)) << "Theme.imageBackground";
+    EXPECT_EQ(style->property("faint").value<QColor>(), QColor(255, 255, 255, 0x46)) << "Theme.toolFaint";
+
+    style->setProperty("surround", QColor(Qt::magenta));
+    overlay->setProperty("showResult", true);
+    const QImage shown = grabIfShown(f.view);
+    if (shown.isNull()) {
+        GTEST_SKIP() << "nothing to grab on this platform";
+    }
+    // The result is fitted into 96% of the room, so the corner is surround.
+    const QPointF corner = overlay->mapToScene(QPointF(2, 2));
+    const QColor at = shown.pixelColor((corner * shown.devicePixelRatio()).toPoint());
+    EXPECT_GT(at.red(), 200);
+    EXPECT_LT(at.green(), 80);
+    EXPECT_GT(at.blue(), 200);
+}
+
 TEST(Probe, ThePictureCanBeMovedWhileProbing) {
     ToolPage f("startProbe");
     auto* panel = f.page->findChild<QObject*>(QStringLiteral("probePanel"));

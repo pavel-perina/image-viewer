@@ -1,6 +1,7 @@
 #include "ui/shape_painter.h"
 
 #include "core/coverage.h"
+#include "ui/overlay_style.h"
 
 #include <QFontMetricsF>
 #include <QGuiApplication>
@@ -380,15 +381,15 @@ double shapeMargin(const Shape& shape) {
     return std::max(half, head) + reachOfEffects(shape) + 2;
 }
 
-void paintShape(QPainter* painter, const Shape& shape, bool preview, const ShapeRaster& raster) {
+void paintShape(QPainter* painter, const Shape& shape, const OverlayStyle* preview, const ShapeRaster& raster) {
     if (shape.points.empty()) {
         return;
     }
     painter->setRenderHint(QPainter::Antialiasing, true);
     if (shape.kind == ShapeKind::Pixelate) {
         if (preview) {
-            painter->setPen(QPen(QColor(255, 255, 255, 160), 0));
-            painter->setBrush(QBrush(QColor(0, 0, 0, 130), Qt::Dense4Pattern));
+            painter->setPen(QPen(preview->line(), 0));
+            painter->setBrush(QBrush(preview->dim(), Qt::Dense4Pattern));
             painter->drawRect(boxOf(shape));
         }
         return;
@@ -463,7 +464,7 @@ DrawEdit renderShapes(std::span<const Shape> shapes, Size image, DisplayRange ra
             if (forMarkers) {
                 drawIn(&painter, shape, colourOf(shape));
             } else {
-                paintShape(&painter, shape, false);
+                paintShape(&painter, shape, nullptr);
             }
         }
         painter.end();
