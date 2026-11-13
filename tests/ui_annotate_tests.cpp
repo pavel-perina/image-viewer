@@ -376,3 +376,65 @@ TEST(Annotate, EnlargedShapesShowAsThePixelsTheyWillBe) {
     EXPECT_NE(shown.pixelColor(x - 1, y), fill);
     QMetaObject::invokeMethod(f.page, "cancelAnnotate");
 }
+
+// Why: an ellipse is drawn like a rectangle but fills only itself. Filled, in a box from
+// 20, 20 to 120, 80 on the light part, its middle at 70, 50 takes the colour when applied
+// and the box's corner at 23, 23, outside the ellipse, stays as the picture was.
+TEST(Annotate, AnEllipseFillsItselfAndNotItsBox) {
+    AnnotatePage f;
+    f.choose(Tool::Ellipse, QColor(0x10, 0xa0, 0xf0), 2);
+    f.overlay->setFilled(true);
+    const QString corner = f.hexAt(23, 23);
+    f.dragOnImage({20, 20}, {120, 80});
+    ASSERT_EQ(f.overlay->count(), 1);
+    EXPECT_EQ(f.overlay->shapes()[0].kind, ShapeKind::Ellipse);
+    EXPECT_EQ(f.overlay->shapes()[0].points, (std::vector<PointD>{{20, 20}, {120, 80}}));
+    f.apply();
+    EXPECT_EQ(f.hexAt(70, 50), QStringLiteral("#10a0f0"));
+    EXPECT_EQ(f.hexAt(23, 23), corner);
+}
+
+// Why: Shift while dragging keeps a box's sides equal. Dragged from 20, 20 to 120, 60 with
+// Shift down, the longer way, 100, becomes both sides.
+TEST(Annotate, ShiftKeepsABoxSquare) {
+    AnnotatePage f;
+    f.choose(Tool::Rectangle, Qt::red, 2);
+    QTest::mousePress(&f.view, Qt::LeftButton, Qt::ShiftModifier, f.at(20, 20));
+    QTest::mouseEvent(QTest::MouseMove, &f.view, Qt::NoButton, Qt::ShiftModifier, f.at(70, 40));
+    QTest::mouseEvent(QTest::MouseMove, &f.view, Qt::NoButton, Qt::ShiftModifier, f.at(120, 60));
+    QTest::mouseRelease(&f.view, Qt::LeftButton, Qt::ShiftModifier, f.at(120, 60));
+    ASSERT_EQ(f.overlay->count(), 1);
+    EXPECT_EQ(f.overlay->shapes()[0].points, (std::vector<PointD>{{20, 20}, {120, 120}}));
+    QMetaObject::invokeMethod(f.page, "cancelAnnotate");
+}
+
+// Why: numbered points mark steps, so each click gives the next number without typing. Three
+// clicks say 1, 2, 3; with the second removed the next is still 4, as 3 is there. What one
+// says can be changed like text. Applied, the disc is in the colour chosen: red, read at its
+// edge, away from the digit in its middle (the disc's radius is 16 for a text size of 20).
+TEST(Annotate, NumbersCountUpWithEachClick) {
+    AnnotatePage f;
+    f.choose(Tool::Number, Qt::red, 2);
+    f.overlay->setTextSize(20);
+    for (const QPoint at : {QPoint(40, 40), QPoint(100, 40), QPoint(160, 40)}) {
+        QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, f.at(at.x(), at.y()));
+    }
+    ASSERT_EQ(f.overlay->count(), 3);
+    EXPECT_EQ(f.overlay->shapes()[0].text, "1");
+    EXPECT_EQ(f.overlay->shapes()[2].text, "3");
+    EXPECT_EQ(f.overlay->selected(), 2);
+
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, f.at(100, 40));
+    ASSERT_EQ(f.overlay->selected(), 1);
+    QTest::keyClick(&f.view, Qt::Key_Delete);
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, f.at(100, 40));
+    ASSERT_EQ(f.overlay->count(), 3);
+    EXPECT_EQ(f.overlay->shapes()[2].text, "4");
+
+    f.overlay->setText(QStringLiteral("B"));
+    EXPECT_EQ(f.overlay->shapes()[2].text, "B");
+
+    f.apply();
+    EXPECT_EQ(f.hexAt(28, 40), QStringLiteral("#ff0000"));
+    EXPECT_NE(f.hexAt(40, 62), QStringLiteral("#ff0000")) << "below the disc";
+}

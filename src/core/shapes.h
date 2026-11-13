@@ -15,11 +15,13 @@ namespace iv {
 //
 //   Line, Arrow     two ends; an arrow points at the second
 //   Rectangle       two opposite corners
+//   Ellipse         the same, of the box it fills
+//   Number          one point, the middle of a disc with its text in it: a step, a callout
 //   Pixelate        the same, and coarsens what is under it rather than covering it
 //   Text            the same, a box the text is laid out in
 //   Polygon         its corners in order, closed
 //   Freehand        the samples of a stroke
-enum class ShapeKind { Line, Arrow, Rectangle, Pixelate, Text, Polygon, Freehand };
+enum class ShapeKind { Line, Arrow, Rectangle, Pixelate, Text, Polygon, Freehand, Ellipse, Number };
 
 // As sRGB, not premultiplied.
 struct ShapeColour {
@@ -56,8 +58,15 @@ struct Shape {
 // otherwise fall between pixels and blur.
 bool snapsToPixels(ShapeKind kind);
 
+// The radius of a number's disc, which follows the size of its text.
+double numberRadius(const ShapeStyle& style);
+
+// What the next number placed should say: one more than the highest among the shapes, and
+// 1 for the first. Numbers whose text was changed to something else are passed over.
+int nextNumber(std::span<const Shape> shapes);
+
 // A shape while it is being drawn from a press at one point: both of its points there, or
-// for a polygon and a stroke the first.
+// for a polygon, a stroke and a number the only one.
 Shape startShape(ShapeKind kind, const ShapeStyle& style, PointD at);
 
 // Where a shape can be grabbed to change it. Not always its points: a rectangle has four
@@ -67,7 +76,8 @@ std::vector<PointD> grips(const Shape& shape);
 // Moves a grip to a point, changing the points as the kind requires: a rectangle's derived
 // corner takes x from one point and y from the other, and a stroke is stretched from the
 // corner opposite. This is where a kind keeps its own rules, such as lines that stay parallel.
-void moveGrip(Shape& shape, int grip, PointD to);
+// With `even`, a box keeps its sides equal, the longer deciding: a square, a circle.
+void moveGrip(Shape& shape, int grip, PointD to, bool even = false);
 
 // Moves all of it.
 void moveBy(Shape& shape, PointD delta);
@@ -84,8 +94,8 @@ struct ShapeHit {
 // What is at a point: a grip of the shape selected, which alone shows them, or else the
 // topmost shape, the last being on top. Reach is how far away still counts, in image pixels,
 // so that the view can keep it a fixed size on screen. A line is hit along its width, a
-// filled or marker shape, a pixelated box and a text box anywhere inside, an outline along
-// its edges.
+// filled or marker shape, a pixelated box, a text box and a number's disc anywhere inside, an
+// outline along its edges.
 ShapeHit shapeAt(std::span<const Shape> shapes, PointD at, double reach, int selected = -1);
 
 }  // namespace iv

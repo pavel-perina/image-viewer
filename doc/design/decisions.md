@@ -601,10 +601,10 @@ the question before leaving an edited image. Still planned lists the rest.
   sRGB. On a wide-gamut picture a red is therefore that space's red.
 * Drawing in colour on a gray picture turns it into a colour one, so a red arrow stays red.
   A gray colour profile then no longer fits and is dropped.
-* Edit > Annotate (D) has Select, Line, Arrow, Rectangle, Marker, Pixelate and Text. With a drawing
-  tool a drag draws and a click selects; with Select a drag moves. Grips reshape the shape
-  selected, Delete removes it, and Esc lets go of it before it leaves the tool. Nothing is in
-  the picture or the edit list until Apply.
+* Edit > Annotate (D) has Select, Line, Arrow, Rectangle, Ellipse, Marker, Pixelate, Text and
+  Number. With a drawing tool a drag draws and a click selects; with Select a drag moves.
+  Grips reshape the shape selected, Delete removes it, and Esc lets go of it before it leaves
+  the tool. Nothing is in the picture or the edit list until Apply.
 * The style shown is that of the shape selected, or else of the tool. Each tool remembers
   its own between runs, so the marker stays yellow while arrows stay red. Until a width is
   set, lines start at 1/500 of the picture's long edge and blocks at 1/60.
@@ -636,7 +636,14 @@ the question before leaving an edited image. Still planned lists the rest.
   pixels: dilate the alpha for the dark edge, offset and blur it for the shadow. That is the
   same for every kind and gives soft shadows. The preview then has to do it per shape for
   the part in view, kept until the shape changes.
-* Still to come: ellipses, numbered points, polygons, freehand strokes, a marker mode for dark pictures, and asking
+* An ellipse is a box kind like the rectangle: two corners, four grips, its line inside the
+  box. Shift while dragging keeps a box's sides equal, for a square or a circle; the rule is
+  in the shape model with the other rules of grips, so measurement can use it too.
+* A number is one point with a disc around it, sized by its text size, and says one more than
+  the highest number on the picture. What it says is ordinary text and can be changed, to a
+  letter for instance; changed ones are passed over when counting. Its text is black or
+  white, whichever reads on the disc's colour.
+* Still to come: polygons, freehand strokes, a marker mode for dark pictures, and asking
   before shapes not yet applied are thrown away.
 * Later, smaller: text size in points or pixels as a choice in the settings dialog, once it
   exists; a soft shadow with its offset and blur as settings, which the layer allows since

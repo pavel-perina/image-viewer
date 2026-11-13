@@ -26,6 +26,8 @@ ShapeKind kindOf(Tool tool) {
     case Tool::Arrow: return ShapeKind::Arrow;
     case Tool::Pixelate: return ShapeKind::Pixelate;
     case Tool::Text: return ShapeKind::Text;
+    case Tool::Ellipse: return ShapeKind::Ellipse;
+    case Tool::Number: return ShapeKind::Number;
     case Tool::Rectangle:
     case Tool::Marker:
     case Tool::Select: break;
@@ -39,6 +41,8 @@ Tool toolOf(const Shape& shape) {
     case ShapeKind::Arrow: return Tool::Arrow;
     case ShapeKind::Pixelate: return Tool::Pixelate;
     case ShapeKind::Text: return Tool::Text;
+    case ShapeKind::Ellipse: return Tool::Ellipse;
+    case ShapeKind::Number: return Tool::Number;
     default: return shape.style.marker ? Tool::Marker : Tool::Rectangle;
     }
 }
@@ -201,7 +205,10 @@ QString AnnotateOverlay::text() const {
 }
 
 void AnnotateOverlay::setText(const QString& text) {
-    if (m_selected < 0 || m_shapes[static_cast<std::size_t>(m_selected)].kind != ShapeKind::Text || text == this->text()) {
+    if (m_selected < 0 || text == this->text()) {
+        return;
+    }
+    if (const ShapeKind kind = m_shapes[static_cast<std::size_t>(m_selected)].kind; kind != ShapeKind::Text && kind != ShapeKind::Number) {
         return;
     }
     m_shapes[static_cast<std::size_t>(m_selected)].text = text.toStdString();
@@ -257,6 +264,15 @@ void AnnotateOverlay::apply() {
     clear();
 }
 
+Shape AnnotateOverlay::begun(PointD imagePoint) const {
+    const ShapeKind kind = kindOf(m_tool);
+    Shape shape = startShape(kind, styleOf(m_tool), placed(kind, imagePoint));
+    if (kind == ShapeKind::Number) {
+        shape.text = std::to_string(nextNumber(m_shapes));
+    }
+    return shape;
+}
+
 ShapeHit AnnotateOverlay::hitAt(QPointF itemPoint) const {
     return shapeAt(m_shapes, toImage(itemPoint), kReach / itemPerPixel(), m_selected);
 }
@@ -287,7 +303,7 @@ void AnnotateOverlay::dragged(QPointF itemPoint, bool moved) {
         return;
     case Drag::Grip: {
         Shape& shape = m_shapes[static_cast<std::size_t>(m_hit.shape)];
-        moveGrip(shape, m_hit.grip, placed(shape.kind, now));
+        moveGrip(shape, m_hit.grip, placed(shape.kind, now), shiftHeld());
         break;
     }
     case Drag::Move: {
@@ -301,11 +317,11 @@ void AnnotateOverlay::dragged(QPointF itemPoint, bool moved) {
         if (!moved) {
             return;
         }
-        m_shapes.push_back(startShape(kindOf(m_tool), styleOf(m_tool), placed(kindOf(m_tool), m_pressImage)));
+        m_shapes.push_back(begun(m_pressImage));
         // The grip at the second point: the far end of a line, the opposite corner of a box.
         m_hit = {static_cast<int>(m_shapes.size()) - 1, static_cast<int>(grips(m_shapes.back()).size()) / 2};
         m_drag = Drag::Grip;
-        moveGrip(m_shapes.back(), m_hit.grip, placed(m_shapes.back().kind, now));
+        moveGrip(m_shapes.back(), m_hit.grip, placed(m_shapes.back().kind, now), shiftHeld());
         select(m_hit.shape);
         emit countChanged();
         break;
@@ -319,10 +335,16 @@ void AnnotateOverlay::released(QPointF itemPoint) {
     if (drag == Drag::Draw || drag == Drag::Click) {
         // Nothing was drawn or moved: a click, which selects what is under it, or nothing.
         const int under = hitAt(itemPoint).shape;
+        if (under < 0 && m_tool == Tool::Number) {
+            m_shapes.push_back(begun(m_pressImage));
+            select(static_cast<int>(m_shapes.size()) - 1);
+            shapesChanged();
+            return;
+        }
         if (under < 0 && m_tool == Tool::Text) {
             // On nothing, with the Text tool, it places a box of a size to start typing in.
-            const ShapeStyle style = styleOf(m_tool);
-            Shape box = startShape(ShapeKind::Text, style, placed(ShapeKind::Text, m_pressImage));
+            Shape box = begun(m_pressImage);
+            const ShapeStyle& style = box.style;
             box.points[1] = {box.points[0].x + std::round(style.textSize * 10), box.points[0].y + std::round(style.textSize * 1.5)};
             m_shapes.push_back(std::move(box));
             select(static_cast<int>(m_shapes.size()) - 1);
@@ -334,7 +356,7 @@ void AnnotateOverlay::released(QPointF itemPoint) {
         return;
     }
     // A shape too small to mean anything goes again.
-    if (drag == Drag::Grip && m_selected >= 0) {
+    if (drag == Drag::Grip && m_selected >= 0 && m_shapes[static_cast<std::size_t>(m_selected)].kind != ShapeKind::Number) {
         const RectD box = bounds(m_shapes[static_cast<std::size_t>(m_selected)]);
         if (std::hypot(box.width, box.height) * itemPerPixel() < kSmallest) {
             removeSelected();

@@ -18,6 +18,8 @@ namespace iv {
 // one edit. With a drawing tool, a drag draws a new shape and a click selects the one under
 // it; with Select, a drag moves it. Delete removes the shape selected, Esc deselects it. The
 // Text tool draws a box, or with a click places one, whose words are then set from outside.
+// The Number tool places a disc with the next number in it at a click, or where a drag ends.
+// Shift while dragging a box keeps it a square, or an ellipse a circle.
 //
 // The style shown and set (colour, width and so on) is that of the shape selected, or else
 // that of the tool, which each tool remembers between runs.
@@ -41,11 +43,11 @@ class AnnotateOverlay : public ImageOverlay {
     Q_PROPERTY(bool bold READ bold WRITE setBold NOTIFY styleValuesChanged)
     // The typefaces to choose from.
     Q_PROPERTY(QStringList fontFamilies READ fontFamilies CONSTANT)
-    // What the text box selected says; empty and unchangeable with none selected.
+    // What the text box or the number selected says; empty and unchangeable with neither.
     Q_PROPERTY(QString text READ text WRITE setText NOTIFY textChanged)
 
 public:
-    enum class Tool { Select, Line, Arrow, Rectangle, Marker, Pixelate, Text };
+    enum class Tool { Select, Line, Arrow, Rectangle, Marker, Pixelate, Text, Ellipse, Number };
     Q_ENUM(Tool)
 
     explicit AnnotateOverlay(QQuickItem* parent = nullptr);
@@ -112,6 +114,8 @@ private:
     ShapeHit hitAt(QPointF itemPoint) const;
     // The point for a shape of a kind: on a whole pixel for the kinds that keep to them.
     static PointD placed(ShapeKind kind, PointD imagePoint);
+    // A shape of the tool chosen, begun at a point: a number comes with the next one to say.
+    Shape begun(PointD imagePoint) const;
     void paintPreview(QPainter* painter, std::size_t index);
     void select(int index);
     void shapesChanged();

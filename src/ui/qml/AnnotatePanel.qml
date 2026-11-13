@@ -31,7 +31,11 @@ Rectangle {
     readonly property bool hasStyle: styled !== AnnotateOverlay.Select
     readonly property bool hasColour: hasStyle && styled !== AnnotateOverlay.Pixelate
     readonly property bool isText: styled === AnnotateOverlay.Text
-    readonly property bool hasWidth: hasStyle && styled !== AnnotateOverlay.Marker && !isText
+    readonly property bool isNumber: styled === AnnotateOverlay.Number
+    // Kinds with letters: a typeface, a size, and words to set while one is selected.
+    readonly property bool hasLetters: isText || isNumber
+    readonly property bool canFill: styled === AnnotateOverlay.Rectangle || styled === AnnotateOverlay.Ellipse
+    readonly property bool hasWidth: hasStyle && styled !== AnnotateOverlay.Marker && !hasLetters
     readonly property bool hasEdge: hasColour && styled !== AnnotateOverlay.Marker
 
     readonly property var tools: [
@@ -39,9 +43,11 @@ Rectangle {
         { name: "Line", tool: AnnotateOverlay.Line },
         { name: "Arrow", tool: AnnotateOverlay.Arrow },
         { name: "Rectangle", tool: AnnotateOverlay.Rectangle },
+        { name: "Ellipse", tool: AnnotateOverlay.Ellipse },
         { name: "Marker", tool: AnnotateOverlay.Marker },
         { name: "Pixelate", tool: AnnotateOverlay.Pixelate },
         { name: "Text", tool: AnnotateOverlay.Text },
+        { name: "Number", tool: AnnotateOverlay.Number },
     ]
 
     width: 280
@@ -149,7 +155,7 @@ Rectangle {
             id: fontBox
             objectName: "annotateFont"
             Layout.fillWidth: true
-            visible: panel.isText
+            visible: panel.hasLetters
             model: panel.overlay.fontFamilies
             currentIndex: model.indexOf(panel.overlay.fontFamily)
             onActivated: (index) => {
@@ -159,7 +165,7 @@ Rectangle {
         }
         RowLayout {
             Layout.fillWidth: true
-            visible: panel.isText
+            visible: panel.hasLetters
             Label {
                 Layout.fillWidth: true
                 text: "Size (pixels)"
@@ -179,11 +185,12 @@ Rectangle {
                 }
             }
         }
-        // The words of the text box selected. Enter starts a new line here.
+        // The words of the text box selected, where Enter starts a new line, or what the
+        // number selected says.
         ScrollView {
             Layout.fillWidth: true
-            Layout.preferredHeight: 90
-            visible: panel.isText && panel.overlay.selected >= 0
+            Layout.preferredHeight: panel.isNumber ? 40 : 90
+            visible: panel.hasLetters && panel.overlay.selected >= 0
             TextArea {
                 id: textArea
                 objectName: "annotateText"
@@ -201,14 +208,14 @@ Rectangle {
         CheckBox {
             objectName: "annotateBold"
             text: "Bold"
-            visible: panel.isText
+            visible: panel.hasLetters
             checked: panel.overlay.bold
             onToggled: panel.overlay.bold = checked
         }
         CheckBox {
             objectName: "annotateFilled"
             text: "Filled"
-            visible: panel.styled === AnnotateOverlay.Rectangle
+            visible: panel.canFill
             checked: panel.overlay.filled
             onToggled: panel.overlay.filled = checked
         }
@@ -232,7 +239,7 @@ Rectangle {
             wrapMode: Text.WordWrap
             color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
-            text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. With Text, drag a box or click, then type here. Sizes are in pixels of the image."
+            text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. With Text, drag a box or click, then type here. Number counts up with each click. Hold Shift for a square or a circle. Sizes are in pixels of the image."
         }
 
         Item { Layout.fillHeight: true }

@@ -1,6 +1,7 @@
 #include "core/shapes.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <limits>
 
@@ -52,6 +53,24 @@ double distanceToPath(std::span<const PointD> points, PointD p, bool closed) {
     return nearest;
 }
 
+// How far a point is from the middle of an ellipse, as a share of the way to its edge in
+// that direction: below one inside, one on the edge.
+double shareOfEllipse(const RectD& box, PointD p) {
+    const double dx = (p.x - (box.x + box.width / 2)) / (box.width / 2);
+    const double dy = (p.y - (box.y + box.height / 2)) / (box.height / 2);
+    return std::hypot(dx, dy);
+}
+
+// Along the line from the middle, which is exact for a circle and near enough for the rest.
+double distanceToEllipse(const RectD& box, PointD p) {
+    if (box.width <= 0 || box.height <= 0) {
+        return distanceToPath(corners(box), p, true);
+    }
+    const double share = shareOfEllipse(box, p);
+    const double fromMiddle = std::hypot(p.x - (box.x + box.width / 2), p.y - (box.y + box.height / 2));
+    return share > 0 ? std::abs(fromMiddle - fromMiddle / share) : std::min(box.width, box.height) / 2;
+}
+
 bool hits(const Shape& shape, PointD at, double reach) {
     if (shape.points.empty()) {
         return false;
@@ -70,6 +89,13 @@ bool hits(const Shape& shape, PointD at, double reach) {
         const RectD box = bounds(shape);
         return (solid && inside(box, at)) || distanceToPath(corners(box), at, true) <= near;
     }
+    case ShapeKind::Ellipse: {
+        const RectD box = bounds(shape);
+        const bool within = box.width > 0 && box.height > 0 && shareOfEllipse(box, at) <= 1;
+        return (solid && within) || distanceToEllipse(box, at) <= near;
+    }
+    case ShapeKind::Number:
+        return std::hypot(at.x - shape.points.front().x, at.y - shape.points.front().y) <= std::max(reach, numberRadius(shape.style));
     case ShapeKind::Polygon:
         return (solid && inside(shape.points, at)) || distanceToPath(shape.points, at, true) <= near;
     }
@@ -79,11 +105,27 @@ bool hits(const Shape& shape, PointD at, double reach) {
 }  // namespace
 
 bool snapsToPixels(ShapeKind kind) {
-    return kind == ShapeKind::Rectangle || kind == ShapeKind::Pixelate || kind == ShapeKind::Text;
+    return kind == ShapeKind::Rectangle || kind == ShapeKind::Ellipse || kind == ShapeKind::Pixelate || kind == ShapeKind::Text;
+}
+
+double numberRadius(const ShapeStyle& style) {
+    return style.textSize * 0.8;
+}
+
+int nextNumber(std::span<const Shape> shapes) {
+    int highest = 0;
+    for (const Shape& shape : shapes) {
+        int value = 0;
+        const char* end = shape.text.data() + shape.text.size();
+        if (shape.kind == ShapeKind::Number && std::from_chars(shape.text.data(), end, value).ptr == end && !shape.text.empty()) {
+            highest = std::max(highest, value);
+        }
+    }
+    return highest + 1;
 }
 
 Shape startShape(ShapeKind kind, const ShapeStyle& style, PointD at) {
-    const bool grows = kind == ShapeKind::Polygon || kind == ShapeKind::Freehand;
+    const bool grows = kind == ShapeKind::Polygon || kind == ShapeKind::Freehand || kind == ShapeKind::Number;
     return {kind, grows ? std::vector<PointD>{at} : std::vector<PointD>{at, at}, style, {}};
 }
 
@@ -100,7 +142,7 @@ std::vector<PointD> grips(const Shape& shape) {
     return shape.points;
 }
 
-void moveGrip(Shape& shape, int grip, PointD to) {
+void moveGrip(Shape& shape, int grip, PointD to, bool even) {
     const std::vector<PointD> at = grips(shape);
     if (grip < 0 || grip >= static_cast<int>(at.size())) {
         return;
@@ -117,6 +159,12 @@ void moveGrip(Shape& shape, int grip, PointD to) {
         return;
     }
     if (isBox(shape.kind) && shape.points.size() == 2) {
+        if (even) {
+            // From the corner opposite, which stays, as far both ways as the longer way asked.
+            const PointD fixed = at[static_cast<std::size_t>((grip + 2) % 4)];
+            const double side = std::max(std::abs(to.x - fixed.x), std::abs(to.y - fixed.y));
+            to = {fixed.x + (to.x < fixed.x ? -side : side), fixed.y + (to.y < fixed.y ? -side : side)};
+        }
         PointD& a = shape.points[0];
         PointD& b = shape.points[1];
         switch (grip) {

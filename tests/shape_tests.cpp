@@ -146,3 +146,70 @@ TEST(Shapes, TheTopmostShapeIsHitButTheSelectedOnesGripsComeFirst) {
     EXPECT_EQ(shapeAt(shapes, {75, 75}, 4, 0), (ShapeHit{1, -1})) << "away from its grips, as without a selection";
     EXPECT_EQ(shapeAt(shapes, {300, 300}, 4, 1), (ShapeHit{}));
 }
+
+// Why: an ellipse is grabbed like the box it fills, but hit like an ellipse: the corners of
+// its box are outside it. The box is 100 by 60 from the origin, so the ellipse's middle is
+// 50, 30 and its edge crosses y = 30 at x = 0 and x = 100. Unfilled, only near its edge counts.
+TEST(Shapes, AnEllipseIsHitWhereItIsAndNotInTheCornersOfItsBox) {
+    ShapeStyle filled;
+    filled.filled = true;
+    const std::vector<Shape> solid{shape(ShapeKind::Ellipse, {{0, 0}, {100, 60}}, filled)};
+    EXPECT_EQ(grips(solid[0]).size(), 4u);
+    EXPECT_EQ(shapeAt(solid, {50, 30}, 3), (ShapeHit{0, -1}));
+    EXPECT_EQ(shapeAt(solid, {95, 30}, 3), (ShapeHit{0, -1}));
+    EXPECT_EQ(shapeAt(solid, {6, 6}, 3), ShapeHit{}) << "in the box's corner, outside the ellipse";
+
+    const std::vector<Shape> ring{shape(ShapeKind::Ellipse, {{0, 0}, {100, 60}})};
+    EXPECT_EQ(shapeAt(ring, {50, 30}, 3), ShapeHit{}) << "the middle of an outline is empty";
+    EXPECT_EQ(shapeAt(ring, {99, 30}, 3), (ShapeHit{0, -1}));
+    EXPECT_EQ(shapeAt(ring, {50, 2}, 3), (ShapeHit{0, -1}));
+}
+
+// Why: with Shift a box is to stay a square, and an ellipse a circle. The corner opposite the
+// one dragged stays, and the longer of the two ways asked for decides the side, in the
+// direction dragged. From 10, 10, dragging the far corner to 70, 30 asks 60 across and 20
+// down, which gives a side of 60; dragging it up and left to 0, -40 asks 10 and 50, giving 50.
+TEST(Shapes, ABoxKeptEvenIsASquareFromTheCornerOpposite) {
+    Shape box = shape(ShapeKind::Ellipse, {{10, 10}, {40, 40}});
+    moveGrip(box, 2, {70, 30}, true);
+    EXPECT_EQ(box.points, (std::vector<PointD>{{10, 10}, {70, 70}}));
+    moveGrip(box, 2, {0, -40}, true);
+    EXPECT_EQ(box.points, (std::vector<PointD>{{10, 10}, {-40, -40}}));
+    // A line has no such rule.
+    Shape line = shape(ShapeKind::Line, {{10, 10}, {40, 40}});
+    moveGrip(line, 1, {70, 30}, true);
+    EXPECT_EQ(line.points, (std::vector<PointD>{{10, 10}, {70, 30}}));
+}
+
+// Why: a number is one point, grabbed there, and hit anywhere on its disc, whose radius
+// follows the size of its text (0.8 of it: 16 for letters of 20).
+TEST(Shapes, ANumberIsOnePointWithADiscAroundIt) {
+    ShapeStyle style;
+    style.textSize = 20;
+    Shape number = startShape(ShapeKind::Number, style, {100, 100});
+    EXPECT_EQ(number.points, (std::vector<PointD>{{100, 100}}));
+    EXPECT_EQ(grips(number), number.points);
+    EXPECT_DOUBLE_EQ(numberRadius(style), 16);
+    const std::vector<Shape> shapes{number};
+    EXPECT_EQ(shapeAt(shapes, {112, 108}, 2), (ShapeHit{0, -1})) << "about 14 from the middle";
+    EXPECT_EQ(shapeAt(shapes, {113, 113}, 2), ShapeHit{}) << "about 18 from the middle";
+    moveGrip(number, 0, {30, 40});
+    EXPECT_EQ(number.points, (std::vector<PointD>{{30, 40}}));
+}
+
+// Why: numbers count up by themselves. The next is one more than the highest there, so
+// removing one in the middle does not make a second of what is still there; a number whose
+// text was changed to something else, and text boxes, do not count.
+TEST(Shapes, TheNextNumberIsOneMoreThanTheHighest) {
+    const auto number = [](std::string text) {
+        Shape s = shape(ShapeKind::Number, {{0, 0}});
+        s.text = std::move(text);
+        return s;
+    };
+    EXPECT_EQ(nextNumber({}), 1);
+    std::vector<Shape> shapes{number("1"), number("3"), number("B"), number("7b"), number("")};
+    Shape words = shape(ShapeKind::Text, {{0, 0}, {10, 10}});
+    words.text = "12";
+    shapes.push_back(words);
+    EXPECT_EQ(nextNumber(shapes), 4);
+}

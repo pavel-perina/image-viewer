@@ -113,6 +113,7 @@ void ImageOverlay::mousePressEvent(QMouseEvent* event) {
     }
     forceActiveFocus();  // for Space and the tool's keys
     m_lastItem = event->position();
+    m_shiftHeld = event->modifiers().testFlag(Qt::ShiftModifier);
     if (event->button() != Qt::LeftButton || m_spaceHeld) {
         m_mouse = Mouse::Pan;
         setCursor(Qt::ClosedHandCursor);
@@ -126,6 +127,7 @@ void ImageOverlay::mousePressEvent(QMouseEvent* event) {
 
 void ImageOverlay::mouseMoveEvent(QMouseEvent* event) {
     const QPointF item = event->position();
+    m_shiftHeld = event->modifiers().testFlag(Qt::ShiftModifier);
     if (m_mouse == Mouse::Pan && m_view) {
         m_view->panBy(item.x() - m_lastItem.x(), item.y() - m_lastItem.y());
     } else if (m_mouse == Mouse::Tool) {

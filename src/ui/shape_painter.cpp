@@ -36,9 +36,13 @@ QRectF boxOf(const Shape& shape) {
     return {r.x, r.y, r.width, r.height};
 }
 
+bool hasLetters(const Shape& shape) {
+    return shape.kind == ShapeKind::Text || shape.kind == ShapeKind::Number;
+}
+
 // Text has no line width; its edge and shadow follow the size of its letters.
 double weightOf(const Shape& shape) {
-    return shape.kind == ShapeKind::Text ? shape.style.textSize * 0.16 : shape.style.width;
+    return hasLetters(shape) ? shape.style.textSize * 0.16 : shape.style.width;
 }
 
 double outlineWidth(const Shape& shape) {
@@ -123,9 +127,23 @@ TextLines layOut(const Shape& shape) {
     return lines;
 }
 
-// What a shape covers before its width: its points, and for text also what runs below its box.
+QRectF discOf(const Shape& shape) {
+    const double radius = numberRadius(shape.style);
+    return QRectF(point(shape.points.front()) - QPointF(radius, radius), QSizeF(2 * radius, 2 * radius));
+}
+
+// What a shape covers before its width: its points, for text also what runs below its box,
+// and a number's disc.
 QRectF extentOf(const Shape& shape) {
+    if (shape.kind == ShapeKind::Number) {
+        return discOf(shape);
+    }
     return shape.kind == ShapeKind::Text ? boxOf(shape) | layOut(shape).outlines.boundingRect() : boxOf(shape);
+}
+
+// Black or white, whichever reads on the colour.
+QColor readableOn(const QColor& colour) {
+    return 0.299 * colour.red() + 0.587 * colour.green() + 0.114 * colour.blue() > 150 ? QColor(20, 20, 20) : QColor(Qt::white);
 }
 
 // A path grown by half of `extra` all round, as one area.
@@ -185,17 +203,23 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
         break;
     }
     case ShapeKind::Rectangle:
+    case ShapeKind::Ellipse:
     case ShapeKind::Polygon: {
         QPainterPath path;
         bool whole = isSolid(shape);
-        if (shape.kind == ShapeKind::Rectangle) {
+        if (shape.kind != ShapeKind::Polygon) {
             // Its box is the outer edge, with the line inside it: with corners on whole pixels
             // and a whole width, every edge then lies between pixels and stays sharp.
             const QRectF box = boxOf(shape);
             const double inset = whole ? 0 : shape.style.width / 2;
             // Too small to have a middle: all of it is line.
             whole = whole || box.width() <= 2 * inset || box.height() <= 2 * inset;
-            path.addRect(whole ? box : box.adjusted(inset, inset, -inset, -inset));
+            const QRectF line = whole ? box : box.adjusted(inset, inset, -inset, -inset);
+            if (shape.kind == ShapeKind::Ellipse) {
+                path.addEllipse(line);
+            } else {
+                path.addRect(line);
+            }
         } else {
             QPolygonF corners;
             for (const PointD& p : shape.points) {
@@ -231,6 +255,31 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
         }
         break;
     }
+    case ShapeKind::Number: {
+        const QRectF disc = discOf(shape);
+        QPainterPath path;
+        path.addEllipse(disc);
+        painter->fillPath(grown(path, extra, Qt::RoundJoin), colour);
+        if (pass != Pass::Body || shape.text.empty()) {
+            break;
+        }
+        // Its text in the middle, made smaller when it is too long for the disc.
+        const QString label = QString::fromStdString(shape.text);
+        QFont font = fontOf(shape);
+        const double room = disc.width() * 0.8;
+        if (const double wide = QFontMetricsF(font).horizontalAdvance(label); wide > room) {
+            font.setPixelSize(std::max(1, static_cast<int>(font.pixelSize() * room / wide)));
+        }
+        painter->setFont(font);
+        painter->setPen(readableOn(colour));
+        const QFontMetricsF metrics(font);
+        // By the height of capitals and digits, so that a number sits in the middle whatever
+        // the room the typeface leaves under its line.
+        const double left = disc.center().x() - metrics.horizontalAdvance(label) / 2;
+        const double baseline = disc.center().y() + metrics.capHeight() / 2;
+        painter->drawText(QPointF(std::round(left), std::round(baseline)), label);
+        break;
+    }
     case ShapeKind::Pixelate:
         break;
     }
@@ -253,7 +302,7 @@ QRect shapeArea(const Shape& shape, Size image) {
 
 double shapeMargin(const Shape& shape) {
     const double head = shape.kind == ShapeKind::Arrow ? headLength(shape) * 0.4 : 0;
-    const double half = shape.kind == ShapeKind::Text ? 0 : shape.style.width / 2;
+    const double half = hasLetters(shape) ? 0 : shape.style.width / 2;
     return std::max(half, head) + outlineWidth(shape) + shadowOffset(shape) + 2;
 }
 
