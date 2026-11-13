@@ -40,6 +40,14 @@ W for Windows.
 
 - [ ] On a light desktop theme: menus, dialogs and panels stay dark, with no black text on dark.
 - [ ] Inter shows in menus and labels; no missing characters in file names with accents.
+- [ ] W  To try: small text on a screen at 100% scaling is a little soft. Two likely causes,
+      neither confirmed. Qt Quick draws text itself unless told otherwise, without the font's
+      hinting or ClearType; one line in `main()` before the window is made hands it to Windows:
+      `QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering)`. And the Inter that
+      is bundled is the variable file, which has no hinting; the separate files per weight do.
+      Try the first alone, then with the second, and compare menus, panel labels and the
+      numbers of the probe. Text that is scaled or turned would blur with it, which nothing
+      in the window is. Linux was judged on a denser screen, where this does not show.
 
 ## Disks
 
