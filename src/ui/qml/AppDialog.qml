@@ -1,12 +1,13 @@
 import QtQuick
 import QtQuick.Controls
+import ImageViewer
 
 // A dialog drawn inside the main window, which the system does not decorate, so it brings its own
 // frame, title bar and shadow to read as a window above the rest.
 Dialog {
     id: dialog
 
-    readonly property color frameColor: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.3)
+    readonly property color frameColor: Theme.frame
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -14,7 +15,7 @@ Dialog {
     padding: 16
 
     Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.35)
+        color: Theme.scrim
     }
 
     header: Rectangle {
@@ -61,7 +62,7 @@ Dialog {
                 width: parent.width + 2 * reach
                 height: parent.height + 2 * reach
                 radius: 4 + reach
-                color: Qt.rgba(0, 0, 0, 0.05)
+                color: Theme.dialogShadow
             }
         }
         Rectangle {

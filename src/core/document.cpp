@@ -1,5 +1,6 @@
 #include "core/document.h"
 
+#include <algorithm>
 #include <limits>
 #include <mutex>
 #include <new>
@@ -26,8 +27,39 @@ Size sizeAfter(Size before, const Edit& edit) {
                                  [](const ResizeEdit& resize) { return resize.size; },
                                  [&](const TiltEdit& tilt) { return planTilt(before, tilt.focalPixels, tilt.tilt, tilt.keepRatio).size; },
                                  [&](const GrayEdit&) { return before; },
-                                 [&](const ColorEdit&) { return before; }},
+                                 [&](const ColorEdit&) { return before; },
+                                 [&](const DrawEdit&) { return before; }},
                       edit);
+}
+
+ImageBuffer draw(ImageBuffer pixels, const DrawEdit& edit) {
+    for (const DrawEdit::Pixelated& part : edit.pixelated) {
+        pixels = pixelate(pixels, part.rect, part.block);
+    }
+    if (edit.colour) {
+        pixels = toColour(pixels);
+    }
+    if (!edit.markers.isNull()) {
+        pixels = blendLayer(pixels, edit.markers, edit.x, edit.y, LayerBlend::Multiply, edit.range);
+    }
+    if (!edit.drawing.isNull()) {
+        pixels = blendLayer(pixels, edit.drawing, edit.x, edit.y, LayerBlend::Over, edit.range);
+    }
+    return pixels;
+}
+
+// A profile for gray pixels, which fits no others: its colour space is at byte 16.
+bool isGrayProfile(std::span<const std::uint8_t> profile) {
+    return profile.size() >= 20 && std::equal(profile.begin() + 16, profile.begin() + 20, "GRAY");
+}
+
+PixelFormat colourFormat(PixelFormat format) {
+    switch (format) {
+    case PixelFormat::Gray8: return PixelFormat::Bgrx8;
+    case PixelFormat::Gray16: return PixelFormat::Rgba16;
+    case PixelFormat::Gray32F: return PixelFormat::Rgba32F;
+    default: return format;
+    }
 }
 
 // Empty when stopped.
@@ -59,7 +91,8 @@ ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::st
                                      return warp(pixels, toSource.m, plan.size, stop);
                                  },
                                  [&](const GrayEdit& gray) { return toGray(pixels, gray.method, stop); },
-                                 [&](const ColorEdit& color) { return applyColor(pixels, color, stop); }},
+                                 [&](const ColorEdit& color) { return applyColor(pixels, color, stop); },
+                                 [&](const DrawEdit& drawn) { return draw(pixels, drawn); }},
                       edit);
 }
 
@@ -171,6 +204,17 @@ std::shared_ptr<ImageSource> Document::source() const {
     resetExifForPixels(info.rawExif, edited.width, edited.height);
     resetXmpOrientation(info.xmp);
     info.stored.storedLevels = 1;
+    const bool drawnInColour = std::ranges::any_of(this->edits(), [](const Edit& edit) {
+        const auto* drawn = std::get_if<DrawEdit>(&edit);
+        return drawn && drawn->colour;
+    });
+    if (drawnInColour && isGray(info.format)) {
+        info.format = colourFormat(info.format);
+        info.stored.colorModel = "RGB";
+        if (isGrayProfile(info.iccProfile)) {
+            info.iccProfile.clear();
+        }
+    }
 
     std::vector<Edit> edits(this->edits().begin(), this->edits().end());
     auto decoder = [upright = m_upright, edits = std::move(edits)](const std::stop_token& stop) -> Result<ImageBuffer> {

@@ -8,25 +8,16 @@ import ImageViewer
 
 // Straightening as if the camera had been turned: the angles come from lines drawn or found on
 // the image, and can be typed instead. Applying keeps the largest rectangle with no empty corners.
-Rectangle {
+ToolPanel {
     id: panel
+
+    title: "Straighten"
+    applyEnabled: panel.changes
+    extraText: "Reset"
+    onExtraRequested: panel.reset()
 
     required property StraightenOverlay overlay
     required property ImageView view
-
-    signal applyRequested()
-    signal cancelRequested()
-    // Enter in a field took its value, and the keys can go back to the image.
-    signal doneEditing()
-
-    // A field has the keys, so Enter is its own rather than the tool's.
-    readonly property bool editing: {
-        for (let item = Window.activeFocusItem; item; item = item.parent) {
-            if (item === panel)
-                return true
-        }
-        return false
-    }
 
     property real roll: 0
     property real pitch: 0
@@ -46,9 +37,6 @@ Rectangle {
     readonly property bool changes: roll !== 0 || pitch !== 0 || yaw !== 0
     readonly property size resultSize: changes ? view.straightenedSize(roll, pitch, yaw, focal, settings.keepRatio)
                                                : Qt.size(view.imageWidth, view.imageHeight)
-
-    width: 280
-    color: Theme.panel
 
     Settings {
         id: settings
@@ -123,150 +111,109 @@ Rectangle {
         function onStraightenReady() { panel.ready = true }
     }
 
-    // Keeps the mouse from reaching the image underneath.
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        onWheel: (wheel) => wheel.accepted = true
+    Label {
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        color: Theme.textMuted
+        font.pointSize: Theme.smallSize
+        text: "Draw lines along edges that should be vertical or horizontal: one levels the picture; "
+              + "two of either kind also correct the perspective. Detect finds them. The right button, "
+              + "or Space with the left one, pans; Delete removes the line chosen; V shows the result."
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
-
-        Label {
-            text: "Straighten"
-            font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
-        }
-
-        Label {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
-            text: "Draw lines along edges that should be vertical or horizontal: one levels the picture; "
-                  + "two of either kind also correct the perspective. Detect finds them. The right button, "
-                  + "or Space with the left one, pans; Delete removes the line chosen; V shows the result."
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Button {
-                objectName: "straightenDetect"
-                focusPolicy: Qt.NoFocus
-                text: "Detect"
-                enabled: panel.ready
-                onClicked: panel.detect()
-            }
-            Button {
-                focusPolicy: Qt.NoFocus
-                text: "Remove Line"
-                enabled: panel.overlay.selected >= 0
-                onClicked: panel.overlay.removeSelected()
-            }
-            Item { Layout.fillWidth: true }
-        }
-
-        Label {
-            visible: panel.message !== ""
-            text: panel.message
-            color: Theme.warning
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-        }
-
-        Label { text: "Lines correct"; color: Theme.textMuted }
-        ComboBox {
-            objectName: "straightenMode"
+    RowLayout {
+        Layout.fillWidth: true
+        Button {
+            objectName: "straightenDetect"
             focusPolicy: Qt.NoFocus
-            Layout.fillWidth: true
-            model: ["Rotation only", "Rotation and verticals", "Rotation and perspective"]
-            currentIndex: Math.max(0, Math.min(2, settings.mode))
-            onActivated: (index) => {
-                settings.mode = index
-                if (index < 1)
-                    panel.pitch = 0
-                if (index < 2)
-                    panel.yaw = 0
-                panel.refit()
-            }
-        }
-
-        Label { text: "Angles, in degrees"; color: Theme.textMuted }
-        GridLayout {
-            columns: 2
-            columnSpacing: 10
-            Layout.fillWidth: true
-            Label { text: "Rotate" }
-            AngleField { objectName: "straightenRoll"; value: panel.roll; onPicked: (v) => panel.roll = v }
-            Label { text: "Vertical" }
-            AngleField { objectName: "straightenPitch"; value: panel.pitch; onPicked: (v) => panel.pitch = v }
-            Label { text: "Horizontal" }
-            AngleField { objectName: "straightenYaw"; value: panel.yaw; onPicked: (v) => panel.yaw = v }
-            Label { text: "Focal length" }
-            TextField {
-                id: focalField
-                objectName: "straightenFocal"
-                Layout.fillWidth: true
-                placeholderText: "28 mm, assumed"
-                validator: DoubleValidator { bottom: 1; top: 2000; decimals: 1; notation: DoubleValidator.StandardNotation; locale: "C" }
-                selectByMouse: true
-                onEditingFinished: panel.refit()
-                onAccepted: panel.doneEditing()
-            }
-        }
-        Label {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
-            text: panel.cameraFocal > 0 ? "Focal length as on 35mm film, from the camera."
-                                        : "The camera data has no focal length; it matters for perspective only."
-        }
-
-        CheckBox {
-            focusPolicy: Qt.NoFocus
-            text: "Keep the image's ratio"
-            checked: settings.keepRatio
-            onToggled: settings.keepRatio = checked
-        }
-        CheckBox {
-            objectName: "straightenShowResult"
-            focusPolicy: Qt.NoFocus
-            text: "Show the result"
-            checked: panel.overlay.showResult
+            text: "Detect"
             enabled: panel.ready
-            onToggled: panel.overlay.showResult = checked
+            onClicked: panel.detect()
         }
-
-        Label {
-            text: "Result " + Math.round(panel.resultSize.width) + " x " + Math.round(panel.resultSize.height) + " pixels"
-            color: Theme.textMuted
+        Button {
+            focusPolicy: Qt.NoFocus
+            text: "Remove Line"
+            enabled: panel.overlay.selected >= 0
+            onClicked: panel.overlay.removeSelected()
         }
+        Item { Layout.fillWidth: true }
+    }
 
-        Item { Layout.fillHeight: true }
+    Label {
+        visible: panel.message !== ""
+        text: panel.message
+        color: Theme.warning
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
+    }
 
-        RowLayout {
+    Label { text: "Lines correct"; color: Theme.textMuted }
+    ComboBox {
+        objectName: "straightenMode"
+        focusPolicy: Qt.NoFocus
+        Layout.fillWidth: true
+        model: ["Rotation only", "Rotation and verticals", "Rotation and perspective"]
+        currentIndex: Math.max(0, Math.min(2, settings.mode))
+        onActivated: (index) => {
+            settings.mode = index
+            if (index < 1)
+                panel.pitch = 0
+            if (index < 2)
+                panel.yaw = 0
+            panel.refit()
+        }
+    }
+
+    Label { text: "Angles, in degrees"; color: Theme.textMuted }
+    GridLayout {
+        columns: 2
+        columnSpacing: 10
+        Layout.fillWidth: true
+        Label { text: "Rotate" }
+        AngleField { objectName: "straightenRoll"; value: panel.roll; onPicked: (v) => panel.roll = v }
+        Label { text: "Vertical" }
+        AngleField { objectName: "straightenPitch"; value: panel.pitch; onPicked: (v) => panel.pitch = v }
+        Label { text: "Horizontal" }
+        AngleField { objectName: "straightenYaw"; value: panel.yaw; onPicked: (v) => panel.yaw = v }
+        Label { text: "Focal length" }
+        TextField {
+            id: focalField
+            objectName: "straightenFocal"
             Layout.fillWidth: true
-            Button {
-                focusPolicy: Qt.NoFocus
-                text: "Reset"
-                onClicked: panel.reset()
-            }
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Cancel"
-                onClicked: panel.cancelRequested()
-            }
-            Button {
-                text: "Apply"
-                highlighted: true
-                enabled: panel.changes
-                onClicked: panel.applyRequested()
-            }
+            placeholderText: "28 mm, assumed"
+            validator: DoubleValidator { bottom: 1; top: 2000; decimals: 1; notation: DoubleValidator.StandardNotation; locale: "C" }
+            selectByMouse: true
+            onEditingFinished: panel.refit()
+            onAccepted: panel.doneEditing()
         }
+    }
+    Label {
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        color: Theme.textMuted
+        font.pointSize: Theme.smallSize
+        text: panel.cameraFocal > 0 ? "Focal length as on 35mm film, from the camera."
+                                    : "The camera data has no focal length; it matters for perspective only."
+    }
+
+    CheckBox {
+        focusPolicy: Qt.NoFocus
+        text: "Keep the image's ratio"
+        checked: settings.keepRatio
+        onToggled: settings.keepRatio = checked
+    }
+    CheckBox {
+        objectName: "straightenShowResult"
+        focusPolicy: Qt.NoFocus
+        text: "Show the result"
+        checked: panel.overlay.showResult
+        enabled: panel.ready
+        onToggled: panel.overlay.showResult = checked
+    }
+
+    Label {
+        text: "Result " + Math.round(panel.resultSize.width) + " x " + Math.round(panel.resultSize.height) + " pixels"
+        color: Theme.textMuted
     }
 
     // An angle to two decimals; typing one replaces what the lines gave.

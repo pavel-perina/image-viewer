@@ -50,9 +50,9 @@ Item {
 
         visible: needed
         radius: 3
-        color: Qt.rgba(1, 1, 1, 0.65)
+        color: Theme.scrollHandle
         border.width: 1
-        border.color: Qt.rgba(0, 0, 0, 0.6)
+        border.color: Theme.scrollHandleEdge
     }
 
     Handle {

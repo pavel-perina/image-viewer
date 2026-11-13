@@ -26,7 +26,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Colour:** `color` (ICC, display transform), `color_edit` (levels, curves, cube tables),
   `oklab.h`, `histogram`, `pixel_probe`.
 * **Editing:** `document` (the edit list, undo), `crop`, `perspective` (straighten),
-  `image_ops` (resize, grayscale).
+  `image_ops` (resize, grayscale), `shapes` (annotation shapes: points, grips, hit-testing),
+  `image_layer` (blending a drawn layer into the picture, pixelate), `coverage` (growing,
+  moving and blurring what a shape covers, for its dark edge and shadow).
 * **Saving:** `image_writer` (every format), `save_image`, `jpeg_transform` (lossless JPEG),
   `jxl_transcode`, `file_io`.
 * **Background work:** `work_queue` (priorities, cancelling), `disk_gate`, `thumbnail`,
@@ -36,7 +38,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
-* **Tools drawn on the image:** `crop_overlay`, `straighten_overlay`.
+* **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
+  from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
+  `shape_painter` (draws annotation shapes, for the screen and for burning in).
 * **Browsing:** `browse_context` (one folder, its files, the current image), `file_list_model`,
   `directory_tree_model`, `folder_listing`, `subfolder_list`, `folder_lists`, `thumbnail_store`,
   `thumbnail_provider`.
@@ -44,7 +48,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **QML pages:** `Main.qml` (window, menus, dialogs), `BrowserPage.qml`, `ViewerPage.qml`,
   `FileActions.qml` (what the file menus do), `FileChooser.qml`.
 * **QML shared controls:** `AppDialog`, `AppMenu`, `AppMenuItem`, `BarButton`, `AppScrollBar`,
-  `MessageBox`, `Theme` (every colour and size).
+  `MessageBox`, `NumberRow` (a label with a number to set), `ToolPanel` (the base of every
+  tool's panel: heading, rows, Cancel and Apply), `Theme` (every colour, and the sizes pages
+  share).
 
 ## Build and test
 
@@ -71,12 +77,19 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
    extract the shared part before going on.
 3. **Logic in C++, not QML.** QML holds layout, bindings and short handlers. Anything with a
    rule worth a test goes in C++.
-4. **QML uses the shared controls and `Theme`.** No colours, sizes or fonts written into a
-   page. A dialog is an `AppDialog`, a menu an `AppMenu`.
-5. **Tools on the image share one overlay layer** (to be built before annotations): shapes and
-   hit-testing in core, one overlay base in the UI for the view binding, coordinates, panning
-   and handles. Crop, straighten, measurement and annotations sit on it.
-6. **UI headers hide their insides** behind pimpl. Core types stay out of them.
+4. **QML uses the shared controls and `Theme`.** No colours or fonts written into a page, nor
+   sizes that pages share: text sizes, panel widths, margins and spacing come from `Theme`. A
+   number that lays out one page alone may stay in it. A dialog is an `AppDialog`, a menu an
+   `AppMenu`.
+5. **Tools on the image derive from `ImageOverlay`** (`src/ui/image_overlay.h`), which owns
+   the view binding, the coordinates, panning and click against drag, and draws the common
+   lines and grips. A tool adds its own model and painting. Colours come from `Theme` through
+   `OverlayStyle`, never written into the C++.
+6. **Headers keep libraries to themselves.** No header of core or UI includes a header of a
+   codec or other outside library, so nothing depends on libtiff or the like by way of
+   another class's private part: such members go behind pimpl. Core's own value types
+   (points, rectangles, shapes) may appear in UI headers. A class with much state of its own
+   hides it behind pimpl too, but that is a preference, not a rule.
 7. **Nothing blocks the UI thread.** Disk and decoding go through the work queue. An object
    that receives results cancels its group and waits in its destructor.
 8. **Nothing assumes one view.** A `BrowseContext` is one tab or panel.
@@ -99,8 +112,11 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * Design before code for anything larger than a fix: say what will be added and where it fits,
   and wait for agreement.
 * Small changes, one topic each, that can be read in one sitting.
-* Branch from `main`. Commit only when asked, one topic per commit, files named one by one.
-  Never push or merge unasked.
+* Small changes are committed on `main`. Only a feature of several commits gets a branch,
+  from `main`: it is merged with a merge commit (`--no-ff`), named for what it brings, and
+  deleted at once, so that branches do not pile up.
+* Commit only when asked, one topic per commit, files named one by one. Never push or merge
+  unasked.
 * Say before opening a window on the real desktop.
 
 ## Not wanted

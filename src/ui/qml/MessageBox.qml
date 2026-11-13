@@ -108,7 +108,7 @@ AppDialog {
                 anchors.topMargin: box.kind === "warning" ? 4 : 0
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
-                color: "white"
+                color: Theme.onFill
                 font.bold: true
                 font.pixelSize: 20
                 text: box.kind === "error" ? "×" : box.kind === "warning" ? "!" : box.kind === "question" ? "?" : "i"

@@ -18,6 +18,7 @@ ApplicationWindow {
     readonly property bool probing: viewerPage.probing
     readonly property bool straightening: viewerPage.straightening
     readonly property bool adjusting: viewerPage.adjusting
+    readonly property bool annotating: viewerPage.annotating
     // A tool of the large view has the mouse and keys, so moving to another image waits.
     readonly property bool toolActive: viewerPage.toolActive
     readonly property bool edited: window.viewing && viewerPage.view.modified
@@ -214,17 +215,9 @@ ApplicationWindow {
     }
 
     function leaveCurrentMode() {
-        if (window.cropping)
-            viewerPage.cancelCrop()
-        else if (window.straightening)
-            viewerPage.cancelStraighten()
-        else if (window.adjusting)
-            viewerPage.cancelAdjust()
-        else if (viewerPage.comparing !== "")
-            viewerPage.stopCompare()
-        else if (window.probing)
-            viewerPage.stopProbe()
-        else if (window.visibility === Window.FullScreen)
+        if (viewerPage.stepBack())
+            return
+        if (window.visibility === Window.FullScreen)
             window.visibility = Window.Windowed
         else
             window.leaveImage(() => window.viewing = false)
@@ -269,6 +262,13 @@ ApplicationWindow {
         shortcut: "S"
         enabled: window.canEdit && !window.straightening
         onTriggered: window.startTool(() => viewerPage.startStraighten())
+    }
+    Action {
+        id: annotateAction
+        text: "A&nnotate..."
+        shortcut: "D"
+        enabled: window.canEdit && !window.annotating
+        onTriggered: window.startTool(() => viewerPage.startAnnotate())
     }
     Action {
         id: adjustAction
@@ -347,14 +347,14 @@ ApplicationWindow {
         id: undoAction
         text: "&Undo"
         shortcut: StandardKey.Undo
-        enabled: window.viewing && !window.cropping && !window.straightening && !window.adjusting && viewerPage.view.canUndo
+        enabled: window.viewing && !window.cropping && !window.straightening && !window.adjusting && !window.annotating && viewerPage.view.canUndo
         onTriggered: viewerPage.view.undo()
     }
     Action {
         id: redoAction
         text: "&Redo"
         shortcut: StandardKey.Redo
-        enabled: window.viewing && !window.cropping && !window.straightening && !window.adjusting && viewerPage.view.canRedo
+        enabled: window.viewing && !window.cropping && !window.straightening && !window.adjusting && !window.annotating && viewerPage.view.canRedo
         onTriggered: viewerPage.view.redo()
     }
     Action {
@@ -418,9 +418,7 @@ ApplicationWindow {
     // take these keys themselves, each while it has the focus. Space pans while cropping.
     Shortcut { sequences: ["Right", "Space", "PgDown"]; enabled: window.viewing && !window.toolActive; onActivated: window.next() }
     Shortcut { sequences: ["Left", "Backspace", "PgUp"]; enabled: window.viewing && !window.toolActive; onActivated: window.previous() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.cropping && !viewerPage.cropPanelEditing; onActivated: viewerPage.applyCrop() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.straightening && !viewerPage.straightenPanelEditing; onActivated: viewerPage.applyStraighten() }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: window.adjusting; onActivated: viewerPage.applyAdjust() }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: viewerPage.enterApplies; onActivated: viewerPage.applyTool() }
     Shortcut { sequence: "Ctrl+PgUp"; onActivated: previousPageAction.trigger() }
     Shortcut { sequence: "Ctrl+PgDown"; onActivated: nextPageAction.trigger() }
     Shortcut { sequence: "Ctrl+A"; enabled: !window.viewing; onActivated: context.selectAll() }
@@ -468,6 +466,7 @@ ApplicationWindow {
             MenuSeparator {}
             AppMenuItem { action: cropAction }
             AppMenuItem { action: straightenAction }
+            AppMenuItem { action: annotateAction }
             AppMenuItem { action: resizeAction }
             AppMenu {
                 title: "&Grayscale"

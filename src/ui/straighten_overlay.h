@@ -1,26 +1,23 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
-#include <QPointer>
 #include <QPointF>
-#include <QQuickPaintedItem>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 #include "core/perspective.h"
-#include "ui/image_view.h"
+#include "ui/image_overlay.h"
 
 namespace iv {
 
-// The lines that straightening makes vertical or horizontal, drawn over an ImageView of the
-// same geometry, with the outline of what will be kept, or the straightened picture instead.
-// The left button drags a line's end or the whole line, or draws a new one; Delete removes the
-// line chosen. The right or middle button, or the left one with Space held, pans; the wheel
-// goes to the view underneath. V switches between the lines and the result.
-class StraightenOverlay : public QQuickPaintedItem {
+// The lines that straightening makes vertical or horizontal, drawn over the image, with the
+// outline of what will be kept, or the straightened picture instead. The left button drags a
+// line's end or the whole line, or draws a new one; Delete removes the line chosen. V switches
+// between the lines and the result.
+class StraightenOverlay : public ImageOverlay {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(iv::ImageView* view READ view WRITE setView NOTIFY viewChanged)
     // {x1, y1, x2, y2} in pixels of the image as shown, and drawn for one the user drew or moved.
     Q_PROPERTY(QVariantList lines READ lines WRITE setLines NOTIFY linesChanged)
     // Which lines the angles were fitted to; those left out are drawn faint.
@@ -33,12 +30,13 @@ class StraightenOverlay : public QQuickPaintedItem {
     Q_PROPERTY(double focal35mm READ focal35mm WRITE setFocal35mm NOTIFY tiltChanged)
     Q_PROPERTY(bool keepRatio READ keepRatio WRITE setKeepRatio NOTIFY tiltChanged)
     Q_PROPERTY(bool showResult READ showResult WRITE setShowResult NOTIFY showResultChanged)
+    // What the lines meant to be vertical and horizontal are drawn in.
+    Q_PROPERTY(QColor verticalColor MEMBER m_verticalColor NOTIFY coloursChanged)
+    Q_PROPERTY(QColor horizontalColor MEMBER m_horizontalColor NOTIFY coloursChanged)
 
 public:
     explicit StraightenOverlay(QQuickItem* parent = nullptr);
 
-    ImageView* view() const { return m_view; }
-    void setView(ImageView* view);
     QVariantList lines() const;
     void setLines(const QVariantList& lines);
     QVariantList used() const { return m_used; }
@@ -62,22 +60,23 @@ public:
     void paint(QPainter* painter) override;
 
 signals:
-    void viewChanged();
     void linesChanged();
     void usedChanged();
     void selectedChanged();
     void tiltChanged();
     void showResultChanged();
+    void coloursChanged();
     // The user drew, moved or removed a line, as opposed to lines being set.
     void linesEdited();
 
 protected:
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseMoveEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
-    void hoverMoveEvent(QHoverEvent* event) override;
-    void keyPressEvent(QKeyEvent* event) override;
-    void keyReleaseEvent(QKeyEvent* event) override;
+    bool usable() const override { return !m_showResult; }
+    void viewAttached() override;
+    void pressed(QPointF itemPoint) override;
+    void dragged(QPointF itemPoint, bool moved) override;
+    void released(QPointF itemPoint) override;
+    Qt::CursorShape cursorAt(QPointF itemPoint) const override;
+    bool keyPressed(QKeyEvent* event) override;
 
 private:
     struct Hit {
@@ -85,12 +84,9 @@ private:
         int end = -1;  // 0 or 1 for an end, -1 for the line itself
     };
     Hit hitAt(QPointF itemPoint) const;
-    QPointF toItem(PointD imagePoint) const;
-    PointD toImage(QPointF itemPoint) const;
     void select(int index);
     void tiltChange();
 
-    QPointer<ImageView> m_view;
     std::vector<GuideLine> m_lines;
     QVariantList m_used;
     int m_selected = -1;
@@ -98,17 +94,16 @@ private:
     double m_focal35mm = 0;
     bool m_keepRatio = true;
     bool m_showResult = false;
+    QColor m_verticalColor{79, 195, 247};
+    QColor m_horizontalColor{255, 183, 77};
     mutable QImage m_preview;
     mutable bool m_previewValid = false;
 
-    enum class Drag { None, End, Line, Draw, Pan };
+    enum class Drag { None, End, Line, Draw };
     Drag m_drag = Drag::None;
     Hit m_hit;
     GuideLine m_atPress;
     PointD m_pressImage;
-    QPointF m_pressItem;
-    QPointF m_lastItem;
-    bool m_spaceHeld = false;
 };
 
 }  // namespace iv

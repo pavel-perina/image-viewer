@@ -25,7 +25,7 @@ Rectangle {
 
     Flickable {
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: Theme.panelMargin
         contentHeight: content.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
         clip: true
@@ -50,7 +50,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: histogramView.description
                 color: Theme.textMuted
-                font.pointSize: Qt.application.font.pointSize - 1
+                font.pointSize: Theme.smallSize
                 elide: Text.ElideRight
             }
 

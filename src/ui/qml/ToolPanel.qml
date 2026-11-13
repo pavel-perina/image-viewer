@@ -1,0 +1,110 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import ImageViewer
+
+// What every panel of a tool is: a sheet beside the image that slides in from the right, with
+// a heading, the tool's own controls, and at the bottom the buttons to apply or leave, with
+// one more on the left where a tool has a use for it, such as Reset. A tool's panel derives
+// from this and adds only its controls, which are laid out in a column.
+Rectangle {
+    id: panel
+
+    property string title
+    // In view; it slides in and out, unless the page says not to animate.
+    property bool revealed: false
+    property bool animated: true
+    // Whether it ends in buttons at all: a tool that changes nothing has none.
+    property bool buttons: true
+    property string applyText: "Apply"
+    property bool applyEnabled: true
+    // The name the apply button is found by.
+    property string applyName
+    // The button on the left; none while this is empty.
+    property string extraText
+    // Whether the controls take all the height, as a list does; otherwise they keep to the top.
+    property bool fills: false
+
+    signal applyRequested()
+    signal cancelRequested()
+    signal extraRequested()
+    // Enter in a field took its value, and the keys can go back to the image.
+    signal doneEditing()
+
+    // A field has the keys, so Enter is its own rather than the tool's.
+    readonly property bool editing: {
+        for (let item = Window.activeFocusItem; item; item = item.parent) {
+            if (item === panel)
+                return true
+        }
+        return false
+    }
+
+    default property alias content: column.data
+
+    width: Theme.panelWidth
+    color: Theme.panel
+    anchors.top: parent ? parent.top : undefined
+    anchors.bottom: parent ? parent.bottom : undefined
+    x: parent ? (revealed ? parent.width - width : parent.width) : 0
+    visible: parent ? x < parent.width : false
+
+    Behavior on x {
+        enabled: panel.animated
+        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+    }
+
+    // Keeps the mouse from reaching the image underneath.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        onWheel: (wheel) => wheel.accepted = true
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Theme.panelMargin
+        spacing: Theme.panelSpacing
+
+        Label {
+            text: panel.title
+            font.bold: true
+            font.pointSize: Theme.titleSize
+        }
+
+        ColumnLayout {
+            id: column
+            Layout.fillWidth: true
+            Layout.fillHeight: panel.fills
+            spacing: Theme.panelSpacing
+        }
+
+        Item {
+            Layout.fillHeight: true
+            visible: !panel.fills
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: panel.buttons
+            Button {
+                focusPolicy: Qt.NoFocus
+                visible: panel.extraText !== ""
+                text: panel.extraText
+                onClicked: panel.extraRequested()
+            }
+            Item { Layout.fillWidth: true }
+            Button {
+                text: "Cancel"
+                onClicked: panel.cancelRequested()
+            }
+            Button {
+                objectName: panel.applyName
+                text: panel.applyText
+                highlighted: true
+                enabled: panel.applyEnabled
+                onClicked: panel.applyRequested()
+            }
+        }
+    }
+}

@@ -20,21 +20,22 @@ Rectangle {
     property alias sharpResampling: settings.sharpResampling
     property bool panelRevealed: false
     readonly property bool panelShown: fullScreen ? panelRevealed : panelPinned
-    // Choosing a crop: its panel takes the place of the info panel, at full screen too.
-    property bool cropping: false
-    readonly property bool cropPanelShown: cropping && (fullScreen ? panelRevealed : true)
-    readonly property bool cropPanelEditing: cropPanel.editing
-    // Reading pixels: the probe panel takes the same place.
-    property bool probing: false
-    readonly property bool probePanelShown: probing && (fullScreen ? panelRevealed : true)
-    // Straightening: its panel takes the same place.
-    property bool straightening: false
-    readonly property bool straightenPanelShown: straightening && (fullScreen ? panelRevealed : true)
-    readonly property bool straightenPanelEditing: straightenPanel.editing
-    // Adjusting colours: its panel takes the same place too.
-    property bool adjusting: false
-    readonly property bool adjustPanelShown: adjusting && (fullScreen ? panelRevealed : true)
-    readonly property bool toolActive: cropping || probing || straightening || adjusting
+    // The tool at work, one at a time: "crop", "probe", "straighten", "adjust" or "annotate",
+    // or none. Its panel takes the place of the info panel, at full screen too.
+    property string tool: ""
+    readonly property bool toolActive: tool !== ""
+    readonly property bool cropping: tool === "crop"
+    readonly property bool probing: tool === "probe"
+    readonly property bool straightening: tool === "straighten"
+    readonly property bool adjusting: tool === "adjust"
+    readonly property bool annotating: tool === "annotate"
+    // The panel at the right edge: the tool's, or the info panel with no tool.
+    readonly property Item sidePanel: cropping ? cropPanel : probing ? probePanel : straightening ? straightenPanel
+                                    : adjusting ? adjustPanel : annotating ? annotatePanel : panel
+    readonly property bool toolPanelShown: fullScreen ? panelRevealed : true
+    // Whether Enter applies the tool at work. The probe has nothing to apply, and a field of
+    // the tool's panel that has the keys takes Enter for its own value; Adjust has no fields.
+    readonly property bool enterApplies: toolActive && !probing && (adjusting || !sidePanel.editing)
     // Comparing two pictures of the same size, one each side of a line: "edit" for before and
     // after editing, "files" for the image shown against another file. Not a tool, so it goes
     // with Adjust Colours.
@@ -46,12 +47,12 @@ Rectangle {
     // Before is the picture as it was before the colour preview while adjusting, otherwise the
     // file without edits.
     readonly property bool canCompareEdit: view.status === ImageView.Ready && (view.modified || adjusting)
-                                           && !cropping && !straightening
+                                           && !cropping && !straightening && !annotating
 
     function startBeforeAfter() {
         if (!canCompareEdit)
             return false
-        probing = false
+        stopProbe()
         otherSurface.view.showPictureOf(view, !adjusting)
         compareSplitter.firstLabel = "Before"
         compareSplitter.secondLabel = "After"
@@ -70,9 +71,8 @@ Rectangle {
     function compareWith(path) {
         if (view.status !== ImageView.Ready || path === "" || path === view.source)
             return
-        cropping = false
-        straightening = false
-        probing = false
+        if (!adjusting)
+            leaveTool()  // comparing goes with Adjust Colours, and with no other tool
         otherSurface.source = path
         compareSplitter.firstLabel = path.substring(path.lastIndexOf("/") + 1)
         compareSplitter.secondLabel = page.context.currentName
@@ -107,18 +107,30 @@ Rectangle {
         }
     }
 
+    // Ends the tool at work, if any, without applying it. Starting a tool leaves the one
+    // before it this way, so there is never more than one.
+    function leaveTool() {
+        cancelAdjust()
+        cancelAnnotate()
+        tool = ""
+    }
+
+    // No tool, if it was this one.
+    function drop(name) {
+        if (tool === name)
+            tool = ""
+    }
+
     function startAdjust() {
         if (!view.editable || view.status !== ImageView.Ready)
             return
-        probing = false
-        cropping = false
-        straightening = false
-        adjusting = true
+        leaveTool()
+        tool = "adjust"
         adjustPanel.start()
     }
 
     function applyAdjust() {
-        adjusting = false
+        drop("adjust")
         if (adjustPanel.changes)
             adjustPanel.apply()
         else
@@ -128,7 +140,7 @@ Rectangle {
     function cancelAdjust() {
         if (adjusting && comparing === "edit")
             stopCompare()  // before and after would be the same
-        adjusting = false
+        drop("adjust")
         view.endColorPreview()
     }
 
@@ -136,37 +148,33 @@ Rectangle {
         if (!view.editable || view.status !== ImageView.Ready)
             return
         stopCompare()
-        probing = false
-        cropping = false
-        cancelAdjust()
-        straightening = true
+        leaveTool()
+        tool = "straighten"
         straightenPanel.start()
         straightenOverlay.forceActiveFocus()
     }
 
     function applyStraighten() {
         const p = straightenPanel
-        straightening = false
+        drop("straighten")
         if (p.changes)
             view.straighten(p.roll, p.pitch, p.yaw, p.focal, straightenOverlay.keepRatio)
     }
 
     function cancelStraighten() {
-        straightening = false
+        drop("straighten")
     }
 
     function startProbe() {
         if (view.status !== ImageView.Ready)
             return
-        cropping = false
-        straightening = false
-        cancelAdjust()
-        probing = true
+        leaveTool()
+        tool = "probe"
         probeArea.forceActiveFocus()
     }
 
     function stopProbe() {
-        probing = false
+        drop("probe")
     }
 
     function copyProbedHex() {
@@ -178,22 +186,79 @@ Rectangle {
         if (!view.editable || view.status !== ImageView.Ready)
             return
         stopCompare()
-        probing = false
-        straightening = false
-        cancelAdjust()
-        cropping = true
+        leaveTool()
+        tool = "crop"
         cropPanel.start()
         cropOverlay.forceActiveFocus()
     }
 
     function applyCrop() {
         const rect = cropOverlay.cropRect
-        cropping = false
+        drop("crop")
         view.crop(rect)
     }
 
     function cancelCrop() {
-        cropping = false
+        drop("crop")
+    }
+
+    function startAnnotate() {
+        if (!view.editable || view.status !== ImageView.Ready)
+            return
+        stopCompare()
+        leaveTool()
+        tool = "annotate"
+        view.prepareDraw()
+        annotateOverlay.forceActiveFocus()
+    }
+
+    function applyAnnotate() {
+        drop("annotate")
+        view.endDraw()
+        annotateOverlay.apply()
+    }
+
+    // Leaves without drawing anything into the picture.
+    function cancelAnnotate() {
+        drop("annotate")
+        view.endDraw()
+        annotateOverlay.clear()
+    }
+
+    // Applies the tool at work, as Enter does.
+    function applyTool() {
+        if (cropping)
+            applyCrop()
+        else if (straightening)
+            applyStraighten()
+        else if (adjusting)
+            applyAdjust()
+        else if (annotating)
+            applyAnnotate()
+    }
+
+    // What Esc does on this page, one step at a time: a tool that edits is given up, then a
+    // comparison ends, then the probe. False when there was nothing to leave.
+    function stepBack() {
+        if (annotating)
+            escapeAnnotate()
+        else if (toolActive && !probing)
+            leaveTool()
+        else if (comparing !== "")
+            stopCompare()
+        else if (probing)
+            stopProbe()
+        else
+            return false
+        return true
+    }
+
+    // Esc lets go of the shape selected first, and leaves only with none.
+    function escapeAnnotate() {
+        if (annotateOverlay.selected >= 0)
+            annotateOverlay.deselect()
+        else
+            cancelAnnotate()
     }
 
     signal fileMenuRequested()
@@ -223,8 +288,7 @@ Rectangle {
         anchors.bottom: parent.bottom
         // The panel takes room from the image, except at full screen where it comes and goes
         // with the mouse, and refitting the image each time would be restless.
-        anchors.right: page.fullScreen ? parent.right : page.cropping ? cropPanel.left : page.probing ? probePanel.left
-                     : page.straightening ? straightenPanel.left : page.adjusting ? adjustPanel.left : panel.left
+        anchors.right: page.fullScreen ? parent.right : page.sidePanel.left
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: (page.panelShown && !page.toolActive) || page.adjusting
         sharp: settings.sharpResampling
@@ -270,111 +334,25 @@ Rectangle {
         }
     }
 
-    // Reads the pixel under a press and while dragging; arrow keys step by a pixel. The right or
-    // middle button pans and the wheel goes on to the view.
-    Item {
+    ProbeOverlay {
         id: probeArea
         objectName: "probeArea"
         anchors.fill: surface
+        view: surface.view
+        style: overlayStyle
         visible: page.probing
         enabled: page.probing
+        onPixelChanged: probePanel.probed = pixel
+        onPicked: (pixel) => probePanel.remember(pixel)
+    }
 
-        property point requested: Qt.point(-1, -1)  // the pixel asked for last, as shown
-        property bool rememberWhenRead: false
-        property int viewRevision: 0  // for the marker to follow zooming and panning
-
-        function probeImagePoint(point) {
-            requested = Qt.point(Math.floor(point.x), Math.floor(point.y))
-            surface.view.probe(point)
-        }
-
-        function probeAt(x, y) {
-            probeImagePoint(surface.view.itemToImage(mapToItem(surface.view, x, y)))
-        }
-
-        // Once the pixel asked for has been read.
-        function rememberIfRead() {
-            const read = probePanel.probed
-            if (rememberWhenRead && read && read.x === requested.x && read.y === requested.y) {
-                rememberWhenRead = false
-                probePanel.remember(read)
-            }
-        }
-
-        Connections {
-            target: surface.view
-            function onZoomChanged() { probeArea.viewRevision++ }
-            function onProbed(pixel) {
-                probePanel.probed = pixel
-                probeArea.rememberIfRead()
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-            cursorShape: panning ? Qt.ClosedHandCursor : Qt.CrossCursor
-            property bool panning: false
-            property point last
-            onPressed: (mouse) => {
-                probeArea.forceActiveFocus()
-                last = Qt.point(mouse.x, mouse.y)
-                panning = mouse.button !== Qt.LeftButton
-                if (!panning)
-                    probeArea.probeAt(mouse.x, mouse.y)
-            }
-            onPositionChanged: (mouse) => {
-                if (panning) {
-                    surface.view.panBy(mouse.x - last.x, mouse.y - last.y)
-                    last = Qt.point(mouse.x, mouse.y)
-                } else {
-                    probeArea.probeAt(mouse.x, mouse.y)
-                }
-            }
-            onReleased: {
-                if (!panning) {
-                    probeArea.rememberWhenRead = true
-                    probeArea.rememberIfRead()
-                }
-                panning = false
-            }
-            onWheel: (wheel) => wheel.accepted = false
-        }
-
-        Keys.onPressed: (event) => {
-            const read = probePanel.probed
-            const steps = { [Qt.Key_Left]: [-1, 0], [Qt.Key_Right]: [1, 0], [Qt.Key_Up]: [0, -1], [Qt.Key_Down]: [0, 1] }
-            const step = steps[event.key]
-            if (step && read) {
-                probeArea.probeImagePoint(Qt.point(read.x + step[0] + 0.5, read.y + step[1] + 0.5))
-                event.accepted = true
-            } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && read) {
-                probePanel.remember(read)
-                event.accepted = true
-            }
-        }
-
-        // Around the pixel read, never smaller than a few screen pixels.
-        Item {
-            id: marker
-            readonly property var pixel: probePanel.probed
-            readonly property rect bounds: {
-                probeArea.viewRevision
-                if (!pixel)
-                    return Qt.rect(0, 0, 0, 0)
-                const a = probeArea.mapFromItem(surface.view, surface.view.imageToItem(Qt.point(pixel.x, pixel.y)))
-                const b = probeArea.mapFromItem(surface.view, surface.view.imageToItem(Qt.point(pixel.x + 1, pixel.y + 1)))
-                const size = Math.max(7, b.x - a.x)
-                return Qt.rect((a.x + b.x - size) / 2, (a.y + b.y - size) / 2, size, size)
-            }
-            visible: !!pixel
-            x: bounds.x - 1
-            y: bounds.y - 1
-            width: bounds.width + 2
-            height: bounds.height + 2
-            Rectangle { anchors.fill: parent; color: "transparent"; border.color: "black" }
-            Rectangle { anchors.fill: parent; anchors.margins: 1; color: "transparent"; border.color: "white" }
-        }
+    OverlayStyle {
+        id: overlayStyle
+        line: Theme.toolLine
+        outline: Theme.toolOutline
+        dim: Theme.toolDim
+        faint: Theme.toolFaint
+        surround: Theme.imageBackground
     }
 
     CropOverlay {
@@ -382,6 +360,7 @@ Rectangle {
         objectName: "cropOverlay"
         anchors.fill: surface
         view: surface.view
+        style: overlayStyle
         visible: page.cropping
         enabled: page.cropping
     }
@@ -391,31 +370,47 @@ Rectangle {
         objectName: "straightenOverlay"
         anchors.fill: surface
         view: surface.view
+        style: overlayStyle
+        verticalColor: Theme.guideVertical
+        horizontalColor: Theme.guideHorizontal
         visible: page.straightening
         enabled: page.straightening
     }
 
-    // Leaving the image, or an edit that changes it, ends choosing a crop.
+    AnnotateOverlay {
+        id: annotateOverlay
+        objectName: "annotateOverlay"
+        anchors.fill: surface
+        view: surface.view
+        style: overlayStyle
+        visible: page.annotating
+        enabled: page.annotating
+    }
+
+    // Leaving the image ends any tool. An edit that changes it ends all but the probe, which
+    // reads whatever is shown.
     Connections {
         target: surface.view
         function onSourceChanged() {
-            page.cropping = false
-            page.probing = false
-            page.straightening = false
-            page.adjusting = false
+            // The view has dropped its colour preview with the picture.
+            page.cancelAnnotate()
+            page.tool = ""
             page.stopCompare()
         }
         function onStatusChanged() {
             if (surface.view.status !== ImageView.Ready) {
-                page.cropping = false
-                page.straightening = false
+                // Adjust that was applied has left already, and its preview stays up until
+                // the edited picture takes its place: only one still at work is cancelled.
                 if (page.adjusting)
                     page.cancelAdjust()
-                probePanel.probed = null  // its pixel may be elsewhere in what comes
+                page.cancelAnnotate()
+                if (!page.probing)
+                    page.tool = ""
+                probeArea.clear()  // its pixel may be elsewhere in what comes
             }
         }
     }
-    onActiveChanged: if (!active) { cropping = false; probing = false; straightening = false; cancelAdjust(); stopCompare() }
+    onActiveChanged: if (!active) { leaveTool(); stopCompare() }
 
     Connections {
         target: page.context
@@ -450,9 +445,7 @@ Rectangle {
             const x = point.position.x
             if (x >= page.width - page.edgeMargin)
                 page.panelRevealed = true
-            else if (x < page.width - (page.cropping ? cropPanel.width : page.probing ? probePanel.width
-                                                  : page.straightening ? straightenPanel.width
-                                                  : page.adjusting ? adjustPanel.width : panel.width) - page.edgeMargin)
+            else if (x < page.width - page.sidePanel.width - page.edgeMargin)
                 page.panelRevealed = false
         }
     }
@@ -478,18 +471,22 @@ Rectangle {
         objectName: "cropPanel"
         overlay: cropOverlay
         view: surface.view
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.cropPanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.cropping && page.toolPanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyCrop()
         onCancelRequested: page.cancelCrop()
         onDoneEditing: cropOverlay.forceActiveFocus()
+    }
 
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
+    AnnotatePanel {
+        id: annotatePanel
+        objectName: "annotatePanel"
+        overlay: annotateOverlay
+        revealed: page.annotating && page.toolPanelShown
+        animated: page.panelAnimated
+        onApplyRequested: page.applyAnnotate()
+        onCancelRequested: page.cancelAnnotate()
+        onDoneEditing: annotateOverlay.forceActiveFocus()
     }
 
     StraightenPanel {
@@ -497,18 +494,11 @@ Rectangle {
         objectName: "straightenPanel"
         overlay: straightenOverlay
         view: surface.view
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.straightenPanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.straightening && page.toolPanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyStraighten()
         onCancelRequested: page.cancelStraighten()
         onDoneEditing: straightenOverlay.forceActiveFocus()
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
     }
 
     AdjustPanel {
@@ -516,32 +506,18 @@ Rectangle {
         objectName: "adjustPanel"
         view: surface.view
         active: page.adjusting
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.adjustPanelShown ? page.width - width : page.width
-        visible: x < page.width
+        revealed: page.adjusting && page.toolPanelShown
+        animated: page.panelAnimated
         onApplyRequested: page.applyAdjust()
         onCancelRequested: page.cancelAdjust()
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
     }
 
     ProbePanel {
         id: probePanel
         objectName: "probePanel"
         context: page.context
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        x: page.probePanelShown ? page.width - width : page.width
-        visible: x < page.width
-
-        Behavior on x {
-            enabled: page.panelAnimated
-            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
-        }
+        revealed: page.probing && page.toolPanelShown
+        animated: page.panelAnimated
     }
 
     // Large images without reduced versions take a moment. Quick switches between ordinary

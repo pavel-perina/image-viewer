@@ -493,6 +493,113 @@ TEST(Editing, APressOutsideTheImageTakesAnEdgeAndAClickDrawsNothing) {
     EXPECT_EQ(overlay->property("cropRect").toRect(), QRect(4, 8, 20, 40));
 }
 
+// Every tool on the image leaves moving the picture alone: the right and middle buttons pan,
+// and so does the left one while Space is held, without changing what the tool has. Compared
+// with where the picture was, as ImageView reports it.
+TEST(Editing, ThePictureCanBeMovedWhileCropping) {
+    ToolPage f("startCrop");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("cropOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    // In a corner, so that the drags from the middle start outside it.
+    overlay->setProperty("cropRect", QRect(0, 0, 20, 20));
+    const QRect rect = overlay->property("cropRect").toRect();
+
+    EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
+    EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    QTest::keyPress(&f.view, Qt::Key_Space);
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(-30, -20));
+    QTest::keyRelease(&f.view, Qt::Key_Space);
+    EXPECT_EQ(overlay->property("cropRect").toRect(), rect);
+
+    // Without Space the left button is the tool's again.
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(0, 0));
+    EXPECT_NE(overlay->property("cropRect").toRect(), rect);
+}
+
+TEST(Straighten, ThePictureCanBeMovedWhileDrawingLines) {
+    ToolPage f("startStraighten");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+
+    EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
+    EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    QTest::keyPress(&f.view, Qt::Key_Space);
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(-30, -20));
+    QTest::keyRelease(&f.view, Qt::Key_Space);
+    EXPECT_TRUE(overlay->property("lines").toList().isEmpty());
+
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(0, 0));
+    EXPECT_EQ(overlay->property("lines").toList().size(), 1);
+}
+
+// The tools take their colours from outside, which in the program is Theme: a line drawn across
+// the middle shows in the colour given for horizontal lines, read back from the window.
+TEST(Straighten, LinesAreDrawnInTheColoursGiven) {
+    ToolPage f("startStraighten");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    EXPECT_EQ(overlay->property("horizontalColor").value<QColor>(), QColor(0xff, 0xb7, 0x4d)) << "Theme.guideHorizontal";
+    overlay->setProperty("horizontalColor", QColor(Qt::magenta));
+
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(120, 0)), QPointF(0, 0));
+    ASSERT_EQ(overlay->property("lines").toList().size(), 1);
+    const QImage shown = grabIfShown(f.view);
+    if (shown.isNull()) {
+        GTEST_SKIP() << "nothing to grab on this platform";
+    }
+    const QPointF middle = f.image->mapToScene(QPointF(f.image->width() / 2 + 60, f.image->height() / 2));
+    const QColor at = shown.pixelColor((middle * shown.devicePixelRatio()).toPoint());
+    EXPECT_GT(at.red(), 200);
+    EXPECT_LT(at.green(), 80);
+    EXPECT_GT(at.blue(), 200);
+}
+
+// Why: what straighten paints around its result and the grid over it are colours of Theme,
+// given through the style like the lines, not written into the overlay.
+// Input: the Straighten tool as the page sets it up. The truth is the style the overlay was
+// given, against Theme's values, and the corner of the result when it can be grabbed.
+TEST(Straighten, TheResultIsShownOnTheSurroundOfTheStyle) {
+    ToolPage f("startStraighten");
+    auto* overlay = f.page->findChild<QQuickItem*>(QStringLiteral("straightenOverlay"));
+    ASSERT_NE(overlay, nullptr);
+    auto* style = overlay->property("style").value<QObject*>();
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->property("surround").value<QColor>(), QColor(0x20, 0x20, 0x20)) << "Theme.imageBackground";
+    EXPECT_EQ(style->property("faint").value<QColor>(), QColor(255, 255, 255, 0x46)) << "Theme.toolFaint";
+
+    style->setProperty("surround", QColor(Qt::magenta));
+    overlay->setProperty("showResult", true);
+    const QImage shown = grabIfShown(f.view);
+    if (shown.isNull()) {
+        GTEST_SKIP() << "nothing to grab on this platform";
+    }
+    // The result is fitted into 96% of the room, so the corner is surround.
+    const QPointF corner = overlay->mapToScene(QPointF(2, 2));
+    const QColor at = shown.pixelColor((corner * shown.devicePixelRatio()).toPoint());
+    EXPECT_GT(at.red(), 200);
+    EXPECT_LT(at.green(), 80);
+    EXPECT_GT(at.blue(), 200);
+}
+
+TEST(Probe, ThePictureCanBeMovedWhileProbing) {
+    ToolPage f("startProbe");
+    auto* panel = f.page->findChild<QObject*>(QStringLiteral("probePanel"));
+    ASSERT_NE(panel, nullptr);
+    QMetaObject::invokeMethod(panel, "clearHistory");
+
+    EXPECT_EQ(f.drag(Qt::RightButton, QPoint(-40, -20)), QPointF(-40, -20));
+    EXPECT_EQ(f.drag(Qt::MiddleButton, QPoint(30, 10)), QPointF(30, 10));
+    QTest::keyPress(&f.view, Qt::Key_Space);
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(-30, -20));
+    QTest::keyRelease(&f.view, Qt::Key_Space);
+    waitUntil([] { return false; }, 200);
+    EXPECT_FALSE(panel->property("probed").isValid() && !panel->property("probed").isNull()) << "panning reads nothing";
+
+    // The left button reads, and moves nothing.
+    EXPECT_EQ(f.drag(Qt::LeftButton, QPoint(-30, -20)), QPointF(0, 0));
+    EXPECT_TRUE(waitUntil([&] { return panel->property("entries").toList().size() == 1; }));
+}
+
 TEST(Probe, ReadsThePixelShownAsTheFileStoresIt) {
     QTemporaryDir dir;
     ViewFixture f;
@@ -916,6 +1023,9 @@ TEST(Adjust, ThePanelPreviewsCancelsAndApplies) {
     EXPECT_TRUE(image->colorPreviewTone());
     QMetaObject::invokeMethod(page, "applyAdjust");
     EXPECT_FALSE(page->property("adjusting").toBool());
+    // The preview stays up while the edited picture is made, so the change does not flash.
+    EXPECT_NE(image->status(), ImageView::Status::Ready);
+    EXPECT_TRUE(image->colorPreviewActive());
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
     EXPECT_FALSE(image->colorPreviewActive());
     image->undo();
@@ -927,6 +1037,41 @@ TEST(Adjust, ThePanelPreviewsCancelsAndApplies) {
     image->setSource({});
     EXPECT_FALSE(page->property("adjusting").toBool());
     EXPECT_FALSE(image->colorPreviewActive());
+}
+
+// Why: the chooser of a colour table is made on first use, by the panel and not among its
+// rows, and kept. Input: a colour JPEG in Adjust and two clicks on "Load .cube...". The truth
+// is that one chooser exists afterwards, open, and none before the first click.
+TEST(Adjust, LoadingAColourTableOpensOneChooser) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    BrowseContext context;
+    QQuickView view;
+    view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)}, {QStringLiteral("active"), true}, {QStringLiteral("fullScreen"), false}});
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(900, 600);
+    view.loadFromModule("ImageViewer", "ViewerPage");
+    view.show();
+    QObject* page = view.rootObject();
+    ASSERT_NE(page, nullptr);
+    context.openPath(dir.path());
+    ASSERT_TRUE(settled(page->property("view").value<ImageView*>()));
+    auto* panel = page->findChild<QObject*>(QStringLiteral("adjustPanel"));
+    auto* load = page->findChild<QQuickItem*>(QStringLiteral("adjustLoadCube"));
+    ASSERT_NE(panel, nullptr);
+    ASSERT_NE(load, nullptr);
+    QMetaObject::invokeMethod(page, "startAdjust");
+    EXPECT_TRUE(panel->findChildren<QObject*>(QStringLiteral("fileChooser")).isEmpty());
+
+    QMetaObject::invokeMethod(load, "clicked");
+    const QList<QObject*> choosers = panel->findChildren<QObject*>(QStringLiteral("fileChooser"));
+    ASSERT_EQ(choosers.size(), 1);
+    ASSERT_TRUE(waitUntil([&] { return choosers.first()->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(choosers.first(), "close");
+    ASSERT_TRUE(waitUntil([&] { return !choosers.first()->property("visible").toBool(); }));
+    QMetaObject::invokeMethod(load, "clicked");
+    EXPECT_EQ(panel->findChildren<QObject*>(QStringLiteral("fileChooser")).size(), 1);
+    ASSERT_TRUE(waitUntil([&] { return choosers.first()->property("opened").toBool(); }));
 }
 
 TEST(Adjust, AGrayPictureTakesLevelsAndLightnessOnly) {
@@ -1018,4 +1163,118 @@ TEST(Adjust, LevelsHandlesDragOnTheGradients) {
 
     QTest::mouseDClick(&view, Qt::LeftButton, Qt::NoModifier, at(output, 64));
     EXPECT_EQ(panel->property("outBlack").toDouble(), 0) << "a double click puts it back";
+}
+
+namespace {
+
+// A window with one `ToolPanel` of the given properties, holding one row. Any warning of the
+// QML engine fails the test.
+struct ToolPanelFixture {
+    QQmlEngine engine;
+    std::unique_ptr<QObject> window;
+    QQuickItem* panel = nullptr;
+
+    explicit ToolPanelFixture(const QString& properties) {
+        QObject::connect(&engine, &QQmlEngine::warnings, [](const QList<QQmlError>& warnings) {
+            for (const QQmlError& warning : warnings) {
+                ADD_FAILURE() << warning.toString().toStdString();
+            }
+        });
+        QQmlComponent component(&engine);
+        component.setData(QStringLiteral(R"(
+            import QtQuick
+            import QtQuick.Controls
+            import ImageViewer
+            ApplicationWindow {
+                width: 800; height: 600; visible: true
+                ToolPanel {
+                    objectName: "panel"
+                    animated: false
+                    %1
+                    Label { objectName: "row"; text: "A row" }
+                    Timer { }
+                }
+            }
+        )").arg(properties).toUtf8(), QUrl());
+        EXPECT_TRUE(component.isReady()) << component.errorString().toStdString();
+        window.reset(component.create());
+        panel = window ? window->findChild<QQuickItem*>(QStringLiteral("panel")) : nullptr;
+    }
+
+    // The button with this text, if the panel shows one.
+    QQuickItem* button(const QString& text) const {
+        for (QQuickItem* item : panel->findChildren<QQuickItem*>()) {
+            if (item->inherits("QQuickButton") && item->property("text").toString() == text
+                && item->isVisible()) {
+                return item;
+            }
+        }
+        return nullptr;
+    }
+};
+
+} // namespace
+
+// Why: every tool's panel is a `ToolPanel`, so what it promises holds for all of them. A tool
+// names its apply button, may ask for one more on the left, and hears of each by a signal.
+// Input: a revealed panel that asks for "Crop" and "Reset". The truth is which buttons show
+// and which signal each click sends.
+TEST(ToolPanel, EndsInTheButtonsItsToolAsksFor) {
+    ToolPanelFixture f(QStringLiteral(
+        R"(revealed: true; title: "A tool"; applyText: "Crop"; applyName: "theApply"; extraText: "Reset")"));
+    ASSERT_NE(f.panel, nullptr);
+    QSignalSpy applied(f.panel, SIGNAL(applyRequested()));
+    QSignalSpy cancelled(f.panel, SIGNAL(cancelRequested()));
+    QSignalSpy extra(f.panel, SIGNAL(extraRequested()));
+
+    ASSERT_NE(f.button(QStringLiteral("Crop")), nullptr);
+    EXPECT_EQ(f.button(QStringLiteral("Crop")), f.panel->findChild<QQuickItem*>(QStringLiteral("theApply")));
+    EXPECT_EQ(f.button(QStringLiteral("Apply")), nullptr);
+    for (const char* text : {"Crop", "Cancel", "Reset"}) {
+        ASSERT_NE(f.button(QString::fromLatin1(text)), nullptr) << text;
+        QMetaObject::invokeMethod(f.button(QString::fromLatin1(text)), "clicked");
+    }
+    EXPECT_EQ(applied.count(), 1);
+    EXPECT_EQ(cancelled.count(), 1);
+    EXPECT_EQ(extra.count(), 1);
+
+    // The tool can refuse to apply, as when nothing has changed.
+    f.panel->setProperty("applyEnabled", false);
+    EXPECT_FALSE(f.button(QStringLiteral("Crop"))->isEnabled());
+    // Without a text there is no extra button.
+    f.panel->setProperty("extraText", QString());
+    EXPECT_EQ(f.button(QStringLiteral("Reset")), nullptr);
+    EXPECT_NE(f.button(QStringLiteral("Cancel")), nullptr);
+}
+
+// Why: a tool that changes nothing, as the probe, has nothing to apply or cancel.
+// Input: a panel with `buttons` off. The truth is that no button shows, and its row still does.
+TEST(ToolPanel, HasNoButtonsWhenItsToolChangesNothing) {
+    ToolPanelFixture f(QStringLiteral("revealed: true; buttons: false; fills: true"));
+    ASSERT_NE(f.panel, nullptr);
+    EXPECT_EQ(f.button(QStringLiteral("Apply")), nullptr);
+    EXPECT_EQ(f.button(QStringLiteral("Cancel")), nullptr);
+    EXPECT_TRUE(f.panel->findChild<QQuickItem*>(QStringLiteral("row"))->isVisible());
+}
+
+// Why: the page only says whether a panel is in view; where it stands is the panel's.
+// Input: a panel in an 800 px window, hidden and then revealed. The truth is its place: out
+// of the window and not drawn, then against the right edge over the whole height, with its
+// row inside it below the heading.
+TEST(ToolPanel, StandsAtTheRightEdgeWhenRevealed) {
+    ToolPanelFixture f(QStringLiteral(R"(title: "A tool")"));
+    ASSERT_NE(f.panel, nullptr);
+    EXPECT_FALSE(f.panel->isVisible());
+    EXPECT_EQ(f.panel->x(), f.panel->parentItem()->width());
+
+    f.panel->setProperty("revealed", true);
+    ASSERT_TRUE(waitUntil([&] { return f.panel->isVisible(); }));
+    EXPECT_EQ(f.panel->x() + f.panel->width(), f.panel->parentItem()->width());
+    EXPECT_EQ(f.panel->height(), f.panel->parentItem()->height());
+    QQuickItem* row = f.panel->findChild<QQuickItem*>(QStringLiteral("row"));
+    ASSERT_TRUE(waitUntil([&] { return row->width() > 0; }));
+    const QRectF place = row->mapRectToItem(f.panel, QRectF(0, 0, row->width(), row->height()));
+    EXPECT_TRUE(QRectF(0, 0, f.panel->width(), f.panel->height()).contains(place));
+    EXPECT_GT(place.top(), 20) << "the heading comes first";
+    EXPECT_LT(place.bottom(), 100) << "rows keep to the top";
 }

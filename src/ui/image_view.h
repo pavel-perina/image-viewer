@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "core/perspective.h"
+#include "core/shapes.h"
 
 namespace iv {
 
@@ -172,6 +173,17 @@ public:
     Q_INVOKABLE QString resizeProblem(int width, int height) const;
     // Turns the picture gray: 0 weighs R, G and B as JPEG does, 1 keeps Oklab lightness.
     Q_INVOKABLE void grayscale(int method);
+    // Burns annotation shapes into the picture, as one edit.
+    void draw(const std::vector<Shape>& shapes);
+    // Before drawing: reads the picture at full size in the background and reports drawReady,
+    // after which drawPreview has pixels to work on. endDraw lets go of them.
+    Q_INVOKABLE void prepareDraw();
+    Q_INVOKABLE void endDraw();
+    // The part of the picture a shape changes, as it will look once applied and as it is
+    // shown, with where it is in pixels of the image. For the shapes whose result depends on
+    // what is under them. A large part comes smaller, to be drawn stretched. Null until
+    // drawReady.
+    QImage drawPreview(const Shape& shape, QRect* where) const;
     // Colour adjustment, from a map in which every key is optional. Levels: black and white, from
     // 0 to 1 of the samples as stored, gamma above 1 lightening their midtones, and outBlack and
     // outWhite, the range they map to. In Oklab, keeping colours: brightness added to lightness,
@@ -238,6 +250,7 @@ signals:
     void linkedViewChanged();
     void probed(const QVariantMap& pixel);
     void straightenReady();
+    void drawReady();
     void navigateRequested(int steps);  // positive towards the next image
 
 protected:

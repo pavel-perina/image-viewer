@@ -198,6 +198,15 @@ change nothing useful. The first press of a double click does this too, for that
   static files would be the fix. The tests keep the system font, as they do not go through
   `main.cpp`.
 
+* `Theme` also holds the sizes that pages share: the heading and caption text sizes, the
+  monospace family, and the tool panels' width, margin and row spacing. A number that lays
+  out one page alone stays in that page; moving every such number would make `Theme` a list
+  of things used once.
+* No header, of core or of the UI, includes a header of a codec or other outside library, so
+  no class depends on libtiff or the like through another's private part. That is the reason
+  for pimpl here, and the rule is about that. Core's value types may appear in UI headers,
+  and whether a class hides its own state behind pimpl is a preference.
+
 ## Threads
 * Own work queue instead of oneTBB, because visible-first priorities and cancelling work
   that scrolled away are the central requirement. It defaults to 2/3 of the logical cores.
@@ -553,6 +562,165 @@ the question before leaving an edited image. Still planned lists the rest.
   same name replaces the file, after the file chooser's question, and the view reloads it.
 * After a crop the view fits the image again, as the old zoom and position mean little for the
   new picture.
+
+### Tools drawn on the image
+* Crop and straighten each had their own copy of the view binding, the coordinates and the
+  panning, and the probe a third in QML. `ImageOverlay` now holds what they share, and all
+  three derive from it, so the next tools (measurement, annotations) start from it.
+* The base owns the view, the mapping between image pixels and the item, panning (the right
+  or middle button, or the left one with Space held) and telling a drag from a click. Its
+  mouse and key handlers are final: a tool sees only a press, drag and release of the left
+  button, and keys other than Space.
+* Each tool keeps its own model in C++, in pixels of the image as shown, and paints it with
+  `QPainter`. Drawing in QML over a C++ model would put the geometry in two places.
+* A painted item redraws its whole layer on the CPU when the view moves. That has been fast
+  enough; if it stops being so, the base can change how it draws without the tools changing
+  what they draw.
+* Tools may look different. Crop and the probe's frame are drawn on whole device pixels.
+  The base draws the common look for the rest: a thin line of a colour over a wider dark one,
+  and round grips. Arcs and text join them when a tool needs them.
+* Painted C++ items cannot read the QML `Theme`. The page makes one `OverlayStyle`, fills it
+  from `Theme` and gives it to every tool, so `Theme` stays the one place for colours. Colours
+  only one tool has, such as straighten's two for vertical and horizontal lines, are
+  properties of that tool, set from `Theme` the same way.
+* The last colours written into pages and overlays moved to `Theme` on 2026-11-13: the frame,
+  scrim and shadow of a dialog, the carets, the scroll handles over the image, the glyph of a
+  message box, and through `OverlayStyle` the surround and grid of straighten's result and the
+  pattern standing in for a pixelated box. The pattern and the dialog frame changed a shade by
+  taking colours that were already there. Left where they are, on purpose: black, gray and
+  white in the levels control, which are the tones it sets and not its look; the magnifying
+  glass cursor, black and white like a system cursor; and the number on a numbered point,
+  dark or light by the colour under it, which is drawn into the picture.
+* What is drawn on pictures does not follow a light or dark palette: it has to show on
+  photographs, not on panels.
+* No shape or style model yet. It waits for the decision on how annotations are stored.
+
+### Panels of the tools
+* Crop, straighten, adjust, annotate and the probe each had their own copy of the same sheet:
+  the background, the block against the mouse, the heading, the column, and at the bottom
+  Reset, Cancel and Apply, while the page repeated the slide from the right five times.
+  `ToolPanel` now holds all of it, and a tool's panel derives from it and adds its rows.
+* The base has the buttons every tool ends in, Cancel and Apply, and one more on the left
+  where a tool asks for it by giving it a text; so far that is always Reset. The apply button
+  can be renamed (Crop) and disabled. A tool that changes nothing (the probe) turns the
+  buttons off.
+* The rows are the default property, so a derived panel reads as a list of its controls. Only
+  items become rows: `Settings`, `Binding`, `Connections` and the like may sit among them. A
+  dialog a panel opens must not be an item among the rows; Adjust makes its chooser of colour
+  tables on first use instead.
+* The page says only whether a panel is `revealed` and whether to animate. The place and the
+  slide are the panel's.
+* The Info panel is not one of these: it is no tool, it scrolls, and it has no buttons.
+
+### One tool at a time
+* The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,
+  `adjusting`, `annotating`), and every function that started a tool cleared the other four by
+  hand, as did leaving the image or the page. A sixth tool would have meant editing them all.
+  The page now has one `tool`, a name or empty; the flags are read from it, so nothing can
+  set two.
+* `leaveTool()` ends whatever tool is at work without applying it, with the cleanup Adjust and
+  Annotate need. Starting a tool leaves the one before it this way, then names itself.
+* Each tool keeps its own start, apply and cancel under the old names, as what they do
+  differs: Crop reads its rectangle before it ends, Adjust ends before it applies, the probe
+  outlives an edit, and comparing goes with Adjust and no other tool.
+* Enter and Esc are the page's to decide, so the window has one shortcut for each instead of
+  one per tool. `applyTool()` applies the tool at work, and `enterApplies` says when Enter may:
+  not in the probe, and not while a field of the panel has the keys. `stepBack()` takes one step
+  back (a selected shape let go, an editing tool given up, a comparison ended, the probe
+  stopped) and says whether there was one; only when there was none does the window leave full
+  screen or the image.
+* The rule stays in QML: it is state of the page, and each step calls into a panel or an
+  overlay there. If it grows conditions worth testing apart from the page, it moves to C++.
+
+### Annotations
+* Annotations are burned into the pixels when applied, as one edit in the edit list, so undo,
+  Save and Save As treat them like any other edit and every format can hold them. Keeping
+  them editable after saving would need a sidecar or a metadata block, and is left open.
+* While being made, a shape is a kind, a list of points in image pixels and a style
+  (`core/shapes.h`). Moving, selecting and removing are written once for all kinds. A kind
+  decides where it is grabbed and what moving a grip does, since grips are not always points:
+  a rectangle has four corners from two points, and a freehand stroke the corners of the box
+  around it. Measurement is to reuse this, with rules such as lines kept parallel in the
+  same place.
+* Sizes are in image pixels, so a shape looks the same at any zoom and in the saved file.
+* A highlighter is a style, not a kind, so rectangles and polygons can both be one. It
+  multiplies, as ink does: white paper turns yellow and black text stays black. On dark
+  pictures it barely shows; replacing the hue would suit those and may be added as a mode.
+* Shapes are drawn by Qt, which has the fonts and curves, into an 8-bit layer, and the core
+  blends the layer into the picture (`core/image_layer.h`), so a 16-bit picture stays 16-bit.
+  Pixelating changes what is under it, so it is done on the picture first, not in the layer.
+* The layer's black and white are the ends of the range the picture is shown in. On a 12-bit
+  picture in a 16-bit file, white drawn at 65535 would be far above everything shown.
+* Colours drawn are taken as values of the picture's own colour space, not converted from
+  sRGB. On a wide-gamut picture a red is therefore that space's red.
+* Drawing in colour on a gray picture turns it into a colour one, so a red arrow stays red.
+  A gray colour profile then no longer fits and is dropped.
+* Edit > Annotate (D) has Select, Line, Arrow, Rectangle, Ellipse, Marker, Pixelate, Text and
+  Number. With a drawing tool a drag draws and a click selects; with Select a drag moves.
+  Grips reshape the shape selected, Delete removes it, and Esc lets go of it before it leaves
+  the tool. Nothing is in the picture or the edit list until Apply.
+* The style shown is that of the shape selected, or else of the tool. Each tool remembers
+  its own between runs, so the marker stays yellow while arrows stay red. Until a width is
+  set, lines start at 1/500 of the picture's long edge and blocks at 1/60.
+* Rectangles and boxes keep their corners on whole pixels and draw their line inside them, so
+  every edge lies between pixels and stays sharp.
+* A marker and a pixelated box depend on the picture under them, so they are previewed from
+  its real pixels with the code that applies them: the view reads the picture at full size
+  when the tool starts and hands out the changed part for each such shape. Parts above 1.5
+  megapixels are reduced first, to keep up with the mouse.
+* Text is a box, drawn or placed with a click, whose words are typed in the panel, not on
+  the picture: typing in place would need a caret and selection drawn by hand. The box gives
+  the place and the width to wrap at, and longer text runs on below it. The typeface and bold
+  are chosen from those installed; the size is that of the typeface in image pixels, which
+  is taller than its capitals, and starts at 1/50 of the long edge.
+* Letters are drawn by Qt's text renderer, fitted to the pixel grid, which keeps small text
+  sharp. Drawing the letters from their outlines made small text thin and soft, and with the
+  even-odd fill rule left dark dots where the strokes of a letter overlap.
+* A shape is drawn as one flat area for the whole shape. Drawn in overlapping pieces, a
+  colour that lets the picture through came out darker where they met.
+* The dark edge and the shadow are made from the pixels the shape covers (`core/coverage.h`),
+  not by growing each kind's geometry: the coverage is grown for the edge, and that is moved
+  and blurred for the shadow. It is one piece of code for every kind, it fits what is really
+  drawn, hinted letters included, and it allows soft shadows. Growing geometry needed a rule
+  per kind and gave text an edge that did not match its letters.
+* Growing is by distance from the shape's edge, taking a partly covered pixel as having the
+  edge inside it, so the width need not be whole and the edge can fade over more than one
+  pixel. Only pixels on the shape's edge are worked from, so the cost follows the length of
+  the edge and not the area.
+* Unless set, the dark edge is a quarter of the line (4% of a text's size) and at least two
+  pixels, fading over one and a half: thinner did not show on small text. The shadow lies
+  right and down by a little over half the line and is blurred by 0.4 of that distance.
+* The edge's width, the shadow's distance and its blur can be set, per tool like the rest of
+  the style. A shape's shadow has a distance each way; the panel sets both from one number,
+  which is enough until a direction is wanted.
+* The view works these out only for what it shows, and for a reduced picture at the size
+  shown. A shape as large as a 4K screen with edge and shadow takes about a tenth of a
+  second, an ordinary one a few milliseconds; they are not kept between paints yet.
+* While the picture is shown at its own size or enlarged, shapes are drawn as pixels of the
+  image, only where they are in view, and those pixels are shown enlarged like the picture's.
+  So the preview is the burned-in result at any zoom, and small text can be judged at 200%.
+  Drawing them scaled to the screen instead showed letters smoother than they would be saved.
+  Reduced, they are drawn at the size shown, which is close enough and far less work.
+* An ellipse is a box kind like the rectangle: two corners, four grips, its line inside the
+  box. Shift while dragging keeps a box's sides equal, for a square or a circle, and turns a
+  line or an arrow to the nearest 15 degrees about its other end, so level and upright are
+  exact. The rules are in the shape model with the other rules of grips, so measurement can
+  use them too.
+* A number is one point with a disc around it, sized by its text size, and says one more than
+  the highest number on the picture. What it says is ordinary text and can be changed, to a
+  letter for instance; changed ones are passed over when counting. Its text is black or
+  white, whichever reads on the disc's colour.
+* The colours offered are the nine of ColorBrewer's Set1, then white and black. Set1 is a
+  known set of colours that stay apart from one another, which is what marks on a picture
+  need; white and black are added as the two that show on almost any photograph. The first
+  row was picked without a source. Using the values asks for no credit in the program; the
+  source is named in `Theme.qml`.
+* Still to come: polygons, freehand strokes, a marker mode for dark pictures, and asking
+  before shapes not yet applied are thrown away.
+* Later, smaller: text size in points or pixels as a choice in the settings dialog, once it
+  exists; a direction for the shadow in the panel; keeping each shape's edge and shadow
+  between paints; any colour and not only the fixed row, and the colours remembered by
+  the probe offered as swatches here too.
 
 ### Crop
 * A mode of the large view rather than a window of its own, so zoom, panning and full screen

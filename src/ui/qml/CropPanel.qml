@@ -8,28 +8,17 @@ import ImageViewer
 
 // The values of the crop: its ratio, position and size, to the pixel, and the buttons to apply
 // or leave it.
-Rectangle {
+ToolPanel {
     id: panel
+
+    title: "Crop"
+    applyText: "Crop"
+    applyName: "cropApply"
+    extraText: "Reset"
+    onExtraRequested: panel.overlay.reset()
 
     required property CropOverlay overlay
     required property ImageView view
-
-    signal applyRequested()
-    signal cancelRequested()
-    // Enter in a field took its value, and the keys can go back to the image.
-    signal doneEditing()
-
-    // A field has the keys, so Enter is its own rather than the crop's.
-    readonly property bool editing: {
-        for (let item = Window.activeFocusItem; item; item = item.parent) {
-            if (item === panel)
-                return true
-        }
-        return false
-    }
-
-    width: 280
-    color: Theme.panel
 
     readonly property int imageWidth: view.imageWidth
     // The stored choice, if it is still one of the list; a screen may have gone.
@@ -97,148 +86,108 @@ Rectangle {
         overlay.reset()
     }
 
-    // Keeps the mouse from reaching the image underneath.
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.AllButtons
-        onWheel: (wheel) => wheel.accepted = true
+    Label { text: "Aspect ratio"; color: Theme.textMuted }
+    ComboBox {
+        id: ratioBox
+        objectName: "cropRatio"
+        Layout.fillWidth: true
+        model: panel.ratios.map(r => r.name)
+        currentIndex: panel.ratioIndex
+        onActivated: (index) => {
+            settings.ratioName = panel.ratios[index].name
+            if (panel.ratios[index].w === -1)
+                settings.portrait = panel.imageHeight > panel.imageWidth
+            else if (panel.ratios[index].portrait !== undefined)
+                settings.portrait = panel.ratios[index].portrait
+            panel.applyRatio()
+        }
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
-
-        Label {
-            text: "Crop"
-            font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
+    RowLayout {
+        visible: panel.ratio.w === -2
+        spacing: 4
+        NumberBox {
+            from: 1; to: 9999
+            value: settings.customWidth
+            onValueModified: { settings.customWidth = value; panel.applyRatio() }
         }
-
-        Label { text: "Aspect ratio"; color: Theme.textMuted }
-        ComboBox {
-            id: ratioBox
-            objectName: "cropRatio"
-            Layout.fillWidth: true
-            model: panel.ratios.map(r => r.name)
-            currentIndex: panel.ratioIndex
-            onActivated: (index) => {
-                settings.ratioName = panel.ratios[index].name
-                if (panel.ratios[index].w === -1)
-                    settings.portrait = panel.imageHeight > panel.imageWidth
-                else if (panel.ratios[index].portrait !== undefined)
-                    settings.portrait = panel.ratios[index].portrait
-                panel.applyRatio()
-            }
+        Label { text: ":" }
+        NumberBox {
+            from: 1; to: 9999
+            value: settings.customHeight
+            onValueModified: { settings.customHeight = value; panel.applyRatio() }
         }
+    }
 
-        RowLayout {
-            visible: panel.ratio.w === -2
-            spacing: 4
-            NumberBox {
-                from: 1; to: 9999
-                value: settings.customWidth
-                onValueModified: { settings.customWidth = value; panel.applyRatio() }
-            }
-            Label { text: ":" }
-            NumberBox {
-                from: 1; to: 9999
-                value: settings.customHeight
-                onValueModified: { settings.customHeight = value; panel.applyRatio() }
-            }
+    RowLayout {
+        enabled: panel.ratioIndex !== 0 && panel.ratio.name !== "1:1"
+        spacing: 0
+        ButtonGroup { id: orientationGroup }
+        RadioButton {
+            text: "Landscape"
+            checked: !settings.portrait
+            ButtonGroup.group: orientationGroup
+            onClicked: { settings.portrait = false; panel.applyRatio() }
         }
-
-        RowLayout {
-            enabled: panel.ratioIndex !== 0 && panel.ratio.name !== "1:1"
-            spacing: 0
-            ButtonGroup { id: orientationGroup }
-            RadioButton {
-                text: "Landscape"
-                checked: !settings.portrait
-                ButtonGroup.group: orientationGroup
-                onClicked: { settings.portrait = false; panel.applyRatio() }
-            }
-            RadioButton {
-                objectName: "cropPortrait"
-                text: "Portrait"
-                checked: settings.portrait
-                ButtonGroup.group: orientationGroup
-                onClicked: { settings.portrait = true; panel.applyRatio() }
-            }
+        RadioButton {
+            objectName: "cropPortrait"
+            text: "Portrait"
+            checked: settings.portrait
+            ButtonGroup.group: orientationGroup
+            onClicked: { settings.portrait = true; panel.applyRatio() }
         }
+    }
 
-        Label { text: "Position and size, in pixels"; color: Theme.textMuted; Layout.topMargin: 4 }
-        GridLayout {
-            columns: 2
-            columnSpacing: 8
-            rowSpacing: 4
-            Label { text: "X" }
-            PixelBox {
-                objectName: "cropX"
-                to: Math.max(0, panel.imageWidth - panel.overlay.cropRect.width)
-                value: panel.overlay.cropRect.x
-                onValueModified: panel.overlay.setPosition(value, panel.overlay.cropRect.y)
-            }
-            Label { text: "Y" }
-            PixelBox {
-                objectName: "cropY"
-                to: Math.max(0, panel.imageHeight - panel.overlay.cropRect.height)
-                value: panel.overlay.cropRect.y
-                onValueModified: panel.overlay.setPosition(panel.overlay.cropRect.x, value)
-            }
-            Label { text: "Width" }
-            PixelBox {
-                objectName: "cropWidth"
-                from: 1
-                to: Math.max(1, panel.imageWidth)
-                value: panel.overlay.cropRect.width
-                onValueModified: panel.overlay.setWidth(value)
-            }
-            Label { text: "Height" }
-            PixelBox {
-                objectName: "cropHeight"
-                from: 1
-                to: Math.max(1, panel.imageHeight)
-                value: panel.overlay.cropRect.height
-                onValueModified: panel.overlay.setHeight(value)
-            }
+    Label { text: "Position and size, in pixels"; color: Theme.textMuted; Layout.topMargin: 4 }
+    GridLayout {
+        columns: 2
+        columnSpacing: 8
+        rowSpacing: 4
+        Label { text: "X" }
+        PixelBox {
+            objectName: "cropX"
+            to: Math.max(0, panel.imageWidth - panel.overlay.cropRect.width)
+            value: panel.overlay.cropRect.x
+            onValueModified: panel.overlay.setPosition(value, panel.overlay.cropRect.y)
         }
-
-        CheckBox {
-            id: gridCheck
-            text: "Rule of thirds grid"
-            checked: true
+        Label { text: "Y" }
+        PixelBox {
+            objectName: "cropY"
+            to: Math.max(0, panel.imageHeight - panel.overlay.cropRect.height)
+            value: panel.overlay.cropRect.y
+            onValueModified: panel.overlay.setPosition(panel.overlay.cropRect.x, value)
         }
-        Binding { target: panel.overlay; property: "grid"; value: gridCheck.checked }
-
-        Label {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
-            text: "Drag the edges or corners, or draw a new rectangle on the image. The wheel zooms; the right button, or Space with the left one, pans."
+        Label { text: "Width" }
+        PixelBox {
+            objectName: "cropWidth"
+            from: 1
+            to: Math.max(1, panel.imageWidth)
+            value: panel.overlay.cropRect.width
+            onValueModified: panel.overlay.setWidth(value)
         }
-
-        Item { Layout.fillHeight: true }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Button {
-                text: "Reset"
-                onClicked: panel.overlay.reset()
-            }
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Cancel"
-                onClicked: panel.cancelRequested()
-            }
-            Button {
-                objectName: "cropApply"
-                text: "Crop"
-                highlighted: true
-                onClicked: panel.applyRequested()
-            }
+        Label { text: "Height" }
+        PixelBox {
+            objectName: "cropHeight"
+            from: 1
+            to: Math.max(1, panel.imageHeight)
+            value: panel.overlay.cropRect.height
+            onValueModified: panel.overlay.setHeight(value)
         }
+    }
+
+    CheckBox {
+        id: gridCheck
+        text: "Rule of thirds grid"
+        checked: true
+    }
+    Binding { target: panel.overlay; property: "grid"; value: gridCheck.checked }
+
+    Label {
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        color: Theme.textMuted
+        font.pointSize: Theme.smallSize
+        text: "Drag the edges or corners, or draw a new rectangle on the image. The wheel zooms; the right button, or Space with the left one, pans."
     }
 
     component NumberBox: SpinBox {

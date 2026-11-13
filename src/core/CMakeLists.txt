@@ -30,6 +30,9 @@ add_library(iv_core STATIC
     image_buffer.h
     image_details.cpp
     image_details.h
+    coverage.cpp
+    image_layer.cpp
+    image_layer.h
     image_ops.cpp
     image_ops.h
     image_source.cpp
@@ -52,6 +55,8 @@ add_library(iv_core STATIC
     pixel_probe.cpp
     pixel_probe.h
     save_image.cpp
+    shapes.cpp
+    shapes.h
     save_image.h
     thumbnail.cpp
     thumbnail.h

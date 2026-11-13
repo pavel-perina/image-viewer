@@ -133,7 +133,7 @@ BarButton {
                     text: row.modelData.text
                     color: palette.text
                     opacity: row.heading ? 0.6 : row.usable ? 1 : 0.4
-                    font.pointSize: row.heading ? Qt.application.font.pointSize - 1 : Qt.application.font.pointSize
+                    font.pointSize: row.heading ? Theme.smallSize : Qt.application.font.pointSize
                 }
                 HoverHandler { id: rowHover }
                 // Not a TapHandler, which leaves the press to whatever is below the list too.
