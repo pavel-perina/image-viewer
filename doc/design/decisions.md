@@ -202,6 +202,10 @@ change nothing useful. The first press of a double click does this too, for that
   monospace family, and the tool panels' width, margin and row spacing. A number that lays
   out one page alone stays in that page; moving every such number would make `Theme` a list
   of things used once.
+* No header, of core or of the UI, includes a header of a codec or other outside library, so
+  no class depends on libtiff or the like through another's private part. That is the reason
+  for pimpl here, and the rule is about that. Core's value types may appear in UI headers,
+  and whether a class hides its own state behind pimpl is a preference.
 
 ## Threads
 * Own work queue instead of oneTBB, because visible-first priorities and cancelling work
