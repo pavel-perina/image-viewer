@@ -59,8 +59,11 @@ QtObject {
     readonly property color guideVertical: "#4fc3f7"
     readonly property color guideHorizontal: "#ffb74d"
     // The colours offered for annotations. These are drawn into pictures, not part of the look.
-    readonly property list<color> annotationColours: ["#e53935", "#ffeb3b", "#43a047", "#1e88e5", "#8e24aa",
-                                                      "#ff9800", "#ffffff", "#000000"]
+    // They are the nine of ColorBrewer's qualitative scheme Set1 (colorbrewer2.org, by Cynthia
+    // Brewer and Mark Harrower), in its order, then white and black.
+    readonly property list<color> annotationColours: ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00",
+                                                      "#ffff33", "#a65628", "#f781bf", "#999999",
+                                                      "#ffffff", "#000000"]
 
     // Sizes that more than one page uses. Text follows the size the system asks for.
     readonly property real titleSize: Qt.application.font.pointSize + 1  // the heading of a panel

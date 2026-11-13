@@ -632,3 +632,41 @@ TEST(ViewerPage, StartingAToolLeavesTheOneAtWork) {
     QMetaObject::invokeMethod(f.page, "cancelStraighten");
     EXPECT_EQ(f.page->property("tool").toString(), QStringLiteral("crop"));
 }
+
+// Why: the colours offered are a chosen set, ColorBrewer's Set1 with white and black, and a
+// tool starts in one of them so that its swatch is marked. Input: the Annotate panel as it
+// opens for the arrow and the marker with nothing remembered, and a click on a swatch. The
+// truth is the list of swatches, and the overlay's colour before and after the click.
+TEST(Annotate, OffersSet1WithWhiteAndBlackAndStartsInOneOfThem) {
+    QSettings().remove(QStringLiteral("Annotate"));  // nothing remembered from tests before
+    AnnotatePage f;
+    QStringList offered;
+    QList<QQuickItem*> swatches;
+    // What a Repeater makes is found among the items shown, not among the objects owned.
+    const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
+        if (item->objectName() == QStringLiteral("annotateColour")) {
+            swatches.append(item);
+            offered.append(item->property("color").value<QColor>().name());
+        }
+        for (QQuickItem* child : item->childItems()) {
+            collect(child);
+        }
+    };
+    collect(f.page->findChild<QQuickItem*>(QStringLiteral("annotatePanel")));
+    const QStringList set1 = {"#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33",
+                              "#a65628", "#f781bf", "#999999", "#ffffff", "#000000"};
+    ASSERT_EQ(offered, set1);
+
+    for (Tool tool : {Tool::Arrow, Tool::Marker}) {
+        f.overlay->setTool(tool);
+        EXPECT_TRUE(set1.contains(f.overlay->colour().name())) << f.overlay->colour().name().toStdString();
+    }
+
+    f.overlay->setTool(Tool::Arrow);
+    QQuickItem* blue = swatches.at(1);
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier,
+                      blue->mapToScene(QPointF(blue->width() / 2, blue->height() / 2)).toPoint());
+    EXPECT_EQ(f.overlay->colour().name(), QStringLiteral("#377eb8"));
+    EXPECT_TRUE(blue->property("current").toBool());
+    QSettings().remove(QStringLiteral("Annotate"));
+}

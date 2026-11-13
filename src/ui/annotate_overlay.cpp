@@ -80,12 +80,12 @@ PointD AnnotateOverlay::placed(ShapeKind kind, PointD imagePoint) {
 }
 
 // What a tool draws with: what it was last set to, and before that red lines whose width
-// follows the size of the picture, a yellow marker, blocks a sixtieth of the picture and
+// follows the size of the picture, a yellow marker (both colours of the row offered), blocks a sixtieth of the picture and
 // letters a fiftieth of it.
 ShapeStyle AnnotateOverlay::styleOf(Tool tool) const {
     const double longEdge = view() ? std::max(view()->imageWidth(), view()->imageHeight()) : 1000;
     ShapeStyle style;
-    style.colour = tool == Tool::Marker ? ShapeColour{255, 235, 59, 255} : ShapeColour{229, 57, 53, 255};
+    style.colour = tool == Tool::Marker ? ShapeColour{255, 255, 51, 255} : ShapeColour{228, 26, 28, 255};
     style.width = tool == Tool::Pixelate ? std::max(4.0, std::round(longEdge / 60)) : std::max(1.0, std::round(longEdge / 500));
     style.marker = tool == Tool::Marker;
     style.textSize = std::max(12.0, std::round(longEdge / 50));

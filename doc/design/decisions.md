@@ -702,6 +702,11 @@ the question before leaving an edited image. Still planned lists the rest.
   the highest number on the picture. What it says is ordinary text and can be changed, to a
   letter for instance; changed ones are passed over when counting. Its text is black or
   white, whichever reads on the disc's colour.
+* The colours offered are the nine of ColorBrewer's Set1, then white and black. Set1 is a
+  known set of colours that stay apart from one another, which is what marks on a picture
+  need; white and black are added as the two that show on almost any photograph. The first
+  row was picked without a source. Using the values asks for no credit in the program; the
+  source is named in `Theme.qml`.
 * Still to come: polygons, freehand strokes, a marker mode for dark pictures, and asking
   before shapes not yet applied are thrown away.
 * Later, smaller: text size in points or pixels as a choice in the settings dialog, once it
