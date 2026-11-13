@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -40,6 +41,11 @@ struct ShapeStyle {
     bool marker = false;   // darkens what is under it, as a highlighter does, rather than covering
     bool outline = false;  // a dark edge around it, to show on any picture
     bool shadow = false;
+    // How wide the dark edge is, where the shadow lies from the shape (right and down) and
+    // how far it is blurred, as the sigma of a Gaussian. Unset, each follows the shape's size.
+    std::optional<double> outlineWidth;
+    std::optional<PointD> shadowOffset;
+    std::optional<double> shadowBlur;
     double textSize = 16;    // the size of the typeface, which is taller than its capitals
     std::string fontFamily;  // empty for the application's own
     bool bold = false;

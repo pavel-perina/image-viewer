@@ -128,27 +128,15 @@ Rectangle {
             }
         }
 
-        RowLayout {
+        NumberRow {
             Layout.fillWidth: true
             visible: panel.hasWidth
-            Label {
-                Layout.fillWidth: true
-                text: panel.styled === AnnotateOverlay.Pixelate ? "Block size" : "Line width"
-            }
-            SpinBox {
-                id: widthBox
-                objectName: "annotateWidth"
-                editable: true
-                from: 1
-                to: 999
-                value: Math.round(panel.overlay.lineWidth)
-                onValueModified: panel.overlay.lineWidth = value
-                Connections {
-                    target: widthBox.contentItem
-                    ignoreUnknownSignals: true
-                    function onAccepted() { panel.doneEditing() }
-                }
-            }
+            label: panel.styled === AnnotateOverlay.Pixelate ? "Block size" : "Line width"
+            boxName: "annotateWidth"
+            from: 1
+            value: Math.round(panel.overlay.lineWidth)
+            onModified: (value) => panel.overlay.lineWidth = value
+            onAccepted: panel.doneEditing()
         }
 
         ComboBox {
@@ -163,27 +151,16 @@ Rectangle {
                 panel.doneEditing()
             }
         }
-        RowLayout {
+        NumberRow {
             Layout.fillWidth: true
             visible: panel.hasLetters
-            Label {
-                Layout.fillWidth: true
-                text: "Size (pixels)"
-            }
-            SpinBox {
-                id: textSizeBox
-                objectName: "annotateTextSize"
-                editable: true
-                from: 4
-                to: 2000
-                value: Math.round(panel.overlay.textSize)
-                onValueModified: panel.overlay.textSize = value
-                Connections {
-                    target: textSizeBox.contentItem
-                    ignoreUnknownSignals: true
-                    function onAccepted() { panel.doneEditing() }
-                }
-            }
+            label: "Size (pixels)"
+            boxName: "annotateTextSize"
+            from: 4
+            to: 2000
+            value: Math.round(panel.overlay.textSize)
+            onModified: (value) => panel.overlay.textSize = value
+            onAccepted: panel.doneEditing()
         }
         // The words of the text box selected, where Enter starts a new line, or what the
         // number selected says.
@@ -226,12 +203,43 @@ Rectangle {
             checked: panel.overlay.outline
             onToggled: panel.overlay.outline = checked
         }
+        NumberRow {
+            Layout.fillWidth: true
+            visible: panel.hasEdge && panel.overlay.outline
+            label: "Outline width"
+            boxName: "annotateOutlineWidth"
+            from: 1
+            automatic: true
+            value: Math.round(panel.overlay.outlineWidth)
+            onModified: (value) => panel.overlay.outlineWidth = value
+            onAccepted: panel.doneEditing()
+        }
         CheckBox {
             objectName: "annotateShadow"
             text: "Shadow"
             visible: panel.hasEdge
             checked: panel.overlay.shadow
             onToggled: panel.overlay.shadow = checked
+        }
+        NumberRow {
+            Layout.fillWidth: true
+            visible: panel.hasEdge && panel.overlay.shadow
+            label: "Shadow offset"
+            boxName: "annotateShadowOffset"
+            automatic: true
+            value: Math.round(panel.overlay.shadowOffset)
+            onModified: (value) => panel.overlay.shadowOffset = value
+            onAccepted: panel.doneEditing()
+        }
+        NumberRow {
+            Layout.fillWidth: true
+            visible: panel.hasEdge && panel.overlay.shadow
+            label: "Shadow blur"
+            boxName: "annotateShadowBlur"
+            automatic: true
+            value: Math.round(panel.overlay.shadowBlur)
+            onModified: (value) => panel.overlay.shadowBlur = value
+            onAccepted: panel.doneEditing()
         }
 
         Label {

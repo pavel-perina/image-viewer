@@ -30,6 +30,7 @@ add_library(iv_core STATIC
     image_buffer.h
     image_details.cpp
     image_details.h
+    coverage.cpp
     image_layer.cpp
     image_layer.h
     image_ops.cpp

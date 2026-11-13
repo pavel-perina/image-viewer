@@ -4,6 +4,8 @@
 // middle; it is a JPEG, so its values are near those and not exact. Pixels are read back
 // through the probe, which gives the edited picture as it would be saved.
 
+#include <array>
+
 #include "ui_test_support.h"
 
 #include "ui/annotate_overlay.h"
@@ -437,4 +439,103 @@ TEST(Annotate, NumbersCountUpWithEachClick) {
     f.apply();
     EXPECT_EQ(f.hexAt(28, 40), QStringLiteral("#ff0000"));
     EXPECT_NE(f.hexAt(40, 62), QStringLiteral("#ff0000")) << "below the disc";
+}
+
+namespace {
+
+// A pixel of the layer an edit draws, at a place in the picture: blue, green, red, alpha.
+std::array<int, 4> drawnAt(const DrawEdit& edit, int x, int y) {
+    const auto* pixel = reinterpret_cast<const std::uint8_t*>(edit.drawing.row(y - edit.y)) + 4 * (x - edit.x);
+    return {pixel[0], pixel[1], pixel[2], pixel[3]};
+}
+
+Shape whiteBox() {
+    Shape box;
+    box.kind = ShapeKind::Rectangle;
+    box.points = {{100, 100}, {140, 130}};
+    box.style.colour = {255, 255, 255, 255};
+    box.style.filled = true;
+    return box;
+}
+
+}  // namespace
+
+// Why: the dark edge is as wide as it is set, on every side, whatever the kind of shape, as
+// it is made from the shape's pixels. A filled box from 100 to 140 across with an edge of 3:
+// the pixels at 98 and 141, whose middles are 1.5 outside, are fully dark; at 95 and 144,
+// 4.5 outside, beyond the edge and its fade of 1.5, nothing is drawn. The box stays white.
+TEST(Annotate, TheDarkEdgeIsAsWideAsSet) {
+    Shape box = whiteBox();
+    box.style.outline = true;
+    box.style.outlineWidth = 3;
+    const DrawEdit edit = renderShapes(std::span(&box, 1), {400, 300}, {0, 255});
+    ASSERT_FALSE(edit.drawing.isNull());
+    for (const int x : {98, 141}) {
+        const auto dark = drawnAt(edit, x, 115);
+        EXPECT_EQ(dark[3], 255) << x;
+        EXPECT_LT(dark[2], 40) << x;
+    }
+    EXPECT_EQ(drawnAt(edit, 95, 115)[3], 0);
+    EXPECT_EQ(drawnAt(edit, 144, 115)[3], 0);
+    EXPECT_EQ(drawnAt(edit, 120, 95)[3], 0) << "above too";
+    EXPECT_EQ(drawnAt(edit, 120, 115), (std::array<int, 4>{255, 255, 255, 255}));
+}
+
+// Why: a shadow lies where it is set, by a distance each way that need not be right and
+// down. Set 6 to the left and none down, without blur, the box's shadow shows from 94 to 100
+// across and nowhere to the right of the box; black, and letting the picture through.
+TEST(Annotate, TheShadowLiesWhereItIsSet) {
+    Shape box = whiteBox();
+    box.style.shadow = true;
+    box.style.shadowOffset = PointD{-6, 0};
+    box.style.shadowBlur = 0;
+    const DrawEdit edit = renderShapes(std::span(&box, 1), {400, 300}, {0, 255});
+    ASSERT_FALSE(edit.drawing.isNull());
+    const auto shade = drawnAt(edit, 97, 115);
+    EXPECT_GT(shade[3], 100);
+    EXPECT_LT(shade[3], 200);
+    EXPECT_EQ(shade[2], 0);
+    EXPECT_EQ(drawnAt(edit, 92, 115)[3], 0);
+    EXPECT_EQ(drawnAt(edit, 142, 115)[3], 0);
+    EXPECT_EQ(drawnAt(edit, 120, 132)[3], 0) << "none below";
+
+    // Blurred, it fades instead of ending: further out there is still some, and less.
+    box.style.shadowBlur = 3;
+    const DrawEdit soft = renderShapes(std::span(&box, 1), {400, 300}, {0, 255});
+    EXPECT_GT(drawnAt(soft, 92, 115)[3], 0);
+    EXPECT_LT(drawnAt(soft, 92, 115)[3], drawnAt(soft, 97, 115)[3]);
+}
+
+// Why: the sizes of the edge and the shadow are part of a tool's style like its colour: set,
+// they go to the shape selected and are remembered for the next; below zero they follow the
+// shape's size again. The panel's one shadow distance is the same right and down.
+TEST(Annotate, EdgeAndShadowSizesAreSetAndRemembered) {
+    {
+        AnnotatePage f;
+        f.choose(Tool::Line, Qt::red, 4);
+        f.dragOnImage({20, 20}, {120, 20});
+        ASSERT_EQ(f.overlay->selected(), 0);
+        f.overlay->setOutlineWidth(5);
+        f.overlay->setShadowOffset(7);
+        f.overlay->setShadowBlur(2);
+        const ShapeStyle& style = f.overlay->shapes()[0].style;
+        EXPECT_EQ(style.outlineWidth, 5);
+        EXPECT_EQ(style.shadowOffset, (PointD{7, 7}));
+        EXPECT_EQ(style.shadowBlur, 2);
+        QMetaObject::invokeMethod(f.page, "cancelAnnotate");
+    }
+    AnnotatePage f;
+    f.overlay->setTool(Tool::Line);
+    EXPECT_EQ(f.overlay->outlineWidth(), 5);
+    EXPECT_EQ(f.overlay->shadowOffset(), 7);
+    EXPECT_EQ(f.overlay->shadowBlur(), 2);
+    f.overlay->setOutlineWidth(-1);
+    f.overlay->setShadowOffset(-1);
+    f.overlay->setShadowBlur(-1);
+    f.dragOnImage({20, 20}, {120, 20});
+    const ShapeStyle& style = f.overlay->shapes()[0].style;
+    EXPECT_FALSE(style.outlineWidth.has_value());
+    EXPECT_FALSE(style.shadowOffset.has_value());
+    EXPECT_FALSE(style.shadowBlur.has_value());
+    QMetaObject::invokeMethod(f.page, "cancelAnnotate");
 }

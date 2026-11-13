@@ -106,6 +106,16 @@ ShapeStyle AnnotateOverlay::styleOf(Tool tool) const {
     style.filled = stored("filled").toBool();
     style.outline = stored("outline").toBool();
     style.shadow = stored("shadow").toBool();
+    // Kept only once set; below zero is "follow the shape".
+    const auto set = [&](const char* key) {
+        const QVariant value = stored(key);
+        return value.isValid() && value.toDouble() >= 0 ? std::optional<double>(value.toDouble()) : std::nullopt;
+    };
+    style.outlineWidth = set("outlineWidth");
+    style.shadowBlur = set("shadowBlur");
+    if (const auto offset = set("shadowOffset")) {
+        style.shadowOffset = PointD{*offset, *offset};
+    }
     return style;
 }
 
@@ -165,6 +175,31 @@ void AnnotateOverlay::setOutline(bool outline) {
 void AnnotateOverlay::setShadow(bool shadow) {
     if (shadow != this->shadow()) {
         changeStyle("shadow", shadow, [&](ShapeStyle& style) { style.shadow = shadow; });
+    }
+}
+
+void AnnotateOverlay::setOutlineWidth(double width) {
+    if (width != outlineWidth()) {
+        changeStyle("outlineWidth", width, [&](ShapeStyle& style) { style.outlineWidth = width >= 0 ? std::optional<double>(width) : std::nullopt; });
+    }
+}
+
+// One distance here, the same right and down, though a shape may have any two.
+double AnnotateOverlay::shadowOffset() const {
+    const auto offset = shownStyle().shadowOffset;
+    return offset ? offset->x : -1;
+}
+
+void AnnotateOverlay::setShadowOffset(double offset) {
+    if (offset != shadowOffset()) {
+        changeStyle("shadowOffset", offset,
+                    [&](ShapeStyle& style) { style.shadowOffset = offset >= 0 ? std::optional<PointD>(PointD{offset, offset}) : std::nullopt; });
+    }
+}
+
+void AnnotateOverlay::setShadowBlur(double blur) {
+    if (blur != shadowBlur()) {
+        changeStyle("shadowBlur", blur, [&](ShapeStyle& style) { style.shadowBlur = blur >= 0 ? std::optional<double>(blur) : std::nullopt; });
     }
 }
 
@@ -415,12 +450,12 @@ void AnnotateOverlay::paint(QPainter* painter) {
         return;
     }
     m_previews.resize(m_shapes.size());
-    const auto paintAll = [this](QPainter* target) {
+    const auto paintAll = [this](QPainter* target, const ShapeRaster& raster) {
         for (std::size_t i = 0; i < m_shapes.size(); ++i) {
             if (dependsOnPicture(m_shapes[i])) {
                 paintPreview(target, i);
             } else {
-                paintShape(target, m_shapes[i], true);
+                paintShape(target, m_shapes[i], true, raster);
             }
         }
     };
@@ -434,13 +469,15 @@ void AnnotateOverlay::paint(QPainter* painter) {
     for (const Shape& shape : m_shapes) {
         drawn |= shapeArea(shape, image);
     }
-    drawn &= QRectF(QPointF(first.x, first.y), QPointF(last.x, last.y)).toAlignedRect();
-    if (itemPerPixel() / devicePixel() >= 1 && !drawn.isEmpty()) {
+    const QRect inView = QRectF(QPointF(first.x, first.y), QPointF(last.x, last.y)).toAlignedRect();
+    drawn &= inView;
+    const double enlarged = itemPerPixel() / devicePixel();
+    if (enlarged >= 1 && !drawn.isEmpty()) {
         QImage layer(drawn.size(), QImage::Format_ARGB32_Premultiplied);
         layer.fill(Qt::transparent);
         QPainter onLayer(&layer);
         onLayer.translate(-drawn.topLeft());
-        paintAll(&onLayer);
+        paintAll(&onLayer, {.clip = drawn, .scale = 1});
         onLayer.end();
         // As a pattern to fill with, not drawImage: enlarging with that rounds where the
         // image starts to a whole pixel of the screen, which moves every edge of the shapes
@@ -454,11 +491,11 @@ void AnnotateOverlay::paint(QPainter* painter) {
         painter->fillRect(target, pattern);
     } else if (!drawn.isEmpty()) {
         // Reduced, drawing at the size shown is close enough, and far less work than all
-        // the pixels of a large picture.
+        // the pixels of a large picture; dark edges and shadows are worked out at that size too.
         painter->save();
         painter->translate(toItem({0, 0}));
         painter->scale(itemPerPixel(), itemPerPixel());
-        paintAll(painter);
+        paintAll(painter, {.clip = inView, .scale = enlarged});
         painter->restore();
     }
 

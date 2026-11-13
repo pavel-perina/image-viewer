@@ -620,22 +620,33 @@ the question before leaving an edited image. Still planned lists the rest.
   are chosen from those installed; the size is that of the typeface in image pixels, which
   is taller than its capitals, and starts at 1/50 of the long edge.
 * Letters are drawn by Qt's text renderer, fitted to the pixel grid, which keeps small text
-  sharp. Their outlines are used only for the dark edge and the shadow under them. Drawing
-  the letters themselves from outlines made small text thin and soft, and with the even-odd
-  fill rule left dark dots where the strokes of a letter overlap.
-* A shape is drawn in passes: shadow, dark edge, then the shape, each as one flat area for
-  the whole shape. Drawn in overlapping pieces, a translucent shadow came out darker where
-  they met. The dark edge is opaque for the same reason. The shadow is hard, at a fixed
-  offset from the width or text size; its offset and softness are not settings yet.
+  sharp. Drawing the letters from their outlines made small text thin and soft, and with the
+  even-odd fill rule left dark dots where the strokes of a letter overlap.
+* A shape is drawn as one flat area for the whole shape. Drawn in overlapping pieces, a
+  colour that lets the picture through came out darker where they met.
+* The dark edge and the shadow are made from the pixels the shape covers (`core/coverage.h`),
+  not by growing each kind's geometry: the coverage is grown for the edge, and that is moved
+  and blurred for the shadow. It is one piece of code for every kind, it fits what is really
+  drawn, hinted letters included, and it allows soft shadows. Growing geometry needed a rule
+  per kind and gave text an edge that did not match its letters.
+* Growing is by distance from the shape's edge, taking a partly covered pixel as having the
+  edge inside it, so the width need not be whole and the edge can fade over more than one
+  pixel. Only pixels on the shape's edge are worked from, so the cost follows the length of
+  the edge and not the area.
+* Unless set, the dark edge is a quarter of the line (4% of a text's size) and at least two
+  pixels, fading over one and a half: thinner did not show on small text. The shadow lies
+  right and down by a little over half the line and is blurred by 0.4 of that distance.
+* The edge's width, the shadow's distance and its blur can be set, per tool like the rest of
+  the style. A shape's shadow has a distance each way; the panel sets both from one number,
+  which is enough until a direction is wanted.
+* The view works these out only for what it shows, and for a reduced picture at the size
+  shown. A shape as large as a 4K screen with edge and shadow takes about a tenth of a
+  second, an ordinary one a few milliseconds; they are not kept between paints yet.
 * While the picture is shown at its own size or enlarged, shapes are drawn as pixels of the
   image, only where they are in view, and those pixels are shown enlarged like the picture's.
   So the preview is the burned-in result at any zoom, and small text can be judged at 200%.
   Drawing them scaled to the screen instead showed letters smoother than they would be saved.
   Reduced, they are drawn at the size shown, which is close enough and far less work.
-* Outlines and shadows are to move from growing each kind's geometry to working on the drawn
-  pixels: dilate the alpha for the dark edge, offset and blur it for the shadow. That is the
-  same for every kind and gives soft shadows. The preview then has to do it per shape for
-  the part in view, kept until the shape changes.
 * An ellipse is a box kind like the rectangle: two corners, four grips, its line inside the
   box. Shift while dragging keeps a box's sides equal, for a square or a circle; the rule is
   in the shape model with the other rules of grips, so measurement can use it too.
@@ -646,8 +657,8 @@ the question before leaving an edited image. Still planned lists the rest.
 * Still to come: polygons, freehand strokes, a marker mode for dark pictures, and asking
   before shapes not yet applied are thrown away.
 * Later, smaller: text size in points or pixels as a choice in the settings dialog, once it
-  exists; a soft shadow with its offset and blur as settings, which the layer allows since
-  it is pixels by then; any colour and not only the fixed row, and the colours remembered by
+  exists; a direction for the shadow in the panel; keeping each shape's edge and shadow
+  between paints; any colour and not only the fixed row, and the colours remembered by
   the probe offered as swatches here too.
 
 ### Crop

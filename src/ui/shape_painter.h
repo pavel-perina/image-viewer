@@ -15,7 +15,16 @@ namespace iv {
 // marker and a pixelated box. Previewing, they are stood in for, a marker by its colour let
 // through and a box by a pattern, for while ImageView::drawPreview has nothing yet; not
 // previewing, they draw nothing here.
-void paintShape(QPainter* painter, const Shape& shape, bool preview);
+//
+// A dark edge and a shadow are made from the shape's drawn pixels (core/coverage.h), which
+// costs by the area worked on. A view says what part it shows, so that only that is, and how
+// many pixels of its own one of the image is while that is less than one, so that a reduced
+// picture is worked on at the size shown.
+struct ShapeRaster {
+    QRect clip;        // in image pixels; empty for all of the shape
+    double scale = 1;  // at most 1
+};
+void paintShape(QPainter* painter, const Shape& shape, bool preview, const ShapeRaster& raster = {});
 
 // How far beyond its points a shape may draw, with its width, outline, shadow and arrowhead.
 double shapeMargin(const Shape& shape);

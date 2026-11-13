@@ -37,6 +37,11 @@ class AnnotateOverlay : public ImageOverlay {
     Q_PROPERTY(bool filled READ filled WRITE setFilled NOTIFY styleValuesChanged)
     Q_PROPERTY(bool outline READ outline WRITE setOutline NOTIFY styleValuesChanged)
     Q_PROPERTY(bool shadow READ shadow WRITE setShadow NOTIFY styleValuesChanged)
+    // In image pixels: how wide the dark outline is, how far right and down the shadow lies,
+    // and how much it is blurred. Below zero, each follows the size of the shape.
+    Q_PROPERTY(double outlineWidth READ outlineWidth WRITE setOutlineWidth NOTIFY styleValuesChanged)
+    Q_PROPERTY(double shadowOffset READ shadowOffset WRITE setShadowOffset NOTIFY styleValuesChanged)
+    Q_PROPERTY(double shadowBlur READ shadowBlur WRITE setShadowBlur NOTIFY styleValuesChanged)
     // The height of letters, in image pixels.
     Q_PROPERTY(double textSize READ textSize WRITE setTextSize NOTIFY styleValuesChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily WRITE setFontFamily NOTIFY styleValuesChanged)
@@ -67,6 +72,12 @@ public:
     void setOutline(bool outline);
     bool shadow() const { return shownStyle().shadow; }
     void setShadow(bool shadow);
+    double outlineWidth() const { return shownStyle().outlineWidth.value_or(-1); }
+    void setOutlineWidth(double width);
+    double shadowOffset() const;
+    void setShadowOffset(double offset);
+    double shadowBlur() const { return shownStyle().shadowBlur.value_or(-1); }
+    void setShadowBlur(double blur);
     double textSize() const { return shownStyle().textSize; }
     void setTextSize(double size);
     QString fontFamily() const;

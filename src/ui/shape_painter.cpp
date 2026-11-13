@@ -1,5 +1,7 @@
 #include "ui/shape_painter.h"
 
+#include "core/coverage.h"
+
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
@@ -17,9 +19,9 @@ namespace iv {
 
 namespace {
 
-// Opaque, so that a pass drawn in pieces shows no seams where they overlap.
 const QColor kOutline(20, 20, 20);
-const QColor kShadow(0, 0, 0, 110);
+constexpr float kShadow = 0.55F;     // how dark a shadow is where it is whole
+constexpr double kOutlineSoft = 1.5;  // pixels the dark edge fades over: a little softer than drawn
 constexpr double kMarkerPreview = 0.45;  // how much of a marker's colour shows before it is applied
 
 QColor colourOf(const Shape& shape) {
@@ -45,13 +47,38 @@ double weightOf(const Shape& shape) {
     return hasLetters(shape) ? shape.style.textSize * 0.16 : shape.style.width;
 }
 
+// Unless set: a quarter of the line, and two pixels at least, as less does not show.
 double outlineWidth(const Shape& shape) {
-    return shape.style.outline ? std::max(1.0, std::round(weightOf(shape) * 0.25)) : 0;
+    if (!shape.style.outline) {
+        return 0;
+    }
+    return std::max(0.0, shape.style.outlineWidth.value_or(std::max(2.0, std::round(weightOf(shape) * 0.25))));
 }
 
-double shadowOffset(const Shape& shape) {
-    const double least = shape.kind == ShapeKind::Text ? 1 : 2;
-    return shape.style.shadow ? std::max(least, std::round(weightOf(shape) * 0.6)) : 0;
+// Unless set: right and down by a little more than half the line.
+QPointF shadowOffset(const Shape& shape) {
+    if (shape.style.shadowOffset) {
+        return point(*shape.style.shadowOffset);
+    }
+    const double least = hasLetters(shape) ? 1 : 2;
+    const double by = std::max(least, std::round(weightOf(shape) * 0.6));
+    return {by, by};
+}
+
+// Unless set: softer the further away the shadow lies.
+double shadowBlur(const Shape& shape) {
+    const QPointF offset = shadowOffset(shape);
+    return std::max(0.0, shape.style.shadowBlur.value_or(0.4 * std::max(std::abs(offset.x()), std::abs(offset.y()))));
+}
+
+// How far a shape's dark edge and shadow reach beyond the shape itself.
+double reachOfEffects(const Shape& shape) {
+    const double edge = shape.style.outline ? outlineWidth(shape) + kOutlineSoft : 0;
+    if (!shape.style.shadow) {
+        return edge;
+    }
+    const QPointF offset = shadowOffset(shape);
+    return edge + std::max(std::abs(offset.x()), std::abs(offset.y())) + 3 * shadowBlur(shape);
 }
 
 // As long as four widths of the line and never tiny, so that it reads as an arrow.
@@ -146,25 +173,10 @@ QColor readableOn(const QColor& colour) {
     return 0.299 * colour.red() + 0.587 * colour.green() + 0.114 * colour.blue() > 150 ? QColor(20, 20, 20) : QColor(Qt::white);
 }
 
-// A path grown by half of `extra` all round, as one area.
-QPainterPath grown(const QPainterPath& path, double extra, Qt::PenJoinStyle join) {
-    if (extra <= 0) {
-        return path;
-    }
-    QPainterPathStroker stroker;
-    stroker.setWidth(extra);
-    stroker.setJoinStyle(join);
-    return path.united(stroker.createStroke(path));
-}
-
-// The shape in one colour, its lines wider by `extra`: once for the shape itself, and before
-// that for its shadow and its dark edge. Each call paints the whole shape as one flat area,
-// never one piece over another, so a colour that lets the picture through stays even, and the
-// order shadow, edge, shape holds for all of a shape and not piece by piece.
-enum class Pass { Shadow, Edge, Body };
-
-void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double extra, Pass pass) {
-    const double width = shape.style.width + extra;
+// The shape in one colour, as one flat area, never one piece over another, so that a colour
+// which lets the picture through stays even.
+void drawIn(QPainter* painter, const Shape& shape, const QColor& colour) {
+    const double width = shape.style.width;
     painter->setBrush(Qt::NoBrush);
     painter->setPen(Qt::NoPen);
     switch (shape.kind) {
@@ -199,7 +211,7 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
         QPainterPath tip;
         tip.addPolygon(QPolygonF{to, base + across * head * 0.4, base - across * head * 0.4});
         tip.closeSubpath();
-        painter->fillPath(stroker.createStroke(shaft).united(grown(tip, extra, Qt::MiterJoin)), colour);
+        painter->fillPath(stroker.createStroke(shaft).united(tip), colour);
         break;
     }
     case ShapeKind::Rectangle:
@@ -229,7 +241,7 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
             path.closeSubpath();
         }
         if (whole) {
-            painter->fillPath(grown(path, extra, Qt::MiterJoin), colour);
+            painter->fillPath(path, colour);
         } else {
             painter->setPen(QPen(colour, width, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
             painter->drawPath(path);
@@ -237,21 +249,9 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
         break;
     }
     case ShapeKind::Text: {
-        const TextLines lines = layOut(shape);
-        if (pass == Pass::Edge) {
-            // Opaque, so stroking over the fill leaves no seam.
-            painter->setBrush(colour);
-            painter->setPen(QPen(colour, extra, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter->drawPath(lines.outlines);
-        } else if (pass == Pass::Shadow) {
-            // The letters alone, as one area; under a dark edge it lies further out instead
-            // of being grown, which would need the letters and their edge joined into one.
-            painter->fillPath(lines.outlines, colour);
-        } else {
-            painter->setPen(colour);
-            for (const QGlyphRun& run : lines.runs) {
-                painter->drawGlyphRun({0, 0}, run);
-            }
+        painter->setPen(colour);
+        for (const QGlyphRun& run : layOut(shape).runs) {
+            painter->drawGlyphRun({0, 0}, run);
         }
         break;
     }
@@ -259,8 +259,8 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
         const QRectF disc = discOf(shape);
         QPainterPath path;
         path.addEllipse(disc);
-        painter->fillPath(grown(path, extra, Qt::RoundJoin), colour);
-        if (pass != Pass::Body || shape.text.empty()) {
+        painter->fillPath(path, colour);
+        if (shape.text.empty()) {
             break;
         }
         // Its text in the middle, made smaller when it is too long for the disc.
@@ -285,6 +285,70 @@ void drawIn(QPainter* painter, const Shape& shape, const QColor& colour, double 
     }
 }
 
+// The dark edge and the shadow of a shape, which lie under it. Made from the pixels the shape
+// covers: grown for the edge, and that moved and blurred for the shadow, so that they are the
+// same for every kind of shape and fit what is really drawn, letters included.
+void paintUnder(QPainter* painter, const Shape& shape, const ShapeRaster& raster) {
+    const double reach = reachOfEffects(shape);
+    const int margin = static_cast<int>(std::ceil(shapeMargin(shape)));
+    QRect area = extentOf(shape).adjusted(-margin, -margin, margin, margin).toAlignedRect();
+    if (!raster.clip.isEmpty()) {
+        // What is in view, and around it as much as can reach into it.
+        const int around = static_cast<int>(std::ceil(reach)) + 1;
+        area &= raster.clip.adjusted(-around, -around, around, around);
+    }
+    if (area.isEmpty()) {
+        return;
+    }
+    const double scale = std::clamp(raster.scale, 0.01, 1.0);
+    const QSize size(std::max(1, static_cast<int>(std::ceil(area.width() * scale))), std::max(1, static_cast<int>(std::ceil(area.height() * scale))));
+    QImage pixels(size, QImage::Format_ARGB32_Premultiplied);
+    pixels.fill(Qt::transparent);
+    {
+        QPainter alone(&pixels);
+        alone.setRenderHint(QPainter::Antialiasing, true);
+        alone.scale(scale, scale);
+        alone.translate(-area.topLeft());
+        drawIn(&alone, shape, Qt::white);
+    }
+    Coverage body(size.width(), size.height());
+    for (int y = 0; y < size.height(); ++y) {
+        const auto* row = reinterpret_cast<const QRgb*>(pixels.constScanLine(y));
+        for (int x = 0; x < size.width(); ++x) {
+            body.at(x, y) = static_cast<float>(qAlpha(row[x])) / 255.0F;
+        }
+    }
+    Coverage edge;
+    if (shape.style.outline) {
+        edge = spread(body, outlineWidth(shape) * scale, kOutlineSoft);
+    }
+    Coverage shade;
+    if (shape.style.shadow) {
+        // Of the shape with its edge, as that is what stands above the picture.
+        const QPointF offset = shadowOffset(shape) * scale;
+        shade = blurred(shifted(shape.style.outline ? edge : body, offset.x(), offset.y()), shadowBlur(shape) * scale);
+    }
+    for (int y = 0; y < size.height(); ++y) {
+        auto* row = reinterpret_cast<QRgb*>(pixels.scanLine(y));
+        for (int x = 0; x < size.width(); ++x) {
+            const float dark = edge.values.empty() ? 0 : edge.at(x, y);
+            const float shadow = shade.values.empty() ? 0 : std::min(1.0F, shade.at(x, y)) * kShadow;
+            if (dark <= 0 && shadow <= 0) {
+                row[x] = 0;
+                continue;
+            }
+            // The edge over the shadow, which is black; multiplied by alpha as the image is.
+            const float alpha = dark + shadow * (1 - dark);
+            const auto level = [&](int of) { return static_cast<int>(std::lround(static_cast<float>(of) * dark)); };
+            row[x] = qRgba(level(kOutline.red()), level(kOutline.green()), level(kOutline.blue()), static_cast<int>(std::lround(alpha * 255.0F)));
+        }
+    }
+    painter->save();
+    painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter->drawImage(QRectF(area.topLeft(), QSizeF(size) / scale), pixels);
+    painter->restore();
+}
+
 ImageBuffer toBuffer(const QImage& image) {
     const ImageBuffer buffer = ImageBuffer::create({image.width(), image.height()}, PixelFormat::Bgrx8);
     for (int y = 0; y < image.height(); ++y) {
@@ -303,10 +367,10 @@ QRect shapeArea(const Shape& shape, Size image) {
 double shapeMargin(const Shape& shape) {
     const double head = shape.kind == ShapeKind::Arrow ? headLength(shape) * 0.4 : 0;
     const double half = hasLetters(shape) ? 0 : shape.style.width / 2;
-    return std::max(half, head) + outlineWidth(shape) + shadowOffset(shape) + 2;
+    return std::max(half, head) + reachOfEffects(shape) + 2;
 }
 
-void paintShape(QPainter* painter, const Shape& shape, bool preview) {
+void paintShape(QPainter* painter, const Shape& shape, bool preview, const ShapeRaster& raster) {
     if (shape.points.empty()) {
         return;
     }
@@ -332,22 +396,14 @@ void paintShape(QPainter* painter, const Shape& shape, bool preview) {
         if (preview) {
             QColor colour = colourOf(shape);
             colour.setAlphaF(colour.alphaF() * static_cast<float>(kMarkerPreview));
-            drawIn(painter, shape, colour, 0, Pass::Body);
+            drawIn(painter, shape, colour);
         }
         return;
     }
-    if (const double offset = shadowOffset(shape); offset > 0) {
-        painter->save();
-        const double edge = outlineWidth(shape);
-        const bool text = shape.kind == ShapeKind::Text;
-        painter->translate(offset + (text ? edge : 0), offset + (text ? edge : 0));
-        drawIn(painter, shape, kShadow, text ? 0 : 2 * edge, Pass::Shadow);
-        painter->restore();
+    if (shape.style.outline || shape.style.shadow) {
+        paintUnder(painter, shape, raster);
     }
-    if (const double outline = outlineWidth(shape); outline > 0) {
-        drawIn(painter, shape, kOutline, 2 * outline, Pass::Edge);
-    }
-    drawIn(painter, shape, colourOf(shape), 0, Pass::Body);
+    drawIn(painter, shape, colourOf(shape));
 }
 
 bool dependsOnPicture(const Shape& shape) {
@@ -395,7 +451,7 @@ DrawEdit renderShapes(std::span<const Shape> shapes, Size image, DisplayRange ra
                 continue;
             }
             if (forMarkers) {
-                drawIn(&painter, shape, colourOf(shape), 0, Pass::Body);
+                drawIn(&painter, shape, colourOf(shape));
             } else {
                 paintShape(&painter, shape, false);
             }
