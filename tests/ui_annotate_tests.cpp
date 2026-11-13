@@ -227,3 +227,115 @@ TEST(Annotate, EscapeDeselectsBeforeItLeaves) {
     EXPECT_FALSE(f.page->property("annotating").toBool());
     EXPECT_EQ(f.overlay->count(), 0);
 }
+
+// Why: text is a box whose words come from the panel. Dragging makes the box, on whole
+// pixels, and asks for the words; a click with the Text tool on nothing places a box of a
+// size to start in. Words set while it is selected are its text, and are burned in with the
+// rest: after applying, the picture is edited and some pixel in the box has the text's colour.
+// The letters depend on the typeface, so the test looks for the colour along a row through
+// the middle of a line of large capital letters rather than at fixed pixels.
+TEST(Annotate, TextIsABoxWhoseWordsAreSetAndBurnedIn) {
+    AnnotatePage f;
+    f.choose(Tool::Text, QColor(0x10, 0xa0, 0xf0), 1);
+    f.overlay->setTextSize(40);
+    QSignalSpy wanted(f.overlay, &AnnotateOverlay::textWanted);
+
+    f.dragOnImage({10.3, 10.2}, {150.4, 60.1});
+    ASSERT_EQ(f.overlay->count(), 1);
+    EXPECT_EQ(f.overlay->shapes()[0].kind, ShapeKind::Text);
+    EXPECT_EQ(f.overlay->shapes()[0].points, (std::vector<PointD>{{10, 10}, {150, 60}}));
+    EXPECT_EQ(wanted.count(), 1);
+    f.overlay->setText(QStringLiteral("HHHH"));
+    EXPECT_EQ(f.overlay->shapes()[0].text, "HHHH");
+
+    // A click elsewhere places a second box, ten letters wide; nothing is typed into it.
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, f.at(20, 250));
+    ASSERT_EQ(f.overlay->count(), 2);
+    EXPECT_EQ(f.overlay->selected(), 1);
+    EXPECT_EQ(f.overlay->shapes()[1].points, (std::vector<PointD>{{20, 250}, {420, 310}}));
+    EXPECT_EQ(wanted.count(), 2);
+    EXPECT_TRUE(f.overlay->text().isEmpty()) << "the text shown is that of the box selected";
+
+    // As one edit: the layer holds the letters and nothing for the empty box.
+    const DrawEdit edit = renderShapes(f.overlay->shapes(), {400, 300}, {0, 255});
+    ASSERT_FALSE(edit.drawing.isNull());
+    EXPECT_LT(edit.y + edit.drawing.height(), 200) << "the empty box at 250 draws nothing";
+    int coloured = 0;
+    const int row = 30 - edit.y;  // through the middle of the letters, which stand from 10 to about 50
+    const auto* pixel = reinterpret_cast<const std::uint8_t*>(edit.drawing.row(row));
+    for (int x = 0; x < edit.drawing.width(); ++x, pixel += 4) {
+        coloured += pixel[3] == 255 && pixel[2] == 0x10 && pixel[1] == 0xa0 && pixel[0] == 0xf0;
+    }
+    EXPECT_GT(coloured, 8) << "the stems of four letters";
+
+    f.apply();
+    EXPECT_TRUE(f.image->modified());
+}
+
+// Why: text has to read on any picture, so it can have a dark edge. The edge is around the
+// letters, not in place of them: the layer still has the text's colour, and also dark pixels
+// that it does not have without the edge.
+TEST(Annotate, TextCanHaveADarkEdge) {
+    Shape text{ShapeKind::Text, {{10, 10}, {300, 80}}, {}, "HHHH"};
+    text.style.colour = {255, 255, 255, 255};
+    text.style.textSize = 40;
+    const auto count = [](const DrawEdit& edit, bool dark) {
+        int found = 0;
+        for (int y = 0; y < edit.drawing.height(); ++y) {
+            const auto* pixel = reinterpret_cast<const std::uint8_t*>(edit.drawing.row(y));
+            for (int x = 0; x < edit.drawing.width(); ++x, pixel += 4) {
+                found += dark ? pixel[3] > 150 && pixel[2] < 40 : pixel[3] == 255 && pixel[2] == 255;
+            }
+        }
+        return found;
+    };
+    const DrawEdit plain = renderShapes(std::span(&text, 1), {400, 300}, {0, 255});
+    text.style.outline = true;
+    const DrawEdit edged = renderShapes(std::span(&text, 1), {400, 300}, {0, 255});
+    ASSERT_FALSE(plain.drawing.isNull());
+    ASSERT_FALSE(edged.drawing.isNull());
+    EXPECT_GT(count(plain, false), 100);
+    EXPECT_EQ(count(plain, true), 0);
+    EXPECT_GT(count(edged, true), 100);
+    EXPECT_GT(count(edged, false), count(plain, false) * 0.9) << "the letters are as before";
+}
+
+// Why: the typeface and its weight are part of a text's style, chosen from those installed.
+// Checked without relying on any one typeface being there: the family shown is one of the
+// list, setting another changes the box selected, and bold letters cover more pixels than
+// regular ones of the same words and size.
+TEST(Annotate, TextTakesATypefaceAndBold) {
+    AnnotatePage f;
+    f.choose(Tool::Text, Qt::white, 1);
+    f.overlay->setTextSize(40);
+    f.overlay->setBold(false);
+    const QStringList families = f.overlay->fontFamilies();
+    ASSERT_FALSE(families.isEmpty());
+    EXPECT_TRUE(families.contains(f.overlay->fontFamily()));
+
+    f.dragOnImage({10, 10}, {390, 70});
+    ASSERT_EQ(f.overlay->selected(), 0);
+    f.overlay->setText(QStringLiteral("HHHH"));
+    const QString other = families.front() != f.overlay->fontFamily() ? families.front() : families.back();
+    f.overlay->setFontFamily(other);
+    EXPECT_EQ(f.overlay->shapes()[0].style.fontFamily, other.toStdString());
+
+    const auto covered = [&] {
+        const DrawEdit edit = renderShapes(f.overlay->shapes(), {400, 300}, {0, 255});
+        int found = 0;
+        for (int y = 0; y < edit.drawing.height(); ++y) {
+            const auto* pixel = reinterpret_cast<const std::uint8_t*>(edit.drawing.row(y));
+            for (int x = 0; x < edit.drawing.width(); ++x, pixel += 4) {
+                found += pixel[3] > 128;
+            }
+        }
+        return found;
+    };
+    const int regular = covered();
+    f.overlay->setBold(true);
+    EXPECT_TRUE(f.overlay->shapes()[0].style.bold);
+    if (QFontInfo(QFont(other)).family() == other) {
+        EXPECT_GT(covered(), regular) << other.toStdString();
+    }
+    QMetaObject::invokeMethod(f.page, "cancelAnnotate");
+}

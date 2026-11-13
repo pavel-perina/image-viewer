@@ -30,7 +30,8 @@ Rectangle {
     readonly property int styled: overlay.styledTool
     readonly property bool hasStyle: styled !== AnnotateOverlay.Select
     readonly property bool hasColour: hasStyle && styled !== AnnotateOverlay.Pixelate
-    readonly property bool hasWidth: hasStyle && styled !== AnnotateOverlay.Marker
+    readonly property bool isText: styled === AnnotateOverlay.Text
+    readonly property bool hasWidth: hasStyle && styled !== AnnotateOverlay.Marker && !isText
     readonly property bool hasEdge: hasColour && styled !== AnnotateOverlay.Marker
 
     readonly property var tools: [
@@ -40,6 +41,7 @@ Rectangle {
         { name: "Rectangle", tool: AnnotateOverlay.Rectangle },
         { name: "Marker", tool: AnnotateOverlay.Marker },
         { name: "Pixelate", tool: AnnotateOverlay.Pixelate },
+        { name: "Text", tool: AnnotateOverlay.Text },
     ]
 
     width: 280
@@ -143,6 +145,66 @@ Rectangle {
             }
         }
 
+        ComboBox {
+            id: fontBox
+            objectName: "annotateFont"
+            Layout.fillWidth: true
+            visible: panel.isText
+            model: panel.overlay.fontFamilies
+            currentIndex: model.indexOf(panel.overlay.fontFamily)
+            onActivated: (index) => {
+                panel.overlay.fontFamily = model[index]
+                panel.doneEditing()
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            visible: panel.isText
+            Label {
+                Layout.fillWidth: true
+                text: "Size (pixels)"
+            }
+            SpinBox {
+                id: textSizeBox
+                objectName: "annotateTextSize"
+                editable: true
+                from: 4
+                to: 2000
+                value: Math.round(panel.overlay.textSize)
+                onValueModified: panel.overlay.textSize = value
+                Connections {
+                    target: textSizeBox.contentItem
+                    ignoreUnknownSignals: true
+                    function onAccepted() { panel.doneEditing() }
+                }
+            }
+        }
+        // The words of the text box selected. Enter starts a new line here.
+        ScrollView {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 90
+            visible: panel.isText && panel.overlay.selected >= 0
+            TextArea {
+                id: textArea
+                objectName: "annotateText"
+                placeholderText: "Text"
+                wrapMode: TextEdit.Wrap
+                text: panel.overlay.text
+                onTextChanged: if (activeFocus) panel.overlay.text = text
+            }
+        }
+        Connections {
+            target: panel.overlay
+            function onTextWanted() { textArea.forceActiveFocus() }
+        }
+
+        CheckBox {
+            objectName: "annotateBold"
+            text: "Bold"
+            visible: panel.isText
+            checked: panel.overlay.bold
+            onToggled: panel.overlay.bold = checked
+        }
         CheckBox {
             objectName: "annotateFilled"
             text: "Filled"
@@ -170,7 +232,7 @@ Rectangle {
             wrapMode: Text.WordWrap
             color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
-            text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. Sizes are in pixels of the image."
+            text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. With Text, drag a box or click, then type here. Sizes are in pixels of the image."
         }
 
         Item { Layout.fillHeight: true }

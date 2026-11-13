@@ -20,8 +20,8 @@ scales to an exact size, with presets for the screens, long edges and percentage
 another ratio fits inside, crops the middle or stretches. Edit > Straighten (S) levels a picture
 and corrects perspective from lines drawn along edges that should be vertical or horizontal, or
 found by Detect; the angles can be typed too, and the result keeps the largest rectangle inside.
-Edit > Annotate (D) draws lines, arrows, rectangles, highlighter marks and pixelated boxes on
-the picture, each movable and restyled until applied, and then burned in as one step that undoes.
+Edit > Annotate (D) draws lines, arrows, rectangles, highlighter marks, pixelated boxes and text
+on the picture, each movable and restyled until applied, and then burned in as one step that undoes.
 Edit > Grayscale weighs the colours as JPEG does, or keeps their perceptual lightness (Oklab).
 Edit > Adjust Colours (A) sets levels with an output range, brightness, contrast, midtones and
 saturation in Oklab, and applies a colour table from a `.cube` file, previewed live on the GPU.

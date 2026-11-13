@@ -1,5 +1,7 @@
 #include "ui/annotate_overlay.h"
 
+#include <QFontDatabase>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMetaEnum>
 #include <QPainter>
@@ -23,6 +25,7 @@ ShapeKind kindOf(Tool tool) {
     case Tool::Line: return ShapeKind::Line;
     case Tool::Arrow: return ShapeKind::Arrow;
     case Tool::Pixelate: return ShapeKind::Pixelate;
+    case Tool::Text: return ShapeKind::Text;
     case Tool::Rectangle:
     case Tool::Marker:
     case Tool::Select: break;
@@ -35,6 +38,7 @@ Tool toolOf(const Shape& shape) {
     case ShapeKind::Line: return Tool::Line;
     case ShapeKind::Arrow: return Tool::Arrow;
     case ShapeKind::Pixelate: return Tool::Pixelate;
+    case ShapeKind::Text: return Tool::Text;
     default: return shape.style.marker ? Tool::Marker : Tool::Rectangle;
     }
 }
@@ -72,13 +76,15 @@ PointD AnnotateOverlay::placed(ShapeKind kind, PointD imagePoint) {
 }
 
 // What a tool draws with: what it was last set to, and before that red lines whose width
-// follows the size of the picture, a yellow marker, and blocks a sixtieth of the picture.
+// follows the size of the picture, a yellow marker, blocks a sixtieth of the picture and
+// letters a fiftieth of it.
 ShapeStyle AnnotateOverlay::styleOf(Tool tool) const {
     const double longEdge = view() ? std::max(view()->imageWidth(), view()->imageHeight()) : 1000;
     ShapeStyle style;
     style.colour = tool == Tool::Marker ? ShapeColour{255, 235, 59, 255} : ShapeColour{229, 57, 53, 255};
     style.width = tool == Tool::Pixelate ? std::max(4.0, std::round(longEdge / 60)) : std::max(1.0, std::round(longEdge / 500));
     style.marker = tool == Tool::Marker;
+    style.textSize = std::max(12.0, std::round(longEdge / 50));
 
     const QSettings settings;
     const auto stored = [&](const char* key) { return settings.value(settingsKey(tool, key)); };
@@ -88,6 +94,11 @@ ShapeStyle AnnotateOverlay::styleOf(Tool tool) const {
     if (const double width = stored("width").toDouble(); width > 0) {
         style.width = width;
     }
+    if (const double size = stored("textSize").toDouble(); size > 0) {
+        style.textSize = size;
+    }
+    style.fontFamily = stored("font").toString().toStdString();
+    style.bold = stored("bold").toBool();
     style.filled = stored("filled").toBool();
     style.outline = stored("outline").toBool();
     style.shadow = stored("shadow").toBool();
@@ -153,6 +164,51 @@ void AnnotateOverlay::setShadow(bool shadow) {
     }
 }
 
+void AnnotateOverlay::setTextSize(double size) {
+    if (size > 0 && size != textSize()) {
+        changeStyle("textSize", size, [&](ShapeStyle& style) { style.textSize = size; });
+    }
+}
+
+// The application's own typeface where none was chosen.
+QString AnnotateOverlay::fontFamily() const {
+    const std::string family = shownStyle().fontFamily;
+    return family.empty() ? QGuiApplication::font().family() : QString::fromStdString(family);
+}
+
+void AnnotateOverlay::setFontFamily(const QString& family) {
+    if (!family.isEmpty() && family != fontFamily()) {
+        changeStyle("font", family, [&](ShapeStyle& style) { style.fontFamily = family.toStdString(); });
+    }
+}
+
+void AnnotateOverlay::setBold(bool bold) {
+    if (bold != this->bold()) {
+        changeStyle("bold", bold, [&](ShapeStyle& style) { style.bold = bold; });
+    }
+}
+
+QStringList AnnotateOverlay::fontFamilies() const {
+    QStringList families = QFontDatabase::families();
+    if (const QString own = QGuiApplication::font().family(); !families.contains(own)) {
+        families.prepend(own);
+    }
+    return families;
+}
+
+QString AnnotateOverlay::text() const {
+    return m_selected >= 0 ? QString::fromStdString(m_shapes[static_cast<std::size_t>(m_selected)].text) : QString();
+}
+
+void AnnotateOverlay::setText(const QString& text) {
+    if (m_selected < 0 || m_shapes[static_cast<std::size_t>(m_selected)].kind != ShapeKind::Text || text == this->text()) {
+        return;
+    }
+    m_shapes[static_cast<std::size_t>(m_selected)].text = text.toStdString();
+    update();
+    emit textChanged();
+}
+
 void AnnotateOverlay::setTool(Tool tool) {
     if (tool != m_tool) {
         m_tool = tool;
@@ -168,6 +224,7 @@ void AnnotateOverlay::select(int index) {
         update();
         emit selectedChanged();
         emit styleValuesChanged();
+        emit textChanged();
     }
 }
 
@@ -261,7 +318,19 @@ void AnnotateOverlay::released(QPointF itemPoint) {
     m_drag = Drag::None;
     if (drag == Drag::Draw || drag == Drag::Click) {
         // Nothing was drawn or moved: a click, which selects what is under it, or nothing.
-        select(hitAt(itemPoint).shape);
+        const int under = hitAt(itemPoint).shape;
+        if (under < 0 && m_tool == Tool::Text) {
+            // On nothing, with the Text tool, it places a box of a size to start typing in.
+            const ShapeStyle style = styleOf(m_tool);
+            Shape box = startShape(ShapeKind::Text, style, placed(ShapeKind::Text, m_pressImage));
+            box.points[1] = {box.points[0].x + std::round(style.textSize * 10), box.points[0].y + std::round(style.textSize * 1.5)};
+            m_shapes.push_back(std::move(box));
+            select(static_cast<int>(m_shapes.size()) - 1);
+            shapesChanged();
+            emit textWanted();
+            return;
+        }
+        select(under);
         return;
     }
     // A shape too small to mean anything goes again.
@@ -269,6 +338,8 @@ void AnnotateOverlay::released(QPointF itemPoint) {
         const RectD box = bounds(m_shapes[static_cast<std::size_t>(m_selected)]);
         if (std::hypot(box.width, box.height) * itemPerPixel() < kSmallest) {
             removeSelected();
+        } else if (m_hit.shape == count() - 1 && m_shapes.back().kind == ShapeKind::Text && m_shapes.back().text.empty()) {
+            emit textWanted();
         }
     }
 }

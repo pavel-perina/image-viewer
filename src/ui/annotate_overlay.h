@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QImage>
 #include <QRect>
+#include <QStringList>
 #include <QtQml/qqmlregistration.h>
 
 #include <vector>
@@ -15,7 +16,8 @@ namespace iv {
 // Annotations being made: shapes drawn on the image, which can be selected, moved, reshaped
 // by their grips and removed until they are applied, and are then burned into the picture as
 // one edit. With a drawing tool, a drag draws a new shape and a click selects the one under
-// it; with Select, a drag moves it. Delete removes the shape selected, Esc deselects it.
+// it; with Select, a drag moves it. Delete removes the shape selected, Esc deselects it. The
+// Text tool draws a box, or with a click places one, whose words are then set from outside.
 //
 // The style shown and set (colour, width and so on) is that of the shape selected, or else
 // that of the tool, which each tool remembers between runs.
@@ -33,9 +35,17 @@ class AnnotateOverlay : public ImageOverlay {
     Q_PROPERTY(bool filled READ filled WRITE setFilled NOTIFY styleValuesChanged)
     Q_PROPERTY(bool outline READ outline WRITE setOutline NOTIFY styleValuesChanged)
     Q_PROPERTY(bool shadow READ shadow WRITE setShadow NOTIFY styleValuesChanged)
+    // The height of letters, in image pixels.
+    Q_PROPERTY(double textSize READ textSize WRITE setTextSize NOTIFY styleValuesChanged)
+    Q_PROPERTY(QString fontFamily READ fontFamily WRITE setFontFamily NOTIFY styleValuesChanged)
+    Q_PROPERTY(bool bold READ bold WRITE setBold NOTIFY styleValuesChanged)
+    // The typefaces to choose from.
+    Q_PROPERTY(QStringList fontFamilies READ fontFamilies CONSTANT)
+    // What the text box selected says; empty and unchangeable with none selected.
+    Q_PROPERTY(QString text READ text WRITE setText NOTIFY textChanged)
 
 public:
-    enum class Tool { Select, Line, Arrow, Rectangle, Marker, Pixelate };
+    enum class Tool { Select, Line, Arrow, Rectangle, Marker, Pixelate, Text };
     Q_ENUM(Tool)
 
     explicit AnnotateOverlay(QQuickItem* parent = nullptr);
@@ -55,6 +65,15 @@ public:
     void setOutline(bool outline);
     bool shadow() const { return shownStyle().shadow; }
     void setShadow(bool shadow);
+    double textSize() const { return shownStyle().textSize; }
+    void setTextSize(double size);
+    QString fontFamily() const;
+    void setFontFamily(const QString& family);
+    bool bold() const { return shownStyle().bold; }
+    void setBold(bool bold);
+    QStringList fontFamilies() const;
+    QString text() const;
+    void setText(const QString& text);
 
     const std::vector<Shape>& shapes() const { return m_shapes; }
 
@@ -72,6 +91,9 @@ signals:
     void countChanged();
     void selectedChanged();
     void styleValuesChanged();
+    void textChanged();
+    // A text box was made and waits for its words.
+    void textWanted();
 
 protected:
     void viewAttached() override;

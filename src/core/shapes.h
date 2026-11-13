@@ -38,7 +38,9 @@ struct ShapeStyle {
     bool marker = false;   // darkens what is under it, as a highlighter does, rather than covering
     bool outline = false;  // a dark edge around it, to show on any picture
     bool shadow = false;
-    double textSize = 16;
+    double textSize = 16;    // the size of the typeface, which is taller than its capitals
+    std::string fontFamily;  // empty for the application's own
+    bool bold = false;
     bool operator==(const ShapeStyle&) const = default;
 };
 

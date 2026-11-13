@@ -601,7 +601,7 @@ the question before leaving an edited image. Still planned lists the rest.
   sRGB. On a wide-gamut picture a red is therefore that space's red.
 * Drawing in colour on a gray picture turns it into a colour one, so a red arrow stays red.
   A gray colour profile then no longer fits and is dropped.
-* Edit > Annotate (D) has Select, Line, Arrow, Rectangle, Marker and Pixelate. With a drawing
+* Edit > Annotate (D) has Select, Line, Arrow, Rectangle, Marker, Pixelate and Text. With a drawing
   tool a drag draws and a click selects; with Select a drag moves. Grips reshape the shape
   selected, Delete removes it, and Esc lets go of it before it leaves the tool. Nothing is in
   the picture or the edit list until Apply.
@@ -614,8 +614,25 @@ the question before leaving an edited image. Still planned lists the rest.
   its real pixels with the code that applies them: the view reads the picture at full size
   when the tool starts and hands out the changed part for each such shape. Parts above 1.5
   megapixels are reduced first, to keep up with the mouse.
-* Still to come: text, polygons, freehand strokes, a marker mode for dark pictures, and
-  asking before shapes not yet applied are thrown away.
+* Text is a box, drawn or placed with a click, whose words are typed in the panel, not on
+  the picture: typing in place would need a caret and selection drawn by hand. The box gives
+  the place and the width to wrap at, and longer text runs on below it. The typeface and bold
+  are chosen from those installed; the size is that of the typeface in image pixels, which
+  is taller than its capitals, and starts at 1/50 of the long edge.
+* Letters are drawn by Qt's text renderer, fitted to the pixel grid, which keeps small text
+  sharp. Their outlines are used only for the dark edge and the shadow under them. Drawing
+  the letters themselves from outlines made small text thin and soft, and with the even-odd
+  fill rule left dark dots where the strokes of a letter overlap.
+* A shape is drawn in passes: shadow, dark edge, then the shape, each as one flat area for
+  the whole shape. Drawn in overlapping pieces, a translucent shadow came out darker where
+  they met. The dark edge is opaque for the same reason. The shadow is hard, at a fixed
+  offset from the width or text size; its offset and softness are not settings yet.
+* Still to come: polygons, freehand strokes, a marker mode for dark pictures, and asking
+  before shapes not yet applied are thrown away.
+* Later, smaller: text size in points or pixels as a choice in the settings dialog, once it
+  exists; a soft shadow with its offset and blur as settings, which the layer allows since
+  it is pixels by then; any colour and not only the fixed row, and the colours remembered by
+  the probe offered as swatches here too.
 
 ### Crop
 * A mode of the large view rather than a window of its own, so zoom, panning and full screen
