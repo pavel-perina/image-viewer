@@ -717,3 +717,44 @@ TEST(Annotate, ThePatternStandingInForPixelsTakesTheStylesColours) {
     clear.fill(Qt::transparent);
     EXPECT_EQ(painted(nullptr), clear) << "a pixelated box has no drawing of its own";
 }
+
+// Why: the Annotate panel, with text's options, is taller than a window that is not full
+// screen, and its lower controls must still be reachable. Input: the panel in a window 300
+// high. The truth is the panel's scroller: its content is taller than it, the wheel moves it,
+// and the heading and the Apply button stay in view meanwhile.
+TEST(Annotate, ThePanelScrollsWhenTheWindowIsLow) {
+    AnnotatePage f;
+    f.overlay->setTool(Tool::Text);
+    f.view.resize(900, 300);
+    auto* panel = f.page->findChild<QQuickItem*>(QStringLiteral("annotatePanel"));
+    ASSERT_NE(panel, nullptr);
+    auto* scroller = panel->findChild<QQuickItem*>(QStringLiteral("toolPanelScroller"));
+    ASSERT_NE(scroller, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return scroller->property("contentHeight").toDouble() > scroller->height(); }));
+    EXPECT_TRUE(scroller->property("interactive").toBool());
+
+    const QPointF middle = scroller->mapToScene(QPointF(scroller->width() / 2, scroller->height() / 2));
+    QWheelEvent wheel(middle, f.view.mapToGlobal(middle), QPoint(), QPoint(0, -360), Qt::NoButton, Qt::NoModifier,
+                      Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(&f.view, &wheel);
+    EXPECT_TRUE(waitUntil([&] { return scroller->property("contentY").toDouble() > 0; }));
+
+    auto* apply = panel->findChild<QQuickItem*>(QStringLiteral("annotateApply"));
+    ASSERT_NE(apply, nullptr);
+    const QPointF applyBottom = apply->mapToScene(QPointF(0, apply->height()));
+    EXPECT_LE(applyBottom.y(), f.view.height()) << "Apply stays in the window";
+    EXPECT_GE(scroller->mapToScene(QPointF(0, 0)).y(), panel->mapToScene(QPointF(0, 0)).y() + 10) << "below the heading";
+}
+
+// Why: a panel that fits does not scroll, so that a drag on it is not taken for scrolling.
+// Input: the Annotate panel in the ordinary 600-high window with the arrow, which has few
+// options. The truth is the scroller's interactive flag.
+TEST(Annotate, ThePanelDoesNotScrollWhenItFits) {
+    AnnotatePage f;
+    f.overlay->setTool(Tool::Arrow);
+    auto* scroller = f.page->findChild<QQuickItem*>(QStringLiteral("annotatePanel"))->findChild<QQuickItem*>(QStringLiteral("toolPanelScroller"));
+    ASSERT_NE(scroller, nullptr);
+    waitUntil([] { return false; }, 100);
+    EXPECT_LE(scroller->property("contentHeight").toDouble(), scroller->height());
+    EXPECT_FALSE(scroller->property("interactive").toBool());
+}

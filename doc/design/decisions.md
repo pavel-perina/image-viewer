@@ -604,6 +604,10 @@ the question before leaving an edited image. Still planned lists the rest.
   where a tool asks for it by giving it a text; so far that is always Reset. The apply button
   can be renamed (Crop) and disabled. A tool that changes nothing (the probe) turns the
   buttons off.
+* The rows scroll, in the base, when the window is too low for them (Annotate with text's
+  options is taller than a window that is not full screen). The heading and the buttons stay
+  in view. It scrolls only when the rows do not fit, so a drag on a panel that fits is never
+  taken for scrolling, and a field reached with Tab is scrolled into view.
 * The rows are the default property, so a derived panel reads as a list of its controls. Only
   items become rows: `Settings`, `Binding`, `Connections` and the like may sit among them. A
   dialog a panel opens must not be an item among the rows; Adjust makes its chooser of colour

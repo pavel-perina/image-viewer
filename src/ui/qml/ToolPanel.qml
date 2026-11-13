@@ -72,16 +72,49 @@ Rectangle {
             font.pointSize: Theme.titleSize
         }
 
-        ColumnLayout {
-            id: column
+        // The controls scroll when the window is too low for them, between the heading and the
+        // buttons, which stay. A panel that fills takes the height given and scrolls within.
+        Flickable {
+            id: scroller
+            objectName: "toolPanelScroller"
             Layout.fillWidth: true
-            Layout.fillHeight: panel.fills
-            spacing: Theme.panelSpacing
-        }
-
-        Item {
             Layout.fillHeight: true
-            visible: !panel.fills
+            clip: true
+            contentWidth: width
+            contentHeight: column.height
+            boundsBehavior: Flickable.StopAtBounds
+            // Only when there is something to scroll, so that a drag that fits stays a drag.
+            interactive: contentHeight > height
+            ScrollBar.vertical: AppScrollBar {}
+
+            ColumnLayout {
+                id: column
+                // Room for the scroll bar, so that it does not cover the controls' right edge.
+                width: scroller.width - (scroller.interactive ? Theme.panelSpacing : 0)
+                height: panel.fills ? scroller.height : implicitHeight
+                spacing: Theme.panelSpacing
+            }
+
+            // Tab to a field out of view brings it in.
+            function reveal(item) {
+                if (!item || !interactive)
+                    return
+                for (let up = item; up; up = up.parent) {
+                    if (up === column) {
+                        const top = item.mapToItem(column, 0, 0).y
+                        const bottom = top + item.height
+                        if (top < contentY)
+                            contentY = top
+                        else if (bottom > contentY + height)
+                            contentY = Math.min(bottom - height, contentHeight - height)
+                        return
+                    }
+                }
+            }
+            Connections {
+                target: panel.Window.window
+                function onActiveFocusItemChanged() { scroller.reveal(panel.Window.activeFocusItem) }
+            }
         }
 
         RowLayout {
