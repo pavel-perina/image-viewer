@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "core/font_families.h"
 #include "ui/shape_painter.h"
 
 namespace iv {
@@ -228,7 +229,15 @@ void AnnotateOverlay::setBold(bool bold) {
 }
 
 QStringList AnnotateOverlay::fontFamilies() const {
-    QStringList families = QFontDatabase::families();
+    // One entry per design, without the styles a font installs under names of their own.
+    std::vector<std::string> listed;
+    for (const QString& family : QFontDatabase::families()) {
+        listed.push_back(family.toStdString());
+    }
+    QStringList families;
+    for (const std::string& family : withoutStyleNames(listed)) {
+        families.append(QString::fromStdString(family));
+    }
     if (const QString own = QGuiApplication::font().family(); !families.contains(own)) {
         families.prepend(own);
     }

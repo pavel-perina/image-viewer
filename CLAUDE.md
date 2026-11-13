@@ -31,6 +31,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   moving and blurring what a shape covers, for its dark edge and shadow).
 * **Saving:** `image_writer` (every format), `save_image`, `jpeg_transform` (lossless JPEG),
   `jxl_transcode`, `file_io`.
+* **Small helpers:** `font_families` (one entry per typeface, without its styles).
 * **Background work:** `work_queue` (priorities, cancelling), `disk_gate`, `thumbnail`,
   `thumbnail_cache` (SQLite).
 

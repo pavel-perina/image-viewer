@@ -616,6 +616,15 @@ the question before leaving an edited image. Still planned lists the rest.
   slide are the panel's.
 * The Info panel is not one of these: it is no tool, it scrolls, and it has no buttons.
 
+### Choosing a typeface
+* Some fonts install each weight, width and slant as a family of its own: Iosevka alone listed
+  about fifty, "Iosevka Extralight Extended Oblique" among them. A family is left out when it
+  is another family's name followed by style words only (Light, Extended, Oblique, and the
+  short forms fonts use: Lt, Ex, Obl, SmBld, ...). Iosevka Term, Inter Display and PT Sans
+  Caption stay, as they are designs of their own. Here that took the list from 358 to 127.
+  The styles left out cannot be chosen; Bold still can. A second list of the family's styles
+  in place of Bold would bring them back, if missed.
+
 ### One tool at a time
 * The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,
   `adjusting`, `annotating`), and every function that started a tool cleared the other four by

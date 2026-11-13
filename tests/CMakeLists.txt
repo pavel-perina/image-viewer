@@ -23,6 +23,7 @@ add_executable(iv_core_tests
     shape_tests.cpp
     layer_tests.cpp
     coverage_tests.cpp
+    font_families_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp
@@ -67,6 +68,7 @@ add_executable(iv_ui_tests
     ui_browser_page_tests.cpp
     ui_image_view_tests.cpp
     ui_annotate_tests.cpp
+    ui_search_combo_tests.cpp
     ui_edit_tests.cpp
     ui_file_tests.cpp
     ui_window_tests.cpp
