@@ -112,8 +112,11 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * Design before code for anything larger than a fix: say what will be added and where it fits,
   and wait for agreement.
 * Small changes, one topic each, that can be read in one sitting.
-* Branch from `main`. Commit only when asked, one topic per commit, files named one by one.
-  Never push or merge unasked.
+* Small changes are committed on `main`. Only a feature of several commits gets a branch,
+  from `main`: it is merged with a merge commit (`--no-ff`), named for what it brings, and
+  deleted at once, so that branches do not pile up.
+* Commit only when asked, one topic per commit, files named one by one. Never push or merge
+  unasked.
 * Say before opening a window on the real desktop.
 
 ## Not wanted
