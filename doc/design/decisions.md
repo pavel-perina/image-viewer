@@ -616,6 +616,25 @@ the question before leaving an edited image. Still planned lists the rest.
   slide are the panel's.
 * The Info panel is not one of these: it is no tool, it scrolls, and it has no buttons.
 
+### Choosing a typeface
+* Some fonts install each weight, width and slant as a family of its own: Iosevka alone listed
+  about fifty, "Iosevka Extralight Extended Oblique" among them. A family is left out when it
+  is another family's name followed by style words only (Light, Extended, Oblique, and the
+  short forms fonts use: Lt, Ex, Obl, SmBld, ...). Iosevka Term, Inter Display and PT Sans
+  Caption stay, as they are designs of their own. Here that took the list from 358 to 127.
+  The styles left out cannot be chosen; Bold still can. A second list of the family's styles
+  in place of Bold would bring them back, if missed.
+* The typeface is chosen in `SearchCombo`: a combo box that opens with a field on top and the
+  families that fit what is typed below it, best first and with the letters matched bold and
+  underlined, each drawn in its own font. A tree of families and styles was considered; with
+  styles folded, the list is short enough that typing a few letters finds any.
+* The matching (`core/fuzzy_match`) follows how fzf behaves, written from its description: the
+  letters in order, scored per letter with bonuses for the start of a word and for letters
+  together, and a cost for gaps; ties go to the shorter name, then the order given. Words of
+  the query separated by spaces each match anywhere. Its numbers are fzf's, so that it ranks
+  as people used to fzf expect. It depends on nothing else in the program, nor does
+  `SearchCombo` on fonts, so both can serve other long lists, or other programs.
+
 ### One tool at a time
 * The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,
   `adjusting`, `annotating`), and every function that started a tool cleared the other four by

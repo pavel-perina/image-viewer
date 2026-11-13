@@ -22,6 +22,10 @@ add_library(iv_core STATIC
     exif.h
     file_io.cpp
     file_io.h
+    font_families.cpp
+    font_families.h
+    fuzzy_match.cpp
+    fuzzy_match.h
     geometry.cpp
     geometry.h
     histogram.cpp

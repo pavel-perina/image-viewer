@@ -108,15 +108,16 @@ ToolPanel {
         onAccepted: panel.doneEditing()
     }
 
-    ComboBox {
+    SearchCombo {
         id: fontBox
         objectName: "annotateFont"
         Layout.fillWidth: true
         visible: panel.hasLetters
-        model: panel.overlay.fontFamilies
-        currentIndex: model.indexOf(panel.overlay.fontFamily)
-        onActivated: (index) => {
-            panel.overlay.fontFamily = model[index]
+        names: panel.overlay.fontFamilies
+        currentName: panel.overlay.fontFamily
+        namesInTheirFont: true
+        onPicked: (name) => {
+            panel.overlay.fontFamily = name
             panel.doneEditing()
         }
     }
