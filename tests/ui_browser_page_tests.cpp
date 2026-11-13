@@ -29,6 +29,42 @@ TEST(BrowserPage, ClickBetweenThumbnailsClearsTheSelection) {
     EXPECT_EQ(f.context.currentIndex(), 1);
 }
 
+// Why: with the grid scrolled down, a click on a thumbnail selected it and the grid's own
+// handler for clicks between thumbnails then cleared it again, as it added the scroll to a
+// point that already had it. Only the frame of the current image was left. Input: 60 more
+// images, the grid scrolled to the end, a click and a right click as the mouse gives them,
+// press then release a little later. The truth is the selection, and that the file menu is
+// asked for once.
+TEST(BrowserPage, AClickSelectsAThumbnailWhenTheGridIsScrolled) {
+    BrowserPageFixture f;
+    for (int i = 0; i < 60; ++i) {
+        writeJpeg(f.dir.filePath(QStringLiteral("m%1.jpg").arg(i, 2, 10, QLatin1Char('0'))));
+    }
+    f.context.refresh();
+    ASSERT_TRUE(waitUntil([&] { return f.context.fileCount() == 64; }, 5000));
+    QQuickItem* grid = f.find("QQuickGridView");
+    ASSERT_NE(grid, nullptr);
+    const int last = 63;
+    QMetaObject::invokeMethod(grid, "positionViewAtEnd");
+    ASSERT_TRUE(waitUntil([&] { return grid->property("contentY").toDouble() > 400; }));
+    QQuickItem* cell = nullptr;
+    QMetaObject::invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, cell), Q_ARG(int, last));
+    ASSERT_NE(cell, nullptr);
+    const QPoint at = cell->mapToScene(QPointF(cell->width() / 2, cell->height() / 2)).toPoint();
+
+    QTest::mouseMove(&f.view, at);
+    QTest::mousePress(&f.view, Qt::LeftButton, Qt::NoModifier, at);
+    QTest::mouseRelease(&f.view, Qt::LeftButton, Qt::NoModifier, at, 120);
+    EXPECT_EQ(f.context.currentIndex(), last);
+    EXPECT_EQ(f.context.selectedPaths(), QStringList{f.dir.filePath(QStringLiteral("m59.jpg"))});
+    EXPECT_TRUE(cell->property("selected").toBool());
+
+    QSignalSpy menu(f.view.rootObject(), SIGNAL(fileMenuRequested()));
+    QTest::mousePress(&f.view, Qt::RightButton, Qt::NoModifier, at);
+    QTest::mouseRelease(&f.view, Qt::RightButton, Qt::NoModifier, at, 120);
+    EXPECT_EQ(menu.count(), 1) << "for the thumbnail, not also for the space between";
+}
+
 TEST(BrowserPage, TreeLabelsStayRightWhenASubfolderAppears) {
     TreeFixture f;
     const QDir dir(f.context.directory());
