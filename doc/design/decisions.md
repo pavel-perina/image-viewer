@@ -624,6 +624,16 @@ the question before leaving an edited image. Still planned lists the rest.
   Caption stay, as they are designs of their own. Here that took the list from 358 to 127.
   The styles left out cannot be chosen; Bold still can. A second list of the family's styles
   in place of Bold would bring them back, if missed.
+* The typeface is chosen in `SearchCombo`: a combo box that opens with a field on top and the
+  families that fit what is typed below it, best first and with the letters matched bold and
+  underlined, each drawn in its own font. A tree of families and styles was considered; with
+  styles folded, the list is short enough that typing a few letters finds any.
+* The matching (`core/fuzzy_match`) follows how fzf behaves, written from its description: the
+  letters in order, scored per letter with bonuses for the start of a word and for letters
+  together, and a cost for gaps; ties go to the shorter name, then the order given. Words of
+  the query separated by spaces each match anywhere. Its numbers are fzf's, so that it ranks
+  as people used to fzf expect. It depends on nothing else in the program, nor does
+  `SearchCombo` on fonts, so both can serve other long lists, or other programs.
 
 ### One tool at a time
 * The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,

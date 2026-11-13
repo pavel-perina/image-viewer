@@ -30,6 +30,8 @@ qt_add_library(iv_ui STATIC
     folder_listing.h
     folder_lists.cpp
     folder_lists.h
+    fuzzy_list_model.cpp
+    fuzzy_list_model.h
     key_hold.cpp
     key_hold.h
     key_names.cpp
@@ -92,6 +94,7 @@ qt_add_qml_module(iv_ui
         qml/PreviewPanel.qml
         qml/ProbePanel.qml
         qml/ResizeDialog.qml
+        qml/SearchCombo.qml
         qml/StraightenPanel.qml
         qml/ResampledView.qml
         qml/SaveOptionsDialog.qml

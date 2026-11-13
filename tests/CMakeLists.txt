@@ -23,6 +23,7 @@ add_executable(iv_core_tests
     shape_tests.cpp
     layer_tests.cpp
     coverage_tests.cpp
+    fuzzy_match_tests.cpp
     font_families_tests.cpp
     test_exif.cpp
     test_exif.h
