@@ -996,6 +996,9 @@ TEST(Adjust, ThePanelPreviewsCancelsAndApplies) {
     EXPECT_TRUE(image->colorPreviewTone());
     QMetaObject::invokeMethod(page, "applyAdjust");
     EXPECT_FALSE(page->property("adjusting").toBool());
+    // The preview stays up while the edited picture is made, so the change does not flash.
+    EXPECT_NE(image->status(), ImageView::Status::Ready);
+    EXPECT_TRUE(image->colorPreviewActive());
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
     EXPECT_FALSE(image->colorPreviewActive());
     image->undo();

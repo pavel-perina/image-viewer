@@ -578,3 +578,57 @@ TEST(Annotate, AnArrowHasItsShaftAtEveryWidth) {
         }
     }
 }
+
+// Why: the page has one tool at work at a time, and starting another leaves the one before
+// it as cancelling would, whichever the two are. Input: an arrow drawn and not applied, then
+// each other tool started in turn, Adjust with a change being previewed. The truth is the
+// page's `tool`, that the arrow is gone unapplied, that the colour preview ends with Adjust,
+// and that at most one panel is in view throughout.
+TEST(ViewerPage, StartingAToolLeavesTheOneAtWork) {
+    AnnotatePage f;
+    f.choose(Tool::Arrow, QColor(0x10, 0xa0, 0xf0), 6);
+    f.dragOnImage({20, 20}, {120, 20});
+    ASSERT_EQ(f.overlay->count(), 1);
+    EXPECT_EQ(f.page->property("tool").toString(), QStringLiteral("annotate"));
+
+    const auto panelsInView = [&] {
+        int revealed = 0;
+        for (const char* name : {"cropPanel", "annotatePanel", "straightenPanel", "adjustPanel", "probePanel"}) {
+            QObject* panel = f.page->findChild<QObject*>(QString::fromLatin1(name));
+            EXPECT_NE(panel, nullptr) << name;
+            revealed += panel && panel->property("revealed").toBool();
+        }
+        return revealed;
+    };
+    EXPECT_EQ(panelsInView(), 1);
+
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    EXPECT_EQ(f.page->property("tool").toString(), QStringLiteral("adjust"));
+    EXPECT_FALSE(f.page->property("annotating").toBool());
+    EXPECT_EQ(f.overlay->count(), 0) << "the arrow was given up";
+    EXPECT_FALSE(f.image->modified()) << "and not drawn into the picture";
+    EXPECT_EQ(panelsInView(), 1);
+    f.page->findChild<QObject*>(QStringLiteral("adjustPanel"))->setProperty("midtones", 1.5);
+    ASSERT_TRUE(f.image->colorPreviewActive());
+
+    const std::pair<const char*, const char*> others[] = {
+        {"startProbe", "probe"}, {"startCrop", "crop"}, {"startStraighten", "straighten"}, {"startAnnotate", "annotate"}};
+    for (const auto& [start, name] : others) {
+        QMetaObject::invokeMethod(f.page, start);
+        EXPECT_EQ(f.page->property("tool").toString(), QString::fromLatin1(name));
+        EXPECT_TRUE(f.page->property("toolActive").toBool());
+        EXPECT_FALSE(f.image->colorPreviewActive()) << "Adjust was left before " << name;
+        EXPECT_EQ(panelsInView(), 1) << name;
+    }
+    EXPECT_FALSE(f.image->modified()) << "no tool was applied";
+
+    QMetaObject::invokeMethod(f.page, "cancelAnnotate");
+    EXPECT_EQ(f.page->property("tool").toString(), QString());
+    EXPECT_FALSE(f.page->property("toolActive").toBool());
+    EXPECT_EQ(panelsInView(), 0);
+    // Ending a tool that is not the one at work leaves the one that is.
+    QMetaObject::invokeMethod(f.page, "startCrop");
+    QMetaObject::invokeMethod(f.page, "stopProbe");
+    QMetaObject::invokeMethod(f.page, "cancelStraighten");
+    EXPECT_EQ(f.page->property("tool").toString(), QStringLiteral("crop"));
+}

@@ -604,6 +604,20 @@ the question before leaving an edited image. Still planned lists the rest.
   slide are the panel's.
 * The Info panel is not one of these: it is no tool, it scrolls, and it has no buttons.
 
+### One tool at a time
+* The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,
+  `adjusting`, `annotating`), and every function that started a tool cleared the other four by
+  hand, as did leaving the image or the page. A sixth tool would have meant editing them all.
+  The page now has one `tool`, a name or empty; the flags are read from it, so nothing can
+  set two.
+* `leaveTool()` ends whatever tool is at work without applying it, with the cleanup Adjust and
+  Annotate need. Starting a tool leaves the one before it this way, then names itself.
+* Each tool keeps its own start, apply and cancel under the old names, as what they do
+  differs: Crop reads its rectangle before it ends, Adjust ends before it applies, the probe
+  outlives an edit, and comparing goes with Adjust and no other tool.
+* The rule stays in QML: it is state of the page, and each step calls into a panel or an
+  overlay there. If it grows conditions worth testing apart from the page, it moves to C++.
+
 ### Annotations
 * Annotations are burned into the pixels when applied, as one edit in the edit list, so undo,
   Save and Save As treat them like any other edit and every format can hold them. Keeping
