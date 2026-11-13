@@ -392,20 +392,53 @@ void AnnotateOverlay::paint(QPainter* painter) {
     if (!view() || view()->imageWidth() <= 0) {
         return;
     }
-    // The shapes in image pixels, as they will be burned in.
-    painter->save();
-    const QPointF origin = toItem({0, 0});
-    painter->translate(origin);
-    painter->scale(itemPerPixel(), itemPerPixel());
     m_previews.resize(m_shapes.size());
-    for (std::size_t i = 0; i < m_shapes.size(); ++i) {
-        if (dependsOnPicture(m_shapes[i])) {
-            paintPreview(painter, i);
-        } else {
-            paintShape(painter, m_shapes[i], true);
+    const auto paintAll = [this](QPainter* target) {
+        for (std::size_t i = 0; i < m_shapes.size(); ++i) {
+            if (dependsOnPicture(m_shapes[i])) {
+                paintPreview(target, i);
+            } else {
+                paintShape(target, m_shapes[i], true);
+            }
         }
+    };
+    // Enlarged, the shapes are drawn as pixels of the image and those shown enlarged, like
+    // the picture under them: this is what will be burned in, down to how letters sit on the
+    // pixel grid, so that it can be judged at any zoom. Only where shapes are in view.
+    const Size image{view()->imageWidth(), view()->imageHeight()};
+    const PointD first = toImage({0, 0});
+    const PointD last = toImage({width(), height()});
+    QRect drawn;
+    for (const Shape& shape : m_shapes) {
+        drawn |= shapeArea(shape, image);
     }
-    painter->restore();
+    drawn &= QRectF(QPointF(first.x, first.y), QPointF(last.x, last.y)).toAlignedRect();
+    if (itemPerPixel() / devicePixel() >= 1 && !drawn.isEmpty()) {
+        QImage layer(drawn.size(), QImage::Format_ARGB32_Premultiplied);
+        layer.fill(Qt::transparent);
+        QPainter onLayer(&layer);
+        onLayer.translate(-drawn.topLeft());
+        paintAll(&onLayer);
+        onLayer.end();
+        // As a pattern to fill with, not drawImage: enlarging with that rounds where the
+        // image starts to a whole pixel of the screen, which moves every edge of the shapes
+        // off the edges of the picture's pixels.
+        const QRectF target(toItem({double(drawn.left()), double(drawn.top())}),
+                            toItem({drawn.left() + double(drawn.width()), drawn.top() + double(drawn.height())}));
+        QBrush pattern(layer);
+        pattern.setTransform(QTransform::fromTranslate(target.left(), target.top()).scale(itemPerPixel(), itemPerPixel()));
+        painter->setRenderHint(QPainter::SmoothPixmapTransform, false);
+        painter->setRenderHint(QPainter::Antialiasing, false);
+        painter->fillRect(target, pattern);
+    } else if (!drawn.isEmpty()) {
+        // Reduced, drawing at the size shown is close enough, and far less work than all
+        // the pixels of a large picture.
+        painter->save();
+        painter->translate(toItem({0, 0}));
+        painter->scale(itemPerPixel(), itemPerPixel());
+        paintAll(painter);
+        painter->restore();
+    }
 
     if (m_selected < 0) {
         return;

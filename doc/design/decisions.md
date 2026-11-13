@@ -627,7 +627,16 @@ the question before leaving an edited image. Still planned lists the rest.
   the whole shape. Drawn in overlapping pieces, a translucent shadow came out darker where
   they met. The dark edge is opaque for the same reason. The shadow is hard, at a fixed
   offset from the width or text size; its offset and softness are not settings yet.
-* Still to come: polygons, freehand strokes, a marker mode for dark pictures, and asking
+* While the picture is shown at its own size or enlarged, shapes are drawn as pixels of the
+  image, only where they are in view, and those pixels are shown enlarged like the picture's.
+  So the preview is the burned-in result at any zoom, and small text can be judged at 200%.
+  Drawing them scaled to the screen instead showed letters smoother than they would be saved.
+  Reduced, they are drawn at the size shown, which is close enough and far less work.
+* Outlines and shadows are to move from growing each kind's geometry to working on the drawn
+  pixels: dilate the alpha for the dark edge, offset and blur it for the shadow. That is the
+  same for every kind and gives soft shadows. The preview then has to do it per shape for
+  the part in view, kept until the shape changes.
+* Still to come: ellipses, numbered points, polygons, freehand strokes, a marker mode for dark pictures, and asking
   before shapes not yet applied are thrown away.
 * Later, smaller: text size in points or pixels as a choice in the settings dialog, once it
   exists; a soft shadow with its offset and blur as settings, which the layer allows since

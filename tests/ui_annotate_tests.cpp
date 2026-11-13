@@ -339,3 +339,40 @@ TEST(Annotate, TextTakesATypefaceAndBold) {
     }
     QMetaObject::invokeMethod(f.page, "cancelAnnotate");
 }
+
+// Why: enlarged, shapes must show as the pixels they will become, not smoothed to the
+// screen. With the picture enlarged several times, a rectangle's edge on screen falls where
+// an image pixel ends: the screen pixel just inside the edge is fully the rectangle's colour
+// and the one just outside is the picture's, as it is well away from the rectangle. Drawn
+// scaled to the screen instead, the edge would land between screen pixels and blend the two.
+// Read from the window, so it needs a platform that can grab it.
+TEST(Annotate, EnlargedShapesShowAsThePixelsTheyWillBe) {
+    ToolPage f("startAnnotate");
+    auto* overlay = qobject_cast<AnnotateOverlay*>(f.page->findChild<QQuickItem*>(QStringLiteral("annotateOverlay")));
+    ASSERT_NE(overlay, nullptr);
+    overlay->setTool(AnnotateOverlay::Tool::Rectangle);
+    overlay->setColour(QColor(0x10, 0xa0, 0xf0));
+    overlay->setLineWidth(1);
+    overlay->setFilled(true);
+    overlay->setOutline(false);
+    overlay->setShadow(false);
+    ASSERT_NE(f.drag(Qt::LeftButton, QPoint(100, 60)), QPointF(1, 1));
+    ASSERT_EQ(overlay->count(), 1);
+    QMetaObject::invokeMethod(f.page, "escapeAnnotate");  // without the frame of the one selected
+    const QImage shown = grabIfShown(f.view);
+    if (shown.isNull()) {
+        GTEST_SKIP() << "nothing to grab on this platform";
+    }
+
+    // Along a row through the rectangle's middle, across its left edge.
+    const RectD box = bounds(overlay->shapes()[0]);
+    const QPointF edge = f.image->mapToScene(f.image->imageToItem(QPointF(box.x, box.y + box.height / 2)));
+    const int y = static_cast<int>(edge.y());
+    const int x = static_cast<int>(std::round(edge.x()));
+    const QColor fill(0x10, 0xa0, 0xf0);
+    EXPECT_EQ(shown.pixelColor(x + 1, y), fill);
+    EXPECT_EQ(shown.pixelColor(x, y), fill) << "the first screen pixel of the image pixel inside";
+    EXPECT_EQ(shown.pixelColor(x - 1, y), shown.pixelColor(x - 3, y)) << "outside, the picture alone";
+    EXPECT_NE(shown.pixelColor(x - 1, y), fill);
+    QMetaObject::invokeMethod(f.page, "cancelAnnotate");
+}
