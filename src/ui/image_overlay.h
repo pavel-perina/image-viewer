@@ -45,7 +45,7 @@ protected:
     double itemPerPixel() const;
     double devicePixel() const;
     // Whether Shift was down at the last press or move of the mouse, which tools take as
-    // "keep it even": a square, a circle.
+    // "keep it even": a square, a circle, a line at a round angle.
     bool shiftHeld() const { return m_shiftHeld; }
     // How far from something still grabs it, in item units.
     static constexpr double kReach = 8;

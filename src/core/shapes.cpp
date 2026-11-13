@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace iv {
 
@@ -174,6 +175,18 @@ void moveGrip(Shape& shape, int grip, PointD to, bool even) {
         case 3: a.x = to.x; b.y = to.y; break;
         }
         return;
+    }
+    if (even && (shape.kind == ShapeKind::Line || shape.kind == ShapeKind::Arrow) && shape.points.size() == 2) {
+        // Turned to the nearest step about the other end, as far from it as asked.
+        const PointD fixed = shape.points[static_cast<std::size_t>(1 - grip)];
+        constexpr int kStepDegrees = 15;
+        const double length = std::hypot(to.x - fixed.x, to.y - fixed.y);
+        const long steps = std::lround(std::atan2(to.y - fixed.y, to.x - fixed.x) * 180 / std::numbers::pi / kStepDegrees);
+        const double angle = static_cast<double>(steps * kStepDegrees) * std::numbers::pi / 180;
+        // Level and upright exactly, where the cosine or sine is a hair off nothing.
+        const double across = steps % 6 == 0 && steps % 12 != 0 ? 0 : std::cos(angle);
+        const double down = steps % 12 == 0 ? 0 : std::sin(angle);
+        to = {fixed.x + length * across, fixed.y + length * down};
     }
     shape.points[static_cast<std::size_t>(grip)] = to;
 }

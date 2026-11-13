@@ -648,8 +648,10 @@ the question before leaving an edited image. Still planned lists the rest.
   Drawing them scaled to the screen instead showed letters smoother than they would be saved.
   Reduced, they are drawn at the size shown, which is close enough and far less work.
 * An ellipse is a box kind like the rectangle: two corners, four grips, its line inside the
-  box. Shift while dragging keeps a box's sides equal, for a square or a circle; the rule is
-  in the shape model with the other rules of grips, so measurement can use it too.
+  box. Shift while dragging keeps a box's sides equal, for a square or a circle, and turns a
+  line or an arrow to the nearest 15 degrees about its other end, so level and upright are
+  exact. The rules are in the shape model with the other rules of grips, so measurement can
+  use them too.
 * A number is one point with a disc around it, sized by its text size, and says one more than
   the highest number on the picture. What it says is ordinary text and can be changed, to a
   letter for instance; changed ones are passed over when counting. Its text is black or

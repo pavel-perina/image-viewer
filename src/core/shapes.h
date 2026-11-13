@@ -82,7 +82,8 @@ std::vector<PointD> grips(const Shape& shape);
 // Moves a grip to a point, changing the points as the kind requires: a rectangle's derived
 // corner takes x from one point and y from the other, and a stroke is stretched from the
 // corner opposite. This is where a kind keeps its own rules, such as lines that stay parallel.
-// With `even`, a box keeps its sides equal, the longer deciding: a square, a circle.
+// With `even`, a box keeps its sides equal, the longer deciding: a square, a circle; and a
+// line or an arrow keeps to steps of 15 degrees from its other end, at the length asked.
 void moveGrip(Shape& shape, int grip, PointD to, bool even = false);
 
 // Moves all of it.

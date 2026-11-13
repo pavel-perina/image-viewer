@@ -539,3 +539,19 @@ TEST(Annotate, EdgeAndShadowSizesAreSetAndRemembered) {
     EXPECT_FALSE(style.shadowBlur.has_value());
     QMetaObject::invokeMethod(f.page, "cancelAnnotate");
 }
+
+// Why: with Shift held, a line drawn nearly level comes out exactly level. Dragged from
+// 20, 40 to 120, 44, about 2 degrees off, both ends are at 40 down.
+TEST(Annotate, ShiftKeepsALineLevel) {
+    AnnotatePage f;
+    f.choose(Tool::Line, Qt::red, 2);
+    QTest::mousePress(&f.view, Qt::LeftButton, Qt::ShiftModifier, f.at(20, 40));
+    QTest::mouseEvent(QTest::MouseMove, &f.view, Qt::NoButton, Qt::ShiftModifier, f.at(70, 42));
+    QTest::mouseEvent(QTest::MouseMove, &f.view, Qt::NoButton, Qt::ShiftModifier, f.at(120, 44));
+    QTest::mouseRelease(&f.view, Qt::LeftButton, Qt::ShiftModifier, f.at(120, 44));
+    ASSERT_EQ(f.overlay->count(), 1);
+    const std::vector<PointD>& ends = f.overlay->shapes()[0].points;
+    EXPECT_DOUBLE_EQ(ends[1].y, ends[0].y);
+    EXPECT_GT(ends[1].x, ends[0].x + 90);
+    QMetaObject::invokeMethod(f.page, "cancelAnnotate");
+}

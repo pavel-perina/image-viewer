@@ -19,7 +19,8 @@ namespace iv {
 // it; with Select, a drag moves it. Delete removes the shape selected, Esc deselects it. The
 // Text tool draws a box, or with a click places one, whose words are then set from outside.
 // The Number tool places a disc with the next number in it at a click, or where a drag ends.
-// Shift while dragging a box keeps it a square, or an ellipse a circle.
+// Shift while dragging a box keeps it a square, or an ellipse a circle, and a line or an
+// arrow at steps of 15 degrees.
 //
 // The style shown and set (colour, width and so on) is that of the shape selected, or else
 // that of the tool, which each tool remembers between runs.

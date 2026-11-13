@@ -247,7 +247,7 @@ Rectangle {
             wrapMode: Text.WordWrap
             color: Theme.textMuted
             font.pointSize: Qt.application.font.pointSize - 1
-            text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. With Text, drag a box or click, then type here. Number counts up with each click. Hold Shift for a square or a circle. Sizes are in pixels of the image."
+            text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. With Text, drag a box or click, then type here. Number counts up with each click. Hold Shift for a square, a circle, or a line at steps of 15°. Sizes are in pixels of the image."
         }
 
         Item { Layout.fillHeight: true }

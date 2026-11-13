@@ -3,6 +3,8 @@
 // image pixels and calls these. Expected values are worked out by hand from the coordinates
 // given in each test.
 
+#include <cmath>
+
 #include <gtest/gtest.h>
 
 #include "core/shapes.h"
@@ -175,10 +177,35 @@ TEST(Shapes, ABoxKeptEvenIsASquareFromTheCornerOpposite) {
     EXPECT_EQ(box.points, (std::vector<PointD>{{10, 10}, {70, 70}}));
     moveGrip(box, 2, {0, -40}, true);
     EXPECT_EQ(box.points, (std::vector<PointD>{{10, 10}, {-40, -40}}));
-    // A line has no such rule.
-    Shape line = shape(ShapeKind::Line, {{10, 10}, {40, 40}});
-    moveGrip(line, 1, {70, 30}, true);
-    EXPECT_EQ(line.points, (std::vector<PointD>{{10, 10}, {70, 30}}));
+}
+
+// Why: with Shift a line is to be level, upright or at another step of 15 degrees, which a
+// hand does not manage. The end dragged turns about the other end to the nearest step and
+// stays as far from it as the mouse is. From 10, 10: an end at 110, 13 is under 2 degrees
+// off level and 100.04 away, so it goes to that distance exactly level; at 13, -90 it is
+// upright. At 60, 62 it is just past 45 degrees and goes onto the diagonal, both ways equal;
+// near 30 degrees, at a distance of 100, it is 86.6 across and 50 down.
+TEST(Shapes, ALineKeptEvenTurnsInStepsOfFifteenDegrees) {
+    Shape line = shape(ShapeKind::Arrow, {{10, 10}, {40, 40}});
+    moveGrip(line, 1, {110, 13}, true);
+    EXPECT_DOUBLE_EQ(line.points[1].y, 10) << "exactly level";
+    EXPECT_NEAR(line.points[1].x, 10 + std::hypot(100, 3), 1e-9);
+    moveGrip(line, 1, {13, -90}, true);
+    EXPECT_DOUBLE_EQ(line.points[1].x, 10) << "exactly upright";
+    EXPECT_NEAR(line.points[1].y, 10 - std::hypot(3, 100), 1e-9);
+    moveGrip(line, 1, {60, 62}, true);
+    EXPECT_NEAR(line.points[1].x - 10, line.points[1].y - 10, 1e-9);
+    moveGrip(line, 1, {10 + 100 * std::cos(0.5), 10 + 100 * std::sin(0.5)}, true);  // 28.6 degrees
+    EXPECT_NEAR(line.points[1].x, 10 + 86.6025, 1e-3);
+    EXPECT_NEAR(line.points[1].y, 10 + 50, 1e-9);
+    EXPECT_EQ(line.points[0], (PointD{10, 10})) << "the other end stays";
+
+    // The first end turns about the second in the same way.
+    moveGrip(line, 0, {-200, 62}, true);
+    EXPECT_DOUBLE_EQ(line.points[0].y, line.points[1].y);
+    // Without it, the end goes where it is put.
+    moveGrip(line, 1, {70, 30});
+    EXPECT_EQ(line.points[1], (PointD{70, 30}));
 }
 
 // Why: a number is one point, grabbed there, and hit anywhere on its disc, whose radius
