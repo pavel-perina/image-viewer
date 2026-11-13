@@ -19,7 +19,7 @@ Rectangle {
     // What the rows show.
     readonly property var shown: remembered ? remembered : probed
 
-    width: 280
+    width: Theme.panelWidth
     color: Theme.panel
 
     onProbedChanged: remembered = null
@@ -78,13 +78,13 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        anchors.margins: Theme.panelMargin
+        spacing: Theme.panelSpacing
 
         Label {
             text: "Probe"
             font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
+            font.pointSize: Theme.titleSize
         }
 
         RowLayout {
@@ -132,13 +132,13 @@ Rectangle {
                     Label {
                         text: row.modelData.label
                         color: Theme.textMuted
-                        font.pointSize: Qt.application.font.pointSize - 1
+                        font.pointSize: Theme.smallSize
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         Label {
                             text: row.modelData.value
-                            font.family: "monospace"
+                            font.family: Theme.monospace
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
@@ -156,7 +156,7 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
+            font.pointSize: Theme.smallSize
             text: "Click the image to read a pixel at full size. Drag to follow the mouse; arrow keys move by one pixel. The wheel zooms and the right button pans. Ctrl+C copies the hex value."
         }
 
@@ -211,7 +211,7 @@ Rectangle {
                         color: entry.modelData.color
                         border.color: Theme.swatchFrame
                     }
-                    Label { text: entry.modelData.hex; font.family: "monospace" }
+                    Label { text: entry.modelData.hex; font.family: Theme.monospace }
                     Label {
                         text: entry.modelData.values
                         color: Theme.textMuted

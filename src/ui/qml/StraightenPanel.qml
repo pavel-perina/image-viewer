@@ -47,7 +47,7 @@ Rectangle {
     readonly property size resultSize: changes ? view.straightenedSize(roll, pitch, yaw, focal, settings.keepRatio)
                                                : Qt.size(view.imageWidth, view.imageHeight)
 
-    width: 280
+    width: Theme.panelWidth
     color: Theme.panel
 
     Settings {
@@ -132,20 +132,20 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        anchors.margins: Theme.panelMargin
+        spacing: Theme.panelSpacing
 
         Label {
             text: "Straighten"
             font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
+            font.pointSize: Theme.titleSize
         }
 
         Label {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
+            font.pointSize: Theme.smallSize
             text: "Draw lines along edges that should be vertical or horizontal: one levels the picture; "
                   + "two of either kind also correct the perspective. Detect finds them. The right button, "
                   + "or Space with the left one, pans; Delete removes the line chosen; V shows the result."
@@ -221,7 +221,7 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
+            font.pointSize: Theme.smallSize
             text: panel.cameraFocal > 0 ? "Focal length as on 35mm film, from the camera."
                                         : "The camera data has no focal length; it matters for perspective only."
         }

@@ -1,7 +1,7 @@
 pragma Singleton
 import QtQuick
 
-// Every colour of the interface. Main.qml gives all of Fusion's palette roles from here, so none
+// Every colour of the interface, and the sizes that pages share. Main.qml gives all of Fusion's palette roles from here, so none
 // is left to the system theme, which would mix a light system palette with these dark panels.
 QtObject {
     // Fusion's palette roles.
@@ -61,6 +61,14 @@ QtObject {
     // The colours offered for annotations. These are drawn into pictures, not part of the look.
     readonly property list<color> annotationColours: ["#e53935", "#ffeb3b", "#43a047", "#1e88e5", "#8e24aa",
                                                       "#ff9800", "#ffffff", "#000000"]
+
+    // Sizes that more than one page uses. Text follows the size the system asks for.
+    readonly property real titleSize: Qt.application.font.pointSize + 1  // the heading of a panel
+    readonly property real smallSize: Qt.application.font.pointSize - 1  // hints and captions
+    readonly property string monospace: "monospace"                      // values read in columns
+    readonly property int panelWidth: 280   // the tool panels beside the image
+    readonly property int panelMargin: 12   // between a panel's edge and what is in it
+    readonly property int panelSpacing: 8   // between a panel's rows
 
     function withAlpha(color, alpha) { return Qt.rgba(color.r, color.g, color.b, alpha) }
 }

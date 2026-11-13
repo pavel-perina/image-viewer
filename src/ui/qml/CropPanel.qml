@@ -28,7 +28,7 @@ Rectangle {
         return false
     }
 
-    width: 280
+    width: Theme.panelWidth
     color: Theme.panel
 
     readonly property int imageWidth: view.imageWidth
@@ -106,13 +106,13 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        anchors.margins: Theme.panelMargin
+        spacing: Theme.panelSpacing
 
         Label {
             text: "Crop"
             font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
+            font.pointSize: Theme.titleSize
         }
 
         Label { text: "Aspect ratio"; color: Theme.textMuted }
@@ -215,7 +215,7 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
+            font.pointSize: Theme.smallSize
             text: "Drag the edges or corners, or draw a new rectangle on the image. The wheel zooms; the right button, or Space with the left one, pans."
         }
 

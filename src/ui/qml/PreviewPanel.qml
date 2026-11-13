@@ -99,7 +99,7 @@ Rectangle {
                     Layout.fillWidth: true
                     text: surface.view.summary
                     wrapMode: Text.Wrap
-                    font.pointSize: Qt.application.font.pointSize - 1
+                    font.pointSize: Theme.smallSize
                 }
                 Label {
                     objectName: "previewCamera"
@@ -107,7 +107,7 @@ Rectangle {
                     visible: text !== ""
                     text: surface.view.cameraSummary
                     wrapMode: Text.Wrap
-                    font.pointSize: Qt.application.font.pointSize - 1
+                    font.pointSize: Theme.smallSize
                 }
             }
             ToolButton {

@@ -50,7 +50,7 @@ Rectangle {
         { name: "Number", tool: AnnotateOverlay.Number },
     ]
 
-    width: 280
+    width: Theme.panelWidth
     color: Theme.panel
 
     // Keeps the mouse from reaching the image underneath.
@@ -62,13 +62,13 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        anchors.margins: Theme.panelMargin
+        spacing: Theme.panelSpacing
 
         Label {
             text: "Annotate"
             font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
+            font.pointSize: Theme.titleSize
         }
 
         GridLayout {
@@ -246,7 +246,7 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: Theme.textMuted
-            font.pointSize: Qt.application.font.pointSize - 1
+            font.pointSize: Theme.smallSize
             text: "Drag to draw. Click a shape to select it, then drag its grips, or press Delete. With Select, drag a shape to move it. With Text, drag a box or click, then type here. Number counts up with each click. Hold Shift for a square, a circle, or a line at steps of 15°. Sizes are in pixels of the image."
         }
 

@@ -198,6 +198,11 @@ change nothing useful. The first press of a double click does this too, for that
   static files would be the fix. The tests keep the system font, as they do not go through
   `main.cpp`.
 
+* `Theme` also holds the sizes that pages share: the heading and caption text sizes, the
+  monospace family, and the tool panels' width, margin and row spacing. A number that lays
+  out one page alone stays in that page; moving every such number would make `Theme` a list
+  of things used once.
+
 ## Threads
 * Own work queue instead of oneTBB, because visible-first priorities and cancelling work
   that scrolled away are the central requirement. It defaults to 2/3 of the logical cores.

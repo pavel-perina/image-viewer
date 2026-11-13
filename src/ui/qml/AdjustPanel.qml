@@ -43,7 +43,7 @@ Rectangle {
                                     || brightness !== 0 || contrast !== 100 || midtones !== 1
                                     || (!view.grayImage && (saturation !== 100 || view.colorCubeName !== ""))
 
-    width: 280
+    width: Theme.panelWidth
     color: Theme.panel
 
     function start() {
@@ -104,13 +104,13 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
-        spacing: 8
+        anchors.margins: Theme.panelMargin
+        spacing: Theme.panelSpacing
 
         Label {
             text: "Adjust Colours"
             font.bold: true
-            font.pointSize: Qt.application.font.pointSize + 1
+            font.pointSize: Theme.titleSize
         }
 
         // One grid, so the sliders of both groups line up.
