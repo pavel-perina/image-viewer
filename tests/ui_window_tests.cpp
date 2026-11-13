@@ -974,12 +974,16 @@ TEST(Main, EnterAppliesAndEscLeavesWhicheverToolIsAtWork) {
     // A field with the keys keeps Enter.
     QMetaObject::invokeMethod(page, "startStraighten");
     QQuickItem* field = nullptr;
-    for (QQuickItem* item : straighten->findChildren<QQuickItem*>()) {
-        if (item->inherits("QQuickTextField") && item->isVisible()) {
-            field = item;
-            break;
+    // The panel slides in, and its fields show only once it is in view.
+    waitUntil([&] {
+        for (QQuickItem* item : straighten->findChildren<QQuickItem*>()) {
+            if (item->inherits("QQuickTextField") && item->isVisible()) {
+                field = item;
+                return true;
+            }
         }
-    }
+        return false;
+    });
     ASSERT_NE(field, nullptr);
     field->forceActiveFocus();
     ASSERT_TRUE(straighten->property("editing").toBool());
