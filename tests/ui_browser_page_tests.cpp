@@ -460,6 +460,32 @@ TEST(BrowserPage, PreviewCollapsesAndDescribesItsImage) {
     EXPECT_EQ(preview->source(), f.context.currentPath());
 }
 
+// Why: the folders and the preview are panes alike, so each has a caption, and the captions
+// start at one place: the preview's caret, which collapses it, is at the right, out of the
+// way. The folders do not collapse. Input: the browser page. The truth is the captions' words
+// in the window, and the folders' caption having no caret shown.
+TEST(BrowserPage, TheFoldersAndThePreviewHaveCaptionsThatStartAtOnePlace) {
+    BrowserPageFixture f;
+    QQuickItem* folders = findNamed(f.view.rootObject(), QStringLiteral("foldersHeader"));
+    QQuickItem* preview = findNamed(f.view.rootObject(), QStringLiteral("previewHeader"));
+    ASSERT_NE(folders, nullptr);
+    ASSERT_NE(preview, nullptr);
+    const auto words = [](QQuickItem* header) -> QQuickItem* {
+        for (QQuickItem* child : header->childItems()) {
+            if (child->property("text").isValid() && child->property("elide").isValid()) {
+                return child;
+            }
+        }
+        return nullptr;
+    };
+    ASSERT_NE(words(folders), nullptr);
+    ASSERT_NE(words(preview), nullptr);
+    EXPECT_EQ(words(folders)->property("text").toString(), QStringLiteral("Folders"));
+    EXPECT_EQ(words(folders)->mapToScene(QPointF()).x(), words(preview)->mapToScene(QPointF()).x());
+    EXPECT_FALSE(folders->property("collapsible").toBool());
+    EXPECT_TRUE(preview->property("collapsible").toBool());
+}
+
 TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     BrowserPageFixture f;
     QSettings().remove(QStringLiteral("Folders"));

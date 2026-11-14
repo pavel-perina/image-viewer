@@ -70,17 +70,31 @@ SplitView {
         SplitView.preferredWidth: 300
         SplitView.minimumWidth: 120
 
-        FolderTree {
-            id: folderTree
-            objectName: "folderTree"
+        // The folders under a caption as the preview has, though they do not collapse.
+        ColumnLayout {
             SplitView.fillHeight: true
             SplitView.minimumHeight: 80
-            context: page.context
-            onFolderMenuRequested: (path) => page.folderMenuRequested(path)
-            onRenameRequested: (path) => page.folderRenameRequested(path)
-            onTrashRequested: (path) => page.folderTrashRequested(path)
-            onFilesRequested: grid.forceActiveFocus()
-            onFilesDropped: (paths, folder, moving) => page.filesDropped(paths, folder, moving)
+            spacing: 0
+
+            PaneHeader {
+                objectName: "foldersHeader"
+                Layout.fillWidth: true
+                Layout.preferredHeight: previewPanel.headerHeight
+                text: "Folders"
+            }
+
+            FolderTree {
+                id: folderTree
+                objectName: "folderTree"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                context: page.context
+                onFolderMenuRequested: (path) => page.folderMenuRequested(path)
+                onRenameRequested: (path) => page.folderRenameRequested(path)
+                onTrashRequested: (path) => page.folderTrashRequested(path)
+                onFilesRequested: grid.forceActiveFocus()
+                onFilesDropped: (paths, folder, moving) => page.filesDropped(paths, folder, moving)
+            }
         }
 
         PreviewPanel {

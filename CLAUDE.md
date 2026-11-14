@@ -54,7 +54,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   `FileActions.qml` (what the file menus do), `FileChooser.qml`.
 * **QML shared controls:** `AppDialog`, `AppMenu`, `AppMenuItem`, `BarButton`, `AppScrollBar`,
   `MessageBox`, `NumberRow` (a label with a number to set), `DecimalSpinBox`, `ListFrame` (what
-  a list stands on: base colour and a frame), `SearchCombo` (a combo box with
+  a list stands on: base colour and a frame), `PaneHeader` (a pane's caption, which may collapse
+  it), `SearchCombo` (a combo box with
   fzf-style search, over `fuzzy_list_model`), `ToolPanel` (the base of every tool's panel:
   heading, rows, Cancel and Apply), `Theme` (every colour, and the sizes pages share).
 

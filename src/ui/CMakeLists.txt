@@ -94,6 +94,7 @@ qt_add_qml_module(iv_ui
         qml/Main.qml
         qml/MessageBox.qml
         qml/NumberRow.qml
+        qml/PaneHeader.qml
         qml/PathBar.qml
         qml/PreviewPanel.qml
         qml/ProbePanel.qml

@@ -317,6 +317,9 @@ change nothing useful. The first press of a double click does this too, for that
   parents in full, in the background, and the folder is then centred as they fill in above it.
 * The buttons to move around stand apart from the path, with arrows unlike its carets, because
   they looked like part of it. One star holds favourites and recent folders, kept by `FolderLists`.
+* The folders and the preview each have a caption (`PaneHeader`), so they read as panes alike.
+  Only the preview collapses, and its caret is at the right, so that both captions start at one
+  place; the tree collapsing would leave nothing to browse by.
 * In the large view the wheel moves between images and Ctrl+wheel zooms. The preview has no other
   use for the wheel, so there it keeps zooming, which also works with Ctrl.
 * Keys go to what has the focus. In the browser the thumbnails and the folder tree each handle the
