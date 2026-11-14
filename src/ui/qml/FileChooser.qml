@@ -6,7 +6,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import ImageViewer
 
-// Chooses a file to open, a name to save as, or a folder, inside the window. The places and the
+// Chooses a file to open, a name to save as, or a folder, in a window of its own. The places and the
 // folder tree are on the left, the path bar above and the files of the folder in the middle, as a
 // brief or a detailed list.
 //
@@ -14,7 +14,7 @@ import ImageViewer
 // only fills in the name. Choosing another type changes the extension of the name, typing a known
 // extension chooses its type, and a name without one gets the type's. A name of a folder opens
 // that folder instead, and a file that exists is replaced only when the user says so.
-AppDialog {
+DialogWindow {
     id: chooser
     objectName: "fileChooser"
 
@@ -41,10 +41,11 @@ AppDialog {
     // The two buttons are as wide as each other, and a little wider than either needs.
     readonly property real buttonWidth: Math.max(acceptButton.implicitWidth, cancelButton.implicitWidth, 120)
 
-    width: Math.round(parent.width * 0.85)
-    height: Math.round(parent.height * 0.85)
+    // One size for every chooser, kept from one time to the next.
+    sizeKey: "fileChooser"
+    initialWidth: 980
+    initialHeight: 680
     padding: 10
-    closePolicy: Popup.CloseOnEscape
 
     // Opens the chooser in a folder, else where it was last, else in the home folder, with a name
     // filled in for saving.
@@ -184,18 +185,17 @@ AppDialog {
     }
 
     onTypeIndexChanged: typeBox.currentIndex = typeIndex
-    onOpened: {
-        if (mode === "save") {
+    onOpenedChanged: {
+        if (!opened) {
+            if (!finished)
+                cancelled()
+        } else if (mode === "save") {
             nameField.forceActiveFocus()
             const dot = nameField.text.lastIndexOf(".")
             nameField.select(0, dot > 0 ? dot : nameField.text.length)
         } else {
             fileList.forceActiveFocus()
         }
-    }
-    onClosed: {
-        if (!finished)
-            cancelled()
     }
 
     Settings {
@@ -215,7 +215,8 @@ AppDialog {
                                                                                           : chooser.types[chooser.typeIndex].extensions
     }
 
-    contentItem: ColumnLayout {
+    ColumnLayout {
+        anchors.fill: parent
         spacing: 8
 
         RowLayout {

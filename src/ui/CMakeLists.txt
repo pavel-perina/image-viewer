@@ -79,6 +79,7 @@ qt_add_qml_module(iv_ui
         qml/CompareSplitter.qml
         qml/CropPanel.qml
         qml/DecimalSpinBox.qml
+        qml/DialogWindow.qml
         qml/FileActions.qml
         qml/FolderButton.qml
         qml/FileChooser.qml

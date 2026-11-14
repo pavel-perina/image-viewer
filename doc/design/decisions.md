@@ -1148,3 +1148,20 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 * Written from scratch on Qt's templates; nothing is taken from Qt's own styles, which are
   under other licences.
 
+## Large dialogs are windows of their own
+
+* The file chooser is a `DialogWindow`: a real window marked a dialog (`Qt.Dialog`), modal to
+  the window it belongs to, which the system decorates, moves and resizes, and which may leave
+  the main window or go to another screen. Drawn inside the main window, as it was, it could do
+  none of it, and its own title strip only imitated a window.
+* Short questions (Replace the file?, the name of a folder, messages) stay in the window as an
+  `AppDialog`: they need no room and should not wander off. Others move when they need resizing.
+* It keeps the calls an `AppDialog` has (`open()`, `close()`, `opened`), so its users did not
+  change. Its size is kept in the settings by a name of its own (one for every file chooser),
+  and fitted to the screen. It is placed over the middle of its window where the system allows;
+  on Wayland the compositor places it.
+* Escape closes it after what has the keys has passed Escape on, so that it first ends the
+  editing of the path, as in the browser.
+* Its title bar is the system's. On Windows a dialog has no icon there and no taskbar button; on
+  Linux the window decoration decides, and some show the program's icon on dialogs too.
+

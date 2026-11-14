@@ -647,6 +647,9 @@ struct ChooserFixture {
     QTemporaryDir dir;
     QQmlEngine engine;
     std::unique_ptr<QObject> root;
+    // The window the chooser belongs to, and the chooser's own window, where clicks, keys and
+    // pictures go.
+    QQuickWindow* owner = nullptr;
     QQuickWindow* window = nullptr;
     QObject* chooser = nullptr;
     std::unique_ptr<QSignalSpy> chosen;
@@ -674,8 +677,9 @@ struct ChooserFixture {
         )", QUrl());
         EXPECT_TRUE(component.isReady()) << component.errorString().toStdString();
         root.reset(component.create());
-        window = qobject_cast<QQuickWindow*>(root.get());
+        owner = qobject_cast<QQuickWindow*>(root.get());
         chooser = root->property("chooser").value<QObject*>();
+        window = qobject_cast<QQuickWindow*>(chooser);
         chooser->setProperty("mode", mode);
         chooser->setProperty("types", QVariantList{
             QVariantMap{{"label", "JPEG"}, {"extensions", QStringList{"jpg", "jpeg"}}},
@@ -683,7 +687,7 @@ struct ChooserFixture {
         });
         chosen = std::make_unique<QSignalSpy>(chooser, SIGNAL(chosen(QString)));
         cancelled = std::make_unique<QSignalSpy>(chooser, SIGNAL(cancelled()));
-        EXPECT_TRUE(waitUntil([&] { return window->isExposed(); }));
+        EXPECT_TRUE(waitUntil([&] { return owner->isExposed(); }));
     }
 
     QObject* part(const char* name) const { return chooser->property(name).value<QObject*>(); }
@@ -694,7 +698,7 @@ struct ChooserFixture {
 
     void start(const QString& name) {
         QMetaObject::invokeMethod(chooser, "start", Q_ARG(QVariant, dir.path()), Q_ARG(QVariant, name));
-        ASSERT_TRUE(waitUntil([&] { return chooser->property("opened").toBool(); }));
+        ASSERT_TRUE(waitUntil([&] { return chooser->property("opened").toBool() && window->isExposed(); }));
         ASSERT_TRUE(waitUntil([&] { return !listing()->property("loading").toBool() && directory() == dir.path(); }));
     }
 

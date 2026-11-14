@@ -672,6 +672,59 @@ TEST(FileChooser, EscapeCancels) {
     EXPECT_EQ(f.chosen->size(), 0);
 }
 
+// Why: the chooser is large and worth resizing, so it is a window of its own that the system
+// decorates, moves and resizes, rather than a sheet drawn inside the main window, which could
+// do none of it. Input: the chooser opened over its window. The truth is the windows: two of
+// them, the chooser marked a dialog, modal, and belonging to the window it was declared in.
+// Why: Escape closes the chooser, but while the path is being edited it only ends that, as
+// it does in the browser; the chooser's own Escape waits for what has the keys to pass it on.
+// Input: the path bar of the chooser put in editing, then Escape twice. The truth is the
+// chooser open after the first, with the editing ended, and cancelled after the second.
+TEST(FileChooser, EscapeWhileEditingThePathOnlyEndsTheEditing) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    auto* bar = f.chooser->findChild<QQuickItem*>(QStringLiteral("chooserPathBar"));
+    ASSERT_NE(bar, nullptr);
+    QMetaObject::invokeMethod(bar, "edit");
+    ASSERT_TRUE(waitUntil([&] { return bar->property("editing").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return !bar->property("editing").toBool(); }));
+    EXPECT_TRUE(f.chooser->property("opened").toBool());
+    EXPECT_EQ(f.cancelled->size(), 0);
+
+    f.item("fileList")->forceActiveFocus();
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return f.cancelled->size() == 1; }));
+}
+
+TEST(FileChooser, IsADialogWindowOfItsOwnOverItsWindow) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    ASSERT_NE(f.window, nullptr);
+    EXPECT_NE(f.window, f.owner);
+    EXPECT_EQ(f.window->transientParent(), f.owner);
+    EXPECT_EQ(f.window->flags() & Qt::WindowType_Mask, Qt::Dialog);
+    EXPECT_NE(f.window->modality(), Qt::NonModal);
+    EXPECT_TRUE(f.window->isVisible());
+}
+
+// Why: a chooser made larger stays so; opening it at its first size each time would undo it.
+// Input: the chooser opened, resized, closed and opened again. The truth is its size then,
+// which is kept in the settings (of the test's own home).
+TEST(FileChooser, KeepsTheSizeItWasGiven) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    f.window->resize(760, 520);
+    ASSERT_TRUE(waitUntil([&] { return f.window->width() == 760 && f.window->height() == 520; }));
+    QMetaObject::invokeMethod(f.chooser, "close");
+    ASSERT_TRUE(waitUntil([&] { return !f.window->isVisible(); }));
+    f.window->resize(400, 300);  // as if the window had been made anew at another size
+
+    f.start(QStringLiteral("a.jpg"));
+    EXPECT_EQ(f.window->width(), 760);
+    EXPECT_EQ(f.window->height(), 520);
+}
+
 TEST(FileChooser, OpenEntersFoldersAndOpensFiles) {
     ChooserFixture f(QStringLiteral("open"));
     f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
@@ -765,6 +818,10 @@ TEST(FileChooser, ThePlacesTheFoldersAndTheFilesAreListsAlike) {
     EXPECT_TRUE(near(filesBox.bottomLeft() + QPointF(filesBox.width() / 2, -10))) << "below the files";
 }
 
+// Why: letters typed into the name must not crop, straighten or move between images, as the
+// main window's shortcuts would. The chooser is a window of its own, so its keys are its own.
+// Input: the save chooser over a browser with one image, and S, X, Space and Backspace typed in
+// it. The truth is the name holding what was typed and the main window still browsing.
 TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
     MainFixture f(1);
     ASSERT_NE(f.window, nullptr);
@@ -775,17 +832,19 @@ TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
 
     auto* chooser = window->findChild<QObject*>(QStringLiteral("saveDialog"));
     ASSERT_NE(chooser, nullptr);
+    auto* chooserWindow = qobject_cast<QQuickWindow*>(chooser);
+    ASSERT_NE(chooserWindow, nullptr);
     QMetaObject::invokeMethod(chooser, "start", Q_ARG(QVariant, dir.path()), Q_ARG(QVariant, QStringLiteral("a.jpg")));
     auto* field = chooser->property("nameField").value<QQuickItem*>();
-    ASSERT_TRUE(waitUntil([&] { return field->hasActiveFocus(); }));
+    ASSERT_TRUE(waitUntil([&] { return field->hasActiveFocus() && chooserWindow->isExposed(); }));
     // S straightens and X crops the selected image, Space and Backspace move between images.
-    QTest::keyClick(window, Qt::Key_End);
-    typeText(window, QStringLiteral("sx p"));
-    QTest::keyClick(window, Qt::Key_Backspace);
+    QTest::keyClick(chooserWindow, Qt::Key_End);
+    typeText(chooserWindow, QStringLiteral("sx p"));
+    QTest::keyClick(chooserWindow, Qt::Key_Backspace);
     EXPECT_EQ(field->property("text").toString(), QStringLiteral("a.jpgsx "));
     EXPECT_FALSE(window->property("viewing").toBool());
     EXPECT_TRUE(chooser->property("opened").toBool());
-    QTest::keyClick(window, Qt::Key_Escape);
+    QTest::keyClick(chooserWindow, Qt::Key_Escape);
 }
 
 TEST(Keys, TheThumbnailsHaveTheKeysAfterEditingThePathOrAName) {
