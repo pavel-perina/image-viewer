@@ -358,7 +358,10 @@ TEST(BrowserPage, ScrollbarAppearsOverItsListInTheAccentColourAndFades) {
     const QImage without = f.view.grabWindow();
     bar->setVisible(true);
     const QColor under = without.pixelColor(handle);
-    const QColor accent(QStringLiteral("#3d7ab8"));
+    // Theme's accent, whatever the palette is.
+    QObject* theme = f.view.engine()->singletonInstance<QObject*>("ImageViewer", "Theme");
+    ASSERT_NE(theme, nullptr);
+    const QColor accent = theme->property("accent").value<QColor>();
     const QColor seen = with.pixelColor(handle);
     EXPECT_NEAR(seen.red(), under.red() * 0.8 + accent.red() * 0.2, 2);
     EXPECT_NEAR(seen.green(), under.green() * 0.8 + accent.green() * 0.2, 2);
