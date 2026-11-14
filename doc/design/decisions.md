@@ -608,6 +608,10 @@ the question before leaving an edited image. Still planned lists the rest.
   options is taller than a window that is not full screen). The heading and the buttons stay
   in view. It scrolls only when the rows do not fit, so a drag on a panel that fits is never
   taken for scrolling, and a field reached with Tab is scrolled into view.
+* The scroll bar sits in the panel's right margin, so the rows are as wide whether they scroll
+  or not. They used to narrow to make room for it, and a panel of wrapped text that only just
+  fitted then switched between the two widths each frame: the Straighten panel did so with
+  the program's own controls, and pictures stopped loading.
 * The rows are the default property, so a derived panel reads as a list of its controls. Only
   items become rows: `Settings`, `Binding`, `Connections` and the like may sit among them. A
   dialog a panel opens must not be an item among the rows; Adjust makes its chooser of colour
