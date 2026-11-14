@@ -13,15 +13,17 @@
 #include "ui/thumbnail_provider.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
+Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
 
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
     QCoreApplication::setApplicationVersion(QStringLiteral(IV_BUILD_COMMIT ", built " IV_BUILD_TIME));
-    // Fusion unless another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Material, for one.
+    // Our own style (src/ui/controls), which takes from Fusion what it does not redo, unless
+    // another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Fusion, for one.
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
-        QQuickStyle::setStyle(QStringLiteral("Fusion"));
+        QQuickStyle::setStyle(QStringLiteral("ImageViewerStyle"));
     }
 
     // The same font everywhere, at the size the system asks for. What Inter lacks, such as Chinese

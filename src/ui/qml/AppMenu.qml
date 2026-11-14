@@ -6,6 +6,10 @@ import QtQuick.Controls
 Menu {
     id: menu
 
+    // Actions and submenus put straight in the menu get the same line as AppMenuItem: the
+    // column for a check box or an icon, and the shortcut.
+    delegate: AppMenuItem {}
+
     width: {
         let widest = implicitWidth
         for (let i = 0; i < count; ++i) {

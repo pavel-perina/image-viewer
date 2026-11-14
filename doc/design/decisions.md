@@ -1102,3 +1102,28 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 * The rules are in core, without Qt, as they are arithmetic worth testing; `ThemePalette`
   only hands their result to QML as a map that `Theme` binds to.
 
+## The controls have a style of their own
+
+* Buttons, check boxes, combo boxes, spin boxes, sliders and menus are drawn by a Qt Quick
+  Controls style of the program's own, `ImageViewerStyle` in `src/ui/controls`, which takes
+  every other control from Fusion. Pages keep writing `Button` and the like, so a control can be
+  redone without touching them, and one at a time.
+* Each control is a few rounded rectangles: a base (a soft gradient, or the colour of a field),
+  a light line inside the top edge, a lighter or darker layer for hover and press, and a ring in
+  the accent for keyboard focus. Every colour comes from `Theme`, so the palette's hue reaches
+  them too; sizes too (`controlHeight` 28, a multiple of 4 so that it stays whole at 125%).
+* Three kinds of button, by what pressing does: the default (`highlighted`, Apply and the like)
+  filled with the accent, the ordinary one, and the quiet one (`flat`), text alone. Fusion's
+  default button mixed the accent into the plain colour and could hardly be told apart.
+* A check box shows when it is off, with a clear edge, which Fusion's hardly did on the dark
+  palette. Menus keep a column on the left for a check box or an icon on every line, so the
+  words of all lines start at one place; before, a checkable line pushed its words right. Plain
+  `Action`s in an `AppMenu` get the same line, with their shortcut.
+* Qt's SpinBox counts in whole numbers; `DecimalSpinBox` counts in hundredths and shows the
+  point. It is not named DoubleSpinBox, which newer Qt has.
+* The tests run in this style whatever the environment says, so that they see what people
+  see. A gallery of the controls in their states is part of the tests, and can be saved as a
+  picture (`IV_GALLERY_PNG`).
+* Written from scratch on Qt's templates; nothing is taken from Qt's own styles, which are
+  under other licences.
+

@@ -25,6 +25,8 @@ target_include_directories(imageviewer PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/gener
 target_link_libraries(imageviewer PRIVATE
     iv_ui
     iv_uiplugin
+    iv_style
+    iv_styleplugin
     Qt6::QuickControls2
 )
 

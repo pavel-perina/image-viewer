@@ -1,6 +1,9 @@
 #include "ui_test_support.h"
 
+#include <QQuickStyle>
+
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
+Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
 
 int main(int argc, char** argv) {
     // Tests run side by side, and must neither see each other's settings nor touch the user's.
@@ -13,6 +16,9 @@ int main(int argc, char** argv) {
     qputenv("XDG_CACHE_HOME", (settingsFolder.path() + QStringLiteral("/cache")).toLocal8Bit());
     QDir().mkpath(settingsFolder.path() + QStringLiteral("/share"));  // Trash is left for Qt to make
     QGuiApplication app(argc, argv);
+    // The program's own style, whatever QT_QUICK_CONTROLS_STYLE says, so that the tests see
+    // the controls as people do.
+    QQuickStyle::setStyle(QStringLiteral("ImageViewerStyle"));
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsFolder.path());
 #ifdef Q_OS_WIN

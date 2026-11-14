@@ -71,11 +71,12 @@ add_executable(iv_ui_tests
     ui_image_view_tests.cpp
     ui_annotate_tests.cpp
     ui_search_combo_tests.cpp
+    ui_controls_tests.cpp
     ui_edit_tests.cpp
     ui_file_tests.cpp
     ui_window_tests.cpp
 )
-target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick Qt6::Test)
+target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_style iv_styleplugin Qt6::QuickControls2 iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick Qt6::Test)
 # Every UI test file includes the same Qt Quick and GoogleTest headers, which take most of the time.
 target_precompile_headers(iv_ui_tests PRIVATE ui_test_support.h)
 # The directory tree shows the system's temporary folder, where tests running at the same time make

@@ -90,6 +90,10 @@ QtObject {
     readonly property int panelWidth: 280   // the tool panels beside the image
     readonly property int panelMargin: 12   // between a panel's edge and what is in it
     readonly property int panelSpacing: 8   // between a panel's rows
+    readonly property int controlHeight: 28 // buttons, fields, combo boxes: a multiple of 4, whole at 125%
+    readonly property int controlRadius: 4  // their corners
+    readonly property int controlPadding: 12  // between a control's edge and its text
+    readonly property int menuMarkWidth: 18  // the column of a menu for a check box or an icon
 
     function withAlpha(color, alpha) { return Qt.rgba(color.r, color.g, color.b, alpha) }
 }
