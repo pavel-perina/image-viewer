@@ -2,6 +2,8 @@
 
 #include <QQuickStyle>
 
+#include "ui/program_font.h"
+
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
 
@@ -19,6 +21,9 @@ int main(int argc, char** argv) {
     // The program's own style, whatever QT_QUICK_CONTROLS_STYLE says, so that the tests see
     // the controls as people do.
     QQuickStyle::setStyle(QStringLiteral("ImageViewerStyle"));
+    // The program's font at one size, KDE's default, so that layouts and pictures are the same
+    // wherever the tests run, rather than at whatever the platform gives (9 points offscreen).
+    iv::useProgramFont(10);
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsFolder.path());
 #ifdef Q_OS_WIN

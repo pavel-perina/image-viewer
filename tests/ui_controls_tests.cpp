@@ -7,6 +7,8 @@
 
 #include "ui_test_support.h"
 
+#include <QFontInfo>
+
 namespace {
 
 // Every control in the states worth seeing, in the window's palette from Theme, as Main.qml gives it.
@@ -351,4 +353,15 @@ TEST(Controls, ChoicesOfOneShowRoundMarks) {
 
     auto* radio = g.item("radioOn")->property("indicator").value<QQuickItem*>();
     EXPECT_DOUBLE_EQ(radio->property("radius").toDouble(), radio->width() / 2);
+}
+
+// Why: the program brings its own font, so that it looks alike on every system and does not
+// depend on what is installed (the tests run with an empty home, where nothing of the user's
+// is). Input: the gallery, after useProgramFont as main() and the tests call it. The truth is
+// the family a button's text is drawn in: the bundled Inter, at the size asked for.
+TEST(Controls, TheControlsUseTheProgramsOwnFont) {
+    Gallery g;
+    const QFont font = g.item("apply")->property("font").value<QFont>();
+    EXPECT_TRUE(QFontInfo(font).family().startsWith(QStringLiteral("Inter"))) << QFontInfo(font).family().toStdString();
+    EXPECT_DOUBLE_EQ(font.pointSizeF(), 10);
 }

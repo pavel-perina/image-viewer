@@ -73,7 +73,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
       QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
           build/tests/iv_ui_tests --gtest_filter='Crop.*'
 
-* The tests use the program's own style, whatever `QT_QUICK_CONTROLS_STYLE` says.
+* The tests use the program's own style, whatever `QT_QUICK_CONTROLS_STYLE` says, and its own
+  font (Inter, bundled) at 10 points, whatever the platform gives.
 * The software renderer skips the GPU shader tests. Run those under Xvfb with OpenGL.
 * Tests use made-up images and a temporary home folder. Never read the user's pictures, cache
   or settings.

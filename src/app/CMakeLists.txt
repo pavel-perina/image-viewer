@@ -2,14 +2,6 @@
 # debugger's output, or to DebugView outside one.
 qt_add_executable(imageviewer WIN32 main.cpp)
 
-# Inter 4.1 (SIL Open Font License, assets/fonts/Inter-LICENSE.txt), every weight in the one
-# variable file. BASE keeps it at :/fonts/.
-qt_add_resources(imageviewer "fonts"
-    PREFIX "/"
-    BASE ${CMAKE_SOURCE_DIR}/assets
-    FILES ${CMAKE_SOURCE_DIR}/assets/fonts/InterVariable.ttf
-)
-
 # Which build this is, for the About dialog: the commit, "-dirty" if changed, and the time.
 # Made at every build, not at configure time, so it never goes stale.
 set(IV_BUILD_INFO ${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.h)

@@ -1,7 +1,5 @@
 #include <QCoreApplication>
 #include <QDir>
-#include <QFont>
-#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
@@ -10,6 +8,7 @@
 
 #include "build_info.h"
 #include "ui/color_settings.h"
+#include "ui/program_font.h"
 #include "ui/thumbnail_provider.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
@@ -26,13 +25,7 @@ int main(int argc, char* argv[]) {
         QQuickStyle::setStyle(QStringLiteral("ImageViewerStyle"));
     }
 
-    // The same font everywhere, at the size the system asks for. What Inter lacks, such as Chinese
-    // file names, comes from the system's fonts as before.
-    if (const int id = QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/InterVariable.ttf")); id >= 0) {
-        QFont font = QGuiApplication::font();
-        font.setFamilies(QFontDatabase::applicationFontFamilies(id));
-        QGuiApplication::setFont(font);
-    }
+    iv::useProgramFont();  // at the size the system asks for
 
     iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
 

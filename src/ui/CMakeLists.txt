@@ -44,6 +44,8 @@ qt_add_library(iv_ui STATIC
     overlay_style.h
     probe_overlay.cpp
     probe_overlay.h
+    program_font.cpp
+    program_font.h
     shape_painter.cpp
     shape_painter.h
     image_view.cpp
@@ -109,6 +111,14 @@ qt_add_qml_module(iv_ui
         qml/ToolPanel.qml
         qml/ViewSettings.qml
         qml/ViewerPage.qml
+)
+
+# Inter 4.1 (SIL Open Font License, assets/fonts/Inter-LICENSE.txt), every weight in the one
+# variable file, for useProgramFont. BASE keeps it at :/fonts/.
+qt_add_resources(iv_ui "fonts"
+    PREFIX "/"
+    BASE ${CMAKE_SOURCE_DIR}/assets
+    FILES ${CMAKE_SOURCE_DIR}/assets/fonts/InterVariable.ttf
 )
 
 # The shaders live in assets/shaders; BASE keeps them at qrc:/shaders/.
