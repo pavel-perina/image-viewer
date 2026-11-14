@@ -88,6 +88,7 @@ qt_add_qml_module(iv_ui
         qml/ImageSurface.qml
         qml/JpegMenu.qml
         qml/LevelsControl.qml
+        qml/ListFrame.qml
         qml/LockButton.qml
         qml/InfoPanel.qml
         qml/Main.qml

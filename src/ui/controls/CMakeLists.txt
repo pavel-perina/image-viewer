@@ -20,6 +20,8 @@ qt_add_qml_module(iv_style
         MenuSeparator.qml
         Slider.qml
         SpinBox.qml
+        SplitView.qml
+        TextField.qml
 )
 
 target_link_libraries(iv_style PUBLIC Qt6::Quick Qt6::QuickControls2)

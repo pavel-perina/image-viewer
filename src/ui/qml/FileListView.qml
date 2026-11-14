@@ -94,11 +94,9 @@ FocusScope {
         id: fontMetrics
     }
 
-    Rectangle {
+    ListFrame {
         anchors.fill: parent
-        color: list.palette.base
-        border.width: 1
-        border.color: list.activeFocus ? Theme.accent : Theme.withAlpha(list.palette.windowText, 0.25)
+        focused: list.activeFocus
     }
 
     Label {

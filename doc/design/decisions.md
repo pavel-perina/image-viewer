@@ -1123,6 +1123,15 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   palette. Menus keep a column on the left for a check box or an icon on every line, so the
   words of all lines start at one place; before, a checkable line pushed its words right. Plain
   `Action`s in an `AppMenu` get the same line, with their shortcut.
+* Text fields, combo boxes, spin boxes and the path bar are one kind of thing, a field, and look
+  alike: the colour of a field, an edge in `mid`, the same corners and the height of a button.
+  In the file chooser each field has its button on its row (Name and Save, Type and Cancel), in
+  one grid, so they line up across.
+* Lists side by side stand on `ListFrame`, the colour of a field with a thin frame; in the file
+  chooser the places and the folders as well as the files, which alone had one before. The gap
+  between panes of a `SplitView` is the same across as down, of the window's colour, with a
+  line only under the mouse: Fusion's was a bright line, thicker one way than the other where a
+  frame stood beside it.
 * Qt's SpinBox counts in whole numbers; `DecimalSpinBox` counts in hundredths and shows the
   point. It is not named DoubleSpinBox, which newer Qt has.
 * The tests run in this style whatever the environment says, so that they see what people

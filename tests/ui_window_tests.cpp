@@ -710,6 +710,61 @@ TEST(FileChooser, FolderModeChoosesTheSelectedFolderOrElseTheOneShown) {
     EXPECT_EQ(f.chosen->at(1).at(0).toString(), f.dir.filePath(QStringLiteral("sub")));
 }
 
+// Why: the name, the type and the two buttons beside them are read as two rows; a field
+// taller than the list below it, or a button off its field's line, looks careless. Input: the
+// chooser saving. The truth is the items' places and sizes in the window: each row's field
+// and button are as high as each other and start at the same height.
+TEST(FileChooser, EachFieldIsAsHighAsItsButtonAndOnItsLine) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    QQuickItem* name = f.item("nameField");
+    QQuickItem* type = f.item("typeBox");
+    QQuickItem* save = f.item("acceptButton");
+    auto* cancel = f.chooser->findChild<QQuickItem*>(QStringLiteral("cancelButton"));
+    ASSERT_NE(cancel, nullptr);
+    const auto top = [](QQuickItem* item) { return item->mapToScene(QPointF()).y(); };
+    EXPECT_EQ(name->height(), type->height());
+    EXPECT_EQ(name->height(), save->height());
+    EXPECT_EQ(type->height(), cancel->height());
+    EXPECT_EQ(top(name), top(save));
+    EXPECT_EQ(top(type), top(cancel));
+    EXPECT_EQ(save->width(), cancel->width());
+}
+
+// Why: the places, the folders and the files are three lists side by side and are to read as
+// such: on the same colour, each framed, and with the same gap between them across as down.
+// Input: the chooser saving, in the window's palette from Theme. The truth is the frames'
+// places, and the colour of an empty spot of each list against Theme.base.
+TEST(FileChooser, ThePlacesTheFoldersAndTheFilesAreListsAlike) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    auto* places = f.chooser->findChild<QQuickItem*>(QStringLiteral("placesView"));
+    QQuickItem* files = f.item("fileList");
+    ASSERT_NE(places, nullptr);
+    QQuickItem* placesFrame = places->parentItem();
+    QQuickItem* tree = f.chooser->findChild<QQuickItem*>(QStringLiteral("chooserTree"));
+    ASSERT_NE(tree, nullptr);
+    QQuickItem* treeFrame = tree->parentItem()->parentItem();  // the tree, its loader, the frame
+    const QRectF placesBox = placesFrame->mapRectToScene(placesFrame->boundingRect());
+    const QRectF treeBox = treeFrame->mapRectToScene(treeFrame->boundingRect());
+    const QRectF filesBox = files->mapRectToScene(files->boundingRect());
+    const double down = treeBox.top() - placesBox.bottom();
+    const double across = filesBox.left() - placesBox.right();
+    EXPECT_GT(down, 0);
+    EXPECT_EQ(down, across);
+
+    QObject* theme = f.engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    const QColor base = theme->property("base").value<QColor>();
+    const QImage shot = f.window->grabWindow();
+    const auto near = [&](QPointF at) {
+        const QColor c = shot.pixelColor(at.toPoint());
+        return std::abs(c.red() - base.red()) + std::abs(c.green() - base.green()) + std::abs(c.blue() - base.blue()) <= 6;
+    };
+    EXPECT_TRUE(near(placesBox.bottomLeft() + QPointF(placesBox.width() / 2, -6))) << "below the last place";
+    EXPECT_TRUE(near(treeBox.bottomLeft() + QPointF(treeBox.width() - 30, -3))) << "the tree, near its foot";
+    EXPECT_TRUE(near(filesBox.bottomLeft() + QPointF(filesBox.width() / 2, -10))) << "below the files";
+}
+
 TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
     MainFixture f(1);
     ASSERT_NE(f.window, nullptr);
