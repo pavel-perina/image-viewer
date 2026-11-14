@@ -1079,3 +1079,22 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   rebuild within one minute recompiles nothing; only `main.cpp` includes it.
 * Without git, as in an unpacked archive, it says "unknown".
 * The project version stays in `CMakeLists.txt` for the installer's file name.
+
+## The palette is worked out from a hue
+
+* `Theme`'s colours, but for those that must stay fixed, come from three choices: a hue, how
+  colourful accents are, and how much the hue tints surfaces and text (`core/palette`, through
+  `ThemePalette`). A palette then changes by one number, and everything bound to `Theme`
+  follows at once, Fusion's palette and the tools on the image included.
+* Each role has a fixed lightness in Oklab, and only its hue and chroma follow the choices, so
+  contrast stays the same whatever hue is picked; the tests check text against every surface,
+  and the order of the surfaces, all round the circle. Chroma the screen cannot show is reduced
+  rather than clipped per channel, which would shift hue and lightness.
+* The lightnesses come from a willow-green mock-up, with accents and text a little brighter:
+  dark, calm surfaces with a little green, a light accent for marks and focus, and a darker one
+  for selection and the default button.
+* Fixed on purpose: the gray around a picture (a tint would shift how its colours look),
+  warnings and dangers, folders, annotation colours, and what tools draw on the image.
+* The rules are in core, without Qt, as they are arithmetic worth testing; `ThemePalette`
+  only hands their result to QML as a map that `Theme` binds to.
+

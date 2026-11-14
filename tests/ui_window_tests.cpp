@@ -1,5 +1,6 @@
 #include "ui_test_support.h"
 #include "ui/app_info.h"
+#include "ui/theme_palette.h"
 
 TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
     QTemporaryDir dir;
@@ -1000,4 +1001,30 @@ TEST(Main, EnterAppliesAndEscLeavesWhicheverToolIsAtWork) {
     EXPECT_FALSE(f.window->property("toolActive").toBool());
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
     EXPECT_TRUE(f.window->property("viewing").toBool());
+}
+
+// Why: the colours are worked out from a few choices, and changing one must reach everything
+// bound to Theme at once, Fusion's palette included, with no page doing anything. Input: the
+// main window, its hue turned from willow to a blue. The truth is Theme's window colour, the
+// window's own palette, and that the willow comes back with the hue.
+TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
+    MainFixture f(0);
+    ASSERT_NE(f.window, nullptr);
+    auto* palette = f.engine.singletonInstance<iv::ThemePalette*>("ImageViewer", "ThemePalette");
+    QObject* theme = f.engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    ASSERT_NE(palette, nullptr);
+    ASSERT_NE(theme, nullptr);
+    const double willow = palette->hue();
+    const QColor before = theme->property("window").value<QColor>();
+    EXPECT_GT(before.green(), before.blue()) << "willow is green";
+    EXPECT_EQ(f.window->color(), before) << "the window is painted in it";
+
+    palette->setHue(250);
+    const QColor blue = theme->property("window").value<QColor>();
+    EXPECT_GT(blue.blue(), blue.green());
+    EXPECT_EQ(f.window->color(), blue) << "followed by the binding alone";
+
+    palette->setHue(willow);
+    EXPECT_EQ(theme->property("window").value<QColor>(), before);
+    EXPECT_EQ(f.warnings, QStringList());
 }

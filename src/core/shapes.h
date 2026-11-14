@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/geometry.h"
+#include "core/rgba.h"
 
 namespace iv {
 
@@ -25,17 +26,11 @@ namespace iv {
 enum class ShapeKind { Line, Arrow, Rectangle, Pixelate, Text, Polygon, Freehand, Ellipse, Number };
 
 // As sRGB, not premultiplied.
-struct ShapeColour {
-    std::uint8_t r = 255;
-    std::uint8_t g = 0;
-    std::uint8_t b = 0;
-    std::uint8_t a = 255;
-    bool operator==(const ShapeColour&) const = default;
-};
+using ShapeColour = Rgba8;
 
 // Lengths are in image pixels, so a shape looks the same at any zoom and in the file saved.
 struct ShapeStyle {
-    ShapeColour colour;
+    ShapeColour colour{255, 0, 0, 255};
     double width = 2;      // of lines and edges
     bool filled = false;   // rectangles and polygons
     bool marker = false;   // darkens what is under it, as a highlighter does, rather than covering

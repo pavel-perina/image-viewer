@@ -50,6 +50,8 @@ qt_add_library(iv_ui STATIC
     image_view.h
     subfolder_list.cpp
     subfolder_list.h
+    theme_palette.cpp
+    theme_palette.h
     thumbnail_provider.cpp
     thumbnail_provider.h
     thumbnail_store.cpp

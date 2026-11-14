@@ -24,7 +24,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Formats:** `jpeg_source`, `tiff_source`, `png_source`, `webp_source`, `avif_source`,
   `jxl_source`. Metadata: `exif`, `xmp`, `image_details`.
 * **Colour:** `color` (ICC, display transform), `color_edit` (levels, curves, cube tables),
-  `oklab.h`, `histogram`, `pixel_probe`.
+  `oklab.h`, `histogram`, `pixel_probe`, `palette` (the interface's colours, worked out from a
+  hue), `rgba.h`.
 * **Editing:** `document` (the edit list, undo), `crop`, `perspective` (straighten),
   `image_ops` (resize, grayscale), `shapes` (annotation shapes: points, grips, hit-testing),
   `image_layer` (blending a drawn layer into the picture, pixelate), `coverage` (growing,
@@ -40,6 +41,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
+* **Look:** `theme_palette` (the palette's choices and colours, for `Theme`).
 * **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
   from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
   `shape_painter` (draws annotation shapes, for the screen and for burning in).
