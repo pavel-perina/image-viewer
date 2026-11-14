@@ -1108,6 +1108,10 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   Controls style of the program's own, `ImageViewerStyle` in `src/ui/controls`, which takes
   every other control from Fusion. Pages keep writing `Button` and the like, so a control can be
   redone without touching them, and one at a time.
+* The fallback is declared `QtQuick.Controls.Fusion/auto`, and the style's own version is 6.0
+  for it: `auto` asks Fusion for the importing module's version, and Fusion has no 1.0. A
+  plain import without a version is not taken as a fallback at all, and every control not
+  redone came from Basic instead: tree rows 50 pixels high, white text fields, taller menu bars.
 * Each control is a few rounded rectangles: a base (a soft gradient, or the colour of a field),
   a light line inside the top edge, a lighter or darker layer for hover and press, and a ring in
   the accent for keyboard focus. Every colour comes from `Theme`, so the palette's hue reaches

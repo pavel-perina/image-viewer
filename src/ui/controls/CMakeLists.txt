@@ -5,10 +5,10 @@ qt_add_library(iv_style STATIC)
 
 qt_add_qml_module(iv_style
     URI ImageViewerStyle
-    VERSION 1.0
+    VERSION 6.0
     OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml/ImageViewerStyle
     IMPORTS
-        QtQuick.Controls.Fusion
+        QtQuick.Controls.Fusion/auto
     DEPENDENCIES
         ImageViewer
     QML_FILES

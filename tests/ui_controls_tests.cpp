@@ -246,3 +246,30 @@ TEST(Controls, ASliderIsFilledUpToItsHandle) {
     EXPECT_LT(distance(before, accent), 30) << before.name().toStdString();
     EXPECT_GT(distance(after, accent), 80) << after.name().toStdString();
 }
+
+// Why: what the style does not redo is to come from Fusion, which suits a dense desktop
+// program, and not from Basic, made for touch: Basic's tree rows are 50 pixels high and its
+// tool buttons and list rows 40. It once fell to Basic unnoticed, as the fallback was declared
+// in a way Qt does not take. Input: a tool button and a list row, neither of them redone. The
+// truth is Fusion's own sizes, well below Basic's.
+TEST(Controls, WhatTheStyleDoesNotRedoComesFromFusion) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        Item {
+            property alias tool: tool
+            property alias row: row
+            ToolButton { id: tool; text: "Fit" }
+            ItemDelegate { id: row; text: "Home" }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    ASSERT_NE(root, nullptr);
+    auto* tool = root->property("tool").value<QQuickItem*>();
+    auto* row = root->property("row").value<QQuickItem*>();
+    EXPECT_LE(tool->implicitHeight(), 28);
+    EXPECT_LE(row->implicitHeight(), 28);
+}
