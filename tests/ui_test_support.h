@@ -362,6 +362,13 @@ inline QStringList treeRows(TreeFixture& f) {
         }
         QQuickItem* item = nullptr;
         QMetaObject::invokeMethod(f.tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(QModelIndex, index));
+        if (!item) {
+            // A row out of view has no item; how many rows lie above depends on what else is in
+            // the temporary folder, so bring it into view rather than count on the room.
+            QQmlExpression(qmlContext(f.tree), f.tree, QStringLiteral("positionViewAtRow(%1, TableView.Contain)").arg(row)).evaluate();
+            QCoreApplication::processEvents();
+            QMetaObject::invokeMethod(f.tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(QModelIndex, index));
+        }
         const auto* label = item ? item->property("contentItem").value<QObject*>() : nullptr;
         rows << (label ? label->property("text").toString() : QStringLiteral("?")) + QLatin1Char('=') + path.mid(base.size());
     }
