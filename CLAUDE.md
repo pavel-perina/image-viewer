@@ -10,8 +10,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 | `src/core` | Library `iv_core`. Pure C++23, **no Qt**. Decoders, tiles, colour, edits, writers. |
 | `src/ui` | Library `iv_ui`, QML module `ImageViewer`. C++ classes that QML uses. |
 | `src/ui/qml` | The QML. Pages, panels, dialogs, shared controls. |
-| `src/ui/shaders` | Fragment shaders: resampling (`mks_*`) and the colour preview. |
-| `src/app` | Only `main()`, the font and the Windows install rules. |
+| `src/app` | Only `main()` and the Windows install rules. |
+| `assets` | What is not code: `fonts`, `shaders` (resampling `mks_*`, the colour preview), `icons`. |
 | `tests` | GoogleTest. `iv_core_tests` (no Qt) and `iv_ui_tests` (offscreen QML). |
 | `doc/design` | `architecture.md` (goals), `decisions.md` (what was decided and why), `main-window.md`. |
 | `doc` | `building-windows.md`, `manual-checks.md`. |

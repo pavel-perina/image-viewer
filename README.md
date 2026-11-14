@@ -95,7 +95,7 @@ The colours, for the controls too, are all set in `src/ui/qml/Theme.qml`, so the
 colour scheme does not change them.
 
 The interface uses the Inter typeface, embedded in the executable, under the SIL Open Font License
-(`src/app/fonts/Inter-LICENSE.txt`).
+(`assets/fonts/Inter-LICENSE.txt`).
 
 ## Controls
 

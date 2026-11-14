@@ -105,19 +105,22 @@ qt_add_qml_module(iv_ui
         qml/ViewerPage.qml
 )
 
+# The shaders live in assets/shaders; BASE keeps them at qrc:/shaders/.
 qt_add_shaders(iv_ui "iv_shaders"
     PREFIX "/"
+    BASE ${CMAKE_SOURCE_DIR}/assets
     FILES
-        shaders/mks_horizontal.frag
-        shaders/mks_vertical.frag
+        ${CMAKE_SOURCE_DIR}/assets/shaders/mks_horizontal.frag
+        ${CMAKE_SOURCE_DIR}/assets/shaders/mks_vertical.frag
 )
 
 # texelFetch needs GLSL ES 3 or GLSL 1.30.
 qt_add_shaders(iv_ui "iv_color_shaders"
     PREFIX "/"
     GLSL "300es,330"
+    BASE ${CMAKE_SOURCE_DIR}/assets
     FILES
-        shaders/color_preview.frag
+        ${CMAKE_SOURCE_DIR}/assets/shaders/color_preview.frag
 )
 
 target_include_directories(iv_ui
