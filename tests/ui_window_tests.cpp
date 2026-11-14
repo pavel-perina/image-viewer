@@ -1078,6 +1078,44 @@ TEST(Main, TheProbeIsAToolAndNotAnOptionToTick) {
     EXPECT_FALSE(action->property("checkable").toBool());
 }
 
+// Why: a dialog in a window of its own does not inherit the main window's palette, and a role
+// it lacks comes from the system theme (white menus on a light desktop). The roles are the
+// application's, so any window has them. Input: a bare window with a button, apart from the
+// main window, and a change of hue. The truth is the window's palette against Theme, at once.
+TEST(Main, AWindowOfItsOwnHasTheThemesColours) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        Window {
+            width: 200; height: 100; visible: true
+            property color expected: Theme.window
+            property color expectedHighlight: Theme.highlight
+            property alias button: button
+            Button { id: button; text: "Save" }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    ASSERT_NE(root, nullptr);
+    auto* button = root->property("button").value<QQuickItem*>();
+    const auto paletteColour = [&](const char* role) {
+        return button->property("palette").value<QObject*>()->property(role).value<QColor>();
+    };
+    EXPECT_EQ(paletteColour("window"), root->property("expected").value<QColor>());
+    EXPECT_EQ(paletteColour("highlight"), root->property("expectedHighlight").value<QColor>());
+
+    auto* palette = engine.singletonInstance<iv::ThemePalette*>("ImageViewer", "ThemePalette");
+    const double willow = palette->hue();
+    palette->setHue(250);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(paletteColour("window"), root->property("expected").value<QColor>()) << "followed at once";
+    EXPECT_GT(paletteColour("window").blue(), paletteColour("window").green());
+    palette->setHue(willow);
+}
+
 TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
     MainFixture f(0);
     ASSERT_NE(f.window, nullptr);

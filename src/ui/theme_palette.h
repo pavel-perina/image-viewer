@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPalette>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
@@ -9,7 +10,9 @@
 namespace iv {
 
 // The choices a palette is worked out from (core/palette.h), and the colours they give, for
-// Theme to bind to. Changing a choice changes every colour bound to it, at once.
+// Theme to bind to. Changing a choice changes every colour bound to it, at once. The roles Qt's
+// controls draw with are set as the application's palette, so that every window has them,
+// the main one and dialogs alike, without each giving them again.
 class ThemePalette : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -30,6 +33,8 @@ public:
     double surfaceChroma() const { return m_choices.surfaceChroma; }
     void setSurfaceChroma(double chroma);
     QVariantMap colours() const { return m_colours; }
+    // The palette of Qt's roles (window, base, highlight, ...) from the colours.
+    QPalette palette() const;
 
 signals:
     void changed();
