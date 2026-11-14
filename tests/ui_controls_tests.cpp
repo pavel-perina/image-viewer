@@ -1,8 +1,8 @@
-// The controls' own style (src/ui/controls): buttons, check boxes, combo boxes, spin boxes,
-// sliders and menus. Input: a gallery window with each control in its states, made up here,
-// in the palette the program uses. The truth is what the controls promise people: the default
-// button stands out, a check box shows when it is off, menu lines start their words at one
-// place, a decimal spin box keeps its decimals. Set IV_GALLERY_PNG to a file name to have the
+// The controls' own style (src/ui/controls): buttons, check boxes, radio buttons, text fields,
+// combo boxes, spin boxes, sliders and menus. Input: a gallery window with each control in its
+// states, made up here, in the palette the program uses. The truth is what the controls
+// promise people: the default button stands out, a check box shows when it is off, menu lines
+// start their words at one place, a decimal spin box keeps its decimals, and so on. Set IV_GALLERY_PNG to a file name to have the
 // gallery saved as a picture, to look at the style.
 
 #include "ui_test_support.h"
@@ -18,7 +18,7 @@ import ImageViewer
 
 ApplicationWindow {
     id: window
-    width: 640; height: 400; visible: true
+    width: 640; height: 480; visible: true
     color: Theme.window
     palette.window: Theme.window
     palette.windowText: Theme.text
@@ -36,6 +36,9 @@ ApplicationWindow {
     property alias cancel: cancel
     property alias off: off
     property alias on: on
+    property alias offLimits: offLimits
+    property alias radioOn: radioOn
+    property alias field: field
     property alias decimal: decimal
     property alias combo: combo
     property alias slider: slider
@@ -72,6 +75,17 @@ ApplicationWindow {
                 CheckBox { text: "Partly"; tristate: true; checkState: Qt.PartiallyChecked }
                 CheckBox { text: "Disabled"; enabled: false }
             }
+            RowLayout {
+                spacing: 12
+                CheckBox { id: offLimits; text: "Disabled, on"; checked: true; enabled: false }
+            }
+            Label { text: "RADIO BUTTONS"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
+            RowLayout {
+                spacing: 12
+                RadioButton { id: radioOn; text: "Fit"; checked: true }
+                RadioButton { text: "Fill" }
+                RadioButton { text: "Disabled, on"; checked: true; enabled: false; autoExclusive: false }
+            }
             Label { text: "SLIDER"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
             Slider { id: slider; Layout.preferredWidth: 260; value: 0.72 }
         }
@@ -80,6 +94,8 @@ ApplicationWindow {
             spacing: 10
             Label { text: "COMBO BOX"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
             ComboBox { id: combo; Layout.preferredWidth: 220; model: ["Lanczos", "Bicubic", "Nearest"] }
+            Label { text: "TEXT FIELD"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
+            TextField { id: field; Layout.preferredWidth: 220; placeholderText: "Name" }
             Label { text: "SPIN BOXES"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
             RowLayout {
                 spacing: 8
@@ -95,6 +111,7 @@ ApplicationWindow {
         AppMenuItem { text: "Open..." }
         AppMenuItem { text: "Show Info"; checkable: true; checked: true }
         AppMenuItem { text: "Show Thumbnails"; checkable: true }
+        AppMenuItem { text: "Show Hidden"; checkable: true; checked: true; enabled: false }
         MenuSeparator {}
         Action { text: "By Name"; checkable: true; checked: true; ActionGroup.group: sortGroup }
         Action { text: "By Date"; checkable: true; ActionGroup.group: sortGroup }
@@ -197,11 +214,11 @@ TEST(Controls, MenuLinesStartTheirWordsAtOnePlace) {
         starts << words->mapToScene(QPointF(0, 0)).x();
         checkable += line->property("checkable").toBool();
     }
-    ASSERT_EQ(starts.size(), 6);
+    ASSERT_EQ(starts.size(), 7);
     for (double start : starts) {
         EXPECT_DOUBLE_EQ(start, starts.front());
     }
-    EXPECT_EQ(checkable, 4) << "the two AppMenuItems and the two Actions";
+    EXPECT_EQ(checkable, 5) << "the three AppMenuItems and the two Actions";
 }
 
 // Why: Qt's SpinBox counts in whole numbers. The decimal one shows and steps its decimals, and
@@ -272,4 +289,66 @@ TEST(Controls, WhatTheStyleDoesNotRedoComesFromFusion) {
     auto* row = root->property("row").value<QQuickItem*>();
     EXPECT_LE(tool->implicitHeight(), 28);
     EXPECT_LE(row->implicitHeight(), 28);
+}
+
+namespace {
+
+// The line of a menu that reads text, once the menu is open.
+QQuickItem* menuLine(QObject* menu, const QString& text) {
+    for (int i = 0; i < menu->property("count").toInt(); ++i) {
+        QQuickItem* line = nullptr;
+        QMetaObject::invokeMethod(menu, "itemAt", Q_RETURN_ARG(QQuickItem*, line), Q_ARG(int, i));
+        if (line && line->property("text").toString() == text) {
+            return line;
+        }
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+// Why: a disabled option that is on must still read as a box, ticked; filled with nothing,
+// as it once was, its tick floated with no edge, while one that is off kept its edge. Input:
+// a disabled check box that is on, and a disabled ticked line of a menu. The truth is their
+// marks: each keeps an edge of at least a pixel, and its tick shows.
+TEST(Controls, ADisabledOptionThatIsOnKeepsItsEdge) {
+    Gallery g;
+    auto* box = g.item("offLimits")->property("indicator").value<QQuickItem*>();
+    ASSERT_NE(box, nullptr);
+    EXPECT_GE(box->property("border").value<QObject*>()->property("width").toDouble(), 1.0);
+
+    auto* menu = g.object("menu");
+    QMetaObject::invokeMethod(menu, "open");
+    ASSERT_TRUE(waitUntil([&] { return menu->property("opened").toBool(); }));
+    QQuickItem* line = menuLine(menu, QStringLiteral("Show Hidden"));
+    ASSERT_NE(line, nullptr);
+    auto* mark = line->property("indicator").value<QQuickItem*>();
+    EXPECT_TRUE(mark->isVisible());
+    EXPECT_GE(mark->property("border").value<QObject*>()->property("width").toDouble(), 1.0);
+}
+
+// Why: where only one of a group can be chosen (Sort By), its lines show round marks with a
+// dot, as radio buttons do, so the menu says so before it is tried; a box with a tick says
+// each can be turned on alone. Input: the gallery's menu, whose By Name and By Date are in an
+// exclusive group and whose Show Info is not, and a radio button. The truth is the marks'
+// shape: round (radius half the width) with the dot shown for the one chosen, square otherwise.
+TEST(Controls, ChoicesOfOneShowRoundMarks) {
+    Gallery g;
+    auto* menu = g.object("menu");
+    QMetaObject::invokeMethod(menu, "open");
+    ASSERT_TRUE(waitUntil([&] { return menu->property("opened").toBool(); }));
+    QQuickItem* byName = menuLine(menu, QStringLiteral("By Name"));
+    QQuickItem* showInfo = menuLine(menu, QStringLiteral("Show Info"));
+    ASSERT_NE(byName, nullptr);
+    ASSERT_NE(showInfo, nullptr);
+    auto* round = byName->property("indicator").value<QQuickItem*>();
+    auto* square = showInfo->property("indicator").value<QQuickItem*>();
+    EXPECT_DOUBLE_EQ(round->property("radius").toDouble(), round->width() / 2);
+    EXPECT_LT(square->property("radius").toDouble(), square->width() / 2);
+    auto* dot = round->findChild<QQuickItem*>(QStringLiteral("menuRadioDot"));
+    ASSERT_NE(dot, nullptr);
+    EXPECT_TRUE(dot->isVisible());
+
+    auto* radio = g.item("radioOn")->property("indicator").value<QQuickItem*>();
+    EXPECT_DOUBLE_EQ(radio->property("radius").toDouble(), radio->width() / 2);
 }

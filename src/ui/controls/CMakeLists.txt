@@ -18,6 +18,7 @@ qt_add_qml_module(iv_style
         Menu.qml
         MenuItem.qml
         MenuSeparator.qml
+        RadioButton.qml
         Slider.qml
         SpinBox.qml
         SplitView.qml

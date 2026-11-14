@@ -51,6 +51,11 @@ T.MenuItem {
         }
     }
 
+    // One of a group of which only one is chosen (Sort By): a round mark with a dot, as a
+    // radio button has, rather than a box with a tick.
+    readonly property bool exclusive: autoExclusive
+        || (action !== null && action.ActionGroup.group !== null && action.ActionGroup.group.exclusive)
+
     indicator: Rectangle {
         objectName: "menuCheckBox"
         x: 6 + (Theme.menuMarkWidth - width) / 2
@@ -58,17 +63,19 @@ T.MenuItem {
         implicitWidth: 14
         implicitHeight: 14
         visible: control.checkable
-        radius: 3
-        color: !control.enabled ? "transparent" : control.checked ? Theme.accent : Theme.base
-        border.width: control.checked ? 0 : 1
+        radius: control.exclusive ? width / 2 : 3
+        // Filled with the accent when chosen; disabled, only its edge shows, ticked or not.
+        readonly property bool filled: control.checked && control.enabled
+        color: filled ? Theme.accent : control.enabled ? Theme.base : "transparent"
+        border.width: filled ? 0 : 1
         border.color: control.enabled ? Theme.textMuted : Theme.textDisabled
 
         Shape {
             anchors.fill: parent
-            visible: control.checked
+            visible: control.checked && !control.exclusive
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                strokeColor: Theme.base
+                strokeColor: control.enabled ? Theme.base : Theme.textDisabled
                 strokeWidth: 2
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap
@@ -77,6 +84,15 @@ T.MenuItem {
                 PathLine { x: 5.75; y: 10.25 }
                 PathLine { x: 11; y: 4 }
             }
+        }
+        Rectangle {
+            objectName: "menuRadioDot"
+            anchors.centerIn: parent
+            width: 6
+            height: 6
+            radius: 3
+            visible: control.checked && control.exclusive
+            color: control.enabled ? Theme.base : Theme.textDisabled
         }
     }
 

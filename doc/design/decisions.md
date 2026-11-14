@@ -1132,6 +1132,10 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   between panes of a `SplitView` is the same across as down, of the window's colour, with a
   line only under the mouse: Fusion's was a bright line, thicker one way than the other where a
   frame stood beside it.
+* A menu line of an exclusive group (Sort By) has a round mark with a dot, as a radio button
+  does; a box with a tick says each line can be turned on alone. Disabled, a mark keeps its
+  edge whether it is on or not. A tool (the probe) is not an option and has no mark: its action
+  is not checkable, and only its toolbar button is down while it is at work.
 * Qt's SpinBox counts in whole numbers; `DecimalSpinBox` counts in hundredths and shows the
   point. It is not named DoubleSpinBox, which newer Qt has.
 * The tests run in this style whatever the environment says, so that they see what people

@@ -28,7 +28,8 @@ T.CheckBox {
         y: control.topPadding + (control.availableHeight - height) / 2
         radius: 3
         color: !control.enabled ? Theme.buttonDisabled : control.on ? Theme.accent : Theme.base
-        border.width: control.on ? 0 : 1
+        // Disabled, the edge shows whether it is on or not, and the mark is dimmed.
+        border.width: control.on && control.enabled ? 0 : 1
         border.color: !control.enabled ? Theme.textDisabled
                       : control.hovered ? Theme.text : Theme.textMuted
 
@@ -38,7 +39,7 @@ T.CheckBox {
             visible: control.checkState === Qt.Checked
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                strokeColor: Theme.base
+                strokeColor: control.enabled ? Theme.base : Theme.textDisabled
                 strokeWidth: 2
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap
@@ -55,7 +56,7 @@ T.CheckBox {
             height: 2
             radius: 1
             visible: control.checkState === Qt.PartiallyChecked
-            color: Theme.base
+            color: control.enabled ? Theme.base : Theme.textDisabled
         }
         // The focus ring.
         Rectangle {

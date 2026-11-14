@@ -337,8 +337,6 @@ ApplicationWindow {
         id: probeAction
         text: "&Probe Colours"
         shortcut: "P"
-        checkable: true
-        checked: window.probing
         enabled: window.viewing && !window.cropping && viewerPage.view.status === ImageView.Ready
         onTriggered: window.probing ? viewerPage.stopProbe() : viewerPage.startProbe()
     }
@@ -591,7 +589,9 @@ ApplicationWindow {
                 enabled: viewerPage.canCompareEdit || viewerPage.comparing === "edit"
                 focusPolicy: Qt.NoFocus
             }
-            ToolButton { action: probeAction; text: "Probe"; visible: window.viewing }
+            // Down while probing, as the probe is a tool at work; a tool is no option to tick,
+            // so the action is not checkable and the menu shows no box for it.
+            ToolButton { action: probeAction; text: "Probe"; visible: window.viewing; checked: window.probing }
             Item { Layout.fillWidth: true }
         }
     }

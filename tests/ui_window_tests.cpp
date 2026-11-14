@@ -1062,6 +1062,22 @@ TEST(Main, EnterAppliesAndEscLeavesWhicheverToolIsAtWork) {
 // bound to Theme at once, Fusion's palette included, with no page doing anything. Input: the
 // main window, its hue turned from willow to a blue. The truth is Theme's window colour, the
 // window's own palette, and that the willow comes back with the hue.
+// Why: probing is a tool at work, as cropping is, not an option to tick, so the Edit menu shows
+// no box for it; the toolbar's Probe is down while it is at work. Input: the main window. The
+// truth is the action behind the toolbar's Probe: not checkable.
+TEST(Main, TheProbeIsAToolAndNotAnOptionToTick) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    QObject* action = nullptr;
+    for (QQuickItem* item : f.window->findChildren<QQuickItem*>()) {
+        if (item->inherits("QQuickToolButton") && item->property("text").toString() == QStringLiteral("Probe")) {
+            action = item->property("action").value<QObject*>();
+        }
+    }
+    ASSERT_NE(action, nullptr);
+    EXPECT_FALSE(action->property("checkable").toBool());
+}
+
 TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
     MainFixture f(0);
     ASSERT_NE(f.window, nullptr);
