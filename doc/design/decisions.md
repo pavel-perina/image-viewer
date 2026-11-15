@@ -193,11 +193,12 @@ change nothing useful. The first press of a double click does this too, for that
   ring for keyboard focus on top.
 * Inter 4.1 is embedded and set as the application font at the size the system asks for: the
   variable file only (880 KB), as it holds every weight; no italics are used. Characters it lacks
-  come from the system's fonts. Its digits are proportional; labels with values that change
-  under the cursor can turn on tabular figures (`font.features: { "tnum": 1 }`). The variable
-  file has no hinting, which may look soft at small sizes on Windows at 100% scaling; hinted
-  static files would be the fix. The tests keep the system font, as they do not go through
-  `main.cpp`.
+  come from the system's fonts. Tabular figures (`tnum`) are on for the whole program, so that
+  every digit is as wide as the others: numbers that change under the cursor, in fields and in
+  columns, keep still and line up. Inter's proportional digits looked better only in running
+  text, which the program hardly has. The variable file has no hinting, which may look soft at
+  small sizes on Windows at 100% scaling; hinted static files would be the fix. The tests use
+  the same font, at 10 points.
 
 * `Theme` also holds the sizes that pages share: the heading and caption text sizes, the
   monospace family, and the tool panels' width, margin and row spacing. A number that lays

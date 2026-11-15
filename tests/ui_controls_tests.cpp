@@ -8,6 +8,7 @@
 #include "ui_test_support.h"
 
 #include <QFontInfo>
+#include <QFontMetricsF>
 
 namespace {
 
@@ -364,4 +365,17 @@ TEST(Controls, TheControlsUseTheProgramsOwnFont) {
     const QFont font = g.item("apply")->property("font").value<QFont>();
     EXPECT_TRUE(QFontInfo(font).family().startsWith(QStringLiteral("Inter"))) << QFontInfo(font).family().toStdString();
     EXPECT_DOUBLE_EQ(font.pointSizeF(), 10);
+}
+
+// Numbers that change under the cursor (the probe, the zoom, fields being stepped) must not
+// shift the text after them, and numbers in a column must line up: so every digit is as wide.
+// Inter's own digits are not (a 1 is narrower than a 0); the font's tabular figures are. The
+// widths are measured on a control's font, which is what people see, not on the app font.
+TEST(Controls, EveryDigitIsAsWideAsTheOthers) {
+    Gallery g;
+    const QFontMetricsF metrics(g.item("apply")->property("font").value<QFont>());
+    const double zero = metrics.horizontalAdvance(QStringLiteral("0000000000"));
+    for (const QString digits : {QStringLiteral("1111111111"), QStringLiteral("4444444444"), QStringLiteral("7777777777")}) {
+        EXPECT_DOUBLE_EQ(metrics.horizontalAdvance(digits), zero) << digits.toStdString();
+    }
 }
