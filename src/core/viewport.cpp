@@ -73,6 +73,25 @@ void Viewport::zoomBy(double factor, double viewX, double viewY) {
     clampOffset();
 }
 
+void Viewport::zoomSteps(int steps, double viewX, double viewY) {
+    if (steps != 0 && m_zoom > 0) {
+        zoomBy(zoomStep(m_zoom, steps) / m_zoom, viewX, viewY);
+    }
+}
+
+double zoomStep(double zoom, int steps) {
+    if (zoom <= 0 || steps == 0) {
+        return zoom;
+    }
+    constexpr int kPerDoubling = 3;
+    constexpr double kOnRung = 1e-6;  // rounding left by an earlier step still counts as on it
+    const double rung = std::log2(zoom) * kPerDoubling;
+    const int from = steps > 0 ? static_cast<int>(std::floor(rung + kOnRung)) : static_cast<int>(std::ceil(rung - kOnRung));
+    const int to = from + steps;
+    // A whole power of two from a whole exponent, so that 50, 100 and 200% come out exact.
+    return to % kPerDoubling == 0 ? std::ldexp(1.0, to / kPerDoubling) : std::exp2(static_cast<double>(to) / kPerDoubling);
+}
+
 void Viewport::panBy(double dx, double dy) {
     m_offsetX += dx;
     m_offsetY += dy;

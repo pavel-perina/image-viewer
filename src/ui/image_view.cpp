@@ -19,6 +19,7 @@
 #include <QSGSimpleTextureNode>
 #include <QSGTexture>
 #include <QSGTransformNode>
+#include <QPointingDevice>
 #include <QWheelEvent>
 #include <QtDebug>
 
@@ -58,6 +59,23 @@ namespace iv {
 
 namespace {
 
+// Whole steps from a wheel's turning, adding up the small steps a touchpad sends; turning back
+// starts over, so that a little jitter the other way does not count.
+int wholeSteps(int& turned, int delta, int perStep) {
+    turned = (turned < 0) == (delta < 0) ? turned + delta : delta;
+    const int steps = turned / perStep;
+    turned -= steps * perStep;
+    return steps;
+}
+
+// A touchpad, told apart from a mouse wheel: by the device where the system says, else by the
+// phases of a scroll and the distance in pixels, which wheels do not send.
+bool fromTouchpad(const QWheelEvent& event) {
+    const QPointingDevice* device = event.pointingDevice();
+    return (device && device->type() == QInputDevice::DeviceType::TouchPad) || event.phase() != Qt::NoScrollPhase
+           || !event.pixelDelta().isNull();
+}
+
 // The pixels of a tile's texture. Half floats where the image has more than 8 bits, so that the
 // colour preview and sharp resampling work on all of them; 8 bits for the software renderer,
 // which shows no more, and for 8-bit images.
@@ -84,7 +102,11 @@ constexpr double kDefaultFocal35mm = 28;
 // Degrees from vertical or horizontal for a line found. Pictures needing more are rare, and
 // diagonal edges, such as traces on a board, would otherwise come in.
 constexpr double kMaxLineLean = 15;
-constexpr double kZoomStep = 1.25;
+// A wheel's turning, in eighths of a degree, that moves one step: a notch of a mouse wheel
+// (one zoom step, three to a doubling), or a longer swipe of a touchpad, which sends many
+// small steps at once and would otherwise fly through the zooms.
+constexpr int kWheelNotch = 120;
+constexpr int kTouchpadPerZoomStep = 3 * kWheelNotch;
 // Tile textures kept on the GPU. Past this, the least recently drawn ones are dropped.
 constexpr qint64 kTextureBudgetBytes = 768ll * 1024 * 1024;
 // Limits how much is uploaded per frame, so a burst of tiles cannot stall panning.
@@ -222,6 +244,7 @@ struct ImageView::Impl {
     QString cameraSummary;
     bool wheelNavigates = false;
     int wheelTurned = 0;  // towards a whole notch, as a touchpad sends small steps
+    int zoomTurned = 0;   // the same, towards a zoom step
 
     // While the button is held on an image that fits, it shows at 100% around that place.
     struct Loupe {
@@ -1658,13 +1681,13 @@ std::array<QPointF, 4> ImageView::straightenKept(const Tilt& tilt, double focal3
 
 void ImageView::zoomIn() {
     auto& vp = m_impl->viewport;
-    vp.zoomBy(kZoomStep, vp.viewWidth() / 2, vp.viewHeight() / 2);
+    vp.zoomSteps(1, vp.viewWidth() / 2, vp.viewHeight() / 2);
     m_impl->viewChanged();
 }
 
 void ImageView::zoomOut() {
     auto& vp = m_impl->viewport;
-    vp.zoomBy(1 / kZoomStep, vp.viewWidth() / 2, vp.viewHeight() / 2);
+    vp.zoomSteps(-1, vp.viewWidth() / 2, vp.viewHeight() / 2);
     m_impl->viewChanged();
 }
 
@@ -1735,21 +1758,19 @@ void ImageView::itemChange(ItemChange change, const ItemChangeData& value) {
 
 void ImageView::wheelEvent(QWheelEvent* event) {
     if (m_impl->wheelNavigates && !event->modifiers().testFlag(Qt::ControlModifier)) {
-        const int delta = event->angleDelta().y();
-        int& turned = m_impl->wheelTurned;
-        turned = (turned < 0) == (delta < 0) ? turned + delta : delta;  // turning back starts over
-        const int notches = turned / 120;
-        turned -= notches * 120;
+        const int notches = wholeSteps(m_impl->wheelTurned, event->angleDelta().y(), kWheelNotch);
         if (notches != 0) {
             emit navigateRequested(-notches);  // turning it towards the user goes on to the next
         }
         event->accept();
         return;
     }
-    const double dpr = m_impl->devicePixelRatio();
-    const double notches = event->angleDelta().y() / 120.0;
-    m_impl->viewport.zoomBy(std::pow(kZoomStep, notches), event->position().x() * dpr, event->position().y() * dpr);
-    m_impl->viewChanged();
+    const int perStep = fromTouchpad(*event) ? kTouchpadPerZoomStep : kWheelNotch;
+    if (const int steps = wholeSteps(m_impl->zoomTurned, event->angleDelta().y(), perStep); steps != 0) {
+        const double dpr = m_impl->devicePixelRatio();
+        m_impl->viewport.zoomSteps(steps, event->position().x() * dpr, event->position().y() * dpr);
+        m_impl->viewChanged();
+    }
     event->accept();
 }
 

@@ -328,6 +328,14 @@ change nothing useful. The first press of a double click does this too, for that
   place; the tree collapsing would leave nothing to browse by.
 * In the large view the wheel moves between images and Ctrl+wheel zooms. The preview has no other
   use for the wheel, so there it keeps zooming, which also works with Ctrl.
+* Zoom goes by steps on one ladder, three to a doubling (2^(k/3), x1.26 each), through 25, 50,
+  100, 200 and 400% exactly: + and -, a wheel's notch and a touchpad alike (`zoomStep` in core).
+  From a zoom between rungs, as fitting leaves it, a step goes to the next rung. Before, each
+  step was x1.25 from wherever the zoom was, so 100% went on to 195 and 244 and never met 200.
+  A touchpad needs a swipe of three notches' worth per step: it sends a swipe as many small
+  steps, and at a notch per step went from the whole picture to its pixels almost at once. It is
+  told from a wheel by the device the system names, or by the phases and pixel distances of its
+  scrolls, which wheels do not send.
 * Keys go to what has the focus. In the browser the thumbnails and the folder tree each handle the
   arrows, Home, End, PgUp, PgDown, Backspace and Enter themselves, and start with the thumbnails;
   the window's shortcuts keep only what means the same everywhere, and moving between images in

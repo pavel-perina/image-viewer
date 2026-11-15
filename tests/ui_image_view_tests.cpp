@@ -1,5 +1,7 @@
 #include "ui_test_support.h"
 
+#include "core/viewport.h"
+
 TEST(ImageView, RendersTheImageFittedAndCentred) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("quad.jpg"));
@@ -1172,6 +1174,32 @@ TEST(ImageView, AnotherImageArrivingWhileHeldKeepsItsOwnView) {
     const double zoom = f.view->zoom();
     f.release(QPointF(100, 100));
     EXPECT_DOUBLE_EQ(f.view->zoom(), zoom) << "the zoom of the first would not suit it";
+}
+
+// Why: the wheel, + and - zoom by the same steps, three to a doubling, through 100 and 200%
+// exactly; a touchpad, which sends a swipe as many small steps, needs a longer one per step,
+// or it flies from the whole picture to its pixels at once. Input: a picture at 100%, turned
+// by a wheel's notches and by a touchpad's steps (told by their scroll phase). The truth is the
+// core's ladder (zoomStep).
+TEST(ImageView, TheWheelZoomsByStepsAndATouchpadMoreSlowly) {
+    LoupeFixture f;
+    f.view->actualSize();
+    ASSERT_EQ(f.view->zoom(), 1.0);
+    f.wheel(120);
+    EXPECT_DOUBLE_EQ(f.view->zoom(), iv::zoomStep(1, 1)) << "a notch, a step";
+    f.wheel(240);
+    EXPECT_EQ(f.view->zoom(), 2.0) << "three notches, a doubling";
+    f.view->zoomOut();
+    f.view->zoomOut();
+    f.view->zoomOut();
+    EXPECT_EQ(f.view->zoom(), 1.0) << "the keys go by the same steps";
+
+    for (int i = 0; i < 6; ++i) {
+        f.wheel(40, Qt::NoModifier, Qt::ScrollUpdate);
+    }
+    EXPECT_EQ(f.view->zoom(), 1.0) << "two notches' worth of a touchpad is not yet a step";
+    f.wheel(120, Qt::NoModifier, Qt::ScrollUpdate);
+    EXPECT_DOUBLE_EQ(f.view->zoom(), iv::zoomStep(1, 1)) << "three are";
 }
 
 TEST(ImageView, WheelCanAskForAnotherImageAndCtrlZooms) {

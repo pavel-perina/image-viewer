@@ -463,9 +463,10 @@ struct LoupeFixture : ViewFixture {
     void move(QPointF at) { mouse(QEvent::MouseMove, at, Qt::LeftButton); }
     void release(QPointF at) { mouse(QEvent::MouseButtonRelease, at, Qt::NoButton); }
 
-    void wheel(int delta, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+    // A mouse wheel's turning; with a scroll phase, a touchpad's.
+    void wheel(int delta, Qt::KeyboardModifiers modifiers = Qt::NoModifier, Qt::ScrollPhase phase = Qt::NoScrollPhase) {
         const QPointF at(200, 200);
-        QWheelEvent event(at, view->mapToGlobal(at), QPoint(), QPoint(0, delta), Qt::NoButton, modifiers, Qt::NoScrollPhase, false);
+        QWheelEvent event(at, view->mapToGlobal(at), QPoint(), QPoint(0, delta), Qt::NoButton, modifiers, phase, false);
         QCoreApplication::sendEvent(&window, &event);
     }
 };

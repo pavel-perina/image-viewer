@@ -303,6 +303,56 @@ TEST(Viewport, ZoomStopsAtOneHundredPercentWhenCrossingIt) {
     EXPECT_DOUBLE_EQ(vp.zoom(), 1.0);
 }
 
+// Why: zoom steps are to be the same size all along, three to a doubling, and to pass exactly
+// through 25, 50, 100, 200 and 400%, where pixels map one to a whole number. Input: zooms on
+// the ladder and between rungs. The truth is 2^(k/3), and powers of two compared exactly.
+TEST(Viewport, ZoomStepsClimbThreeToADoublingThroughThePowersOfTwo) {
+    const double third = std::exp2(1.0 / 3);
+    EXPECT_NEAR(zoomStep(1.0, 1), third, 1e-12);  // 126%
+    EXPECT_NEAR(zoomStep(1.0, 2), third * third, 1e-12);  // 159%
+    EXPECT_EQ(zoomStep(1.0, 3), 2.0);
+    EXPECT_EQ(zoomStep(1.0, 6), 4.0);
+    EXPECT_EQ(zoomStep(1.0, -3), 0.5);
+    EXPECT_EQ(zoomStep(1.0, -6), 0.25);
+    EXPECT_NEAR(zoomStep(0.5, 1), 0.63, 0.005);
+    EXPECT_NEAR(zoomStep(0.5, 2), 0.794, 0.0005);
+
+    // Step by step, as + and - go, it lands on 200% and back on 100% exactly.
+    double zoom = 1.0;
+    for (int i = 0; i < 3; ++i) {
+        zoom = zoomStep(zoom, 1);
+    }
+    EXPECT_EQ(zoom, 2.0);
+    for (int i = 0; i < 6; ++i) {
+        zoom = zoomStep(zoom, -1);
+    }
+    EXPECT_EQ(zoom, 0.5);
+
+    // Between rungs, as fitting leaves it: up to the next rung above, down to the next below.
+    EXPECT_NEAR(zoomStep(0.37, 1), std::exp2(-4.0 / 3), 1e-12);  // 40%
+    EXPECT_NEAR(zoomStep(0.37, -1), std::exp2(-5.0 / 3), 1e-12);  // 31%
+    EXPECT_EQ(zoomStep(0.45, 1), 0.5);
+    EXPECT_EQ(zoomStep(zoomStep(0.37, 1), -1), zoomStep(0.37, -1)) << "then it stays on the ladder";
+}
+
+// Why: the view zooms by steps of the ladder, keeping the point under the cursor, and the
+// limits still hold. Input: an image fitted at 10%. The truth is zoomStep's rungs and the
+// smallest zoom, a quarter of fitting.
+TEST(Viewport, ZoomStepsMoveTheViewAlongTheLadderWithinItsLimits) {
+    Viewport vp;
+    vp.setViewSize(100, 100);
+    vp.setImageSize({1000, 1000});
+    ASSERT_DOUBLE_EQ(vp.zoom(), 0.1);
+    vp.zoomSteps(1, 50, 50);
+    EXPECT_NEAR(vp.zoom(), 0.125, 1e-12);  // 2^-3, the next rung above 10%
+    vp.zoomSteps(9, 50, 50);
+    EXPECT_EQ(vp.zoom(), 1.0);
+    vp.zoomSteps(-30, 50, 50);
+    EXPECT_DOUBLE_EQ(vp.zoom(), 0.025) << "a quarter of fitting, the smallest";
+    vp.zoomSteps(1, 50, 50);
+    EXPECT_EQ(vp.zoom(), 0.03125) << "back on the ladder, at the next rung above (2^-5)";
+}
+
 TEST(Viewport, PanCannotLeaveTheImageAndCentresSmallImages) {
     Viewport vp;
     vp.setViewSize(100, 100);
