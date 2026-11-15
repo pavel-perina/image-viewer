@@ -350,6 +350,9 @@ change nothing useful. The first press of a double click does this too, for that
 * Dialogs are drawn inside the window, which the system does not decorate, so `AppDialog` brings
   a frame, title bar and shadow. Messages share `MessageBox`: caption, text, an icon for info,
   question, warning or error, and buttons, with Enter, Esc and Ctrl+C as in standard message boxes.
+  The icon is Tabler's filled one, in the accent for info and questions and in the warning or
+  danger fill for the others, the sign cut out of it: filled shapes stay clean at 32 pixels,
+  where lines drawn for 24 would blur.
 * Qt Quick menus neither show shortcuts nor grow with their items, so `AppMenuItem` shows the
   action's shortcut dimmed on the right, as `KeyNames` writes it for the system, and `AppMenu`
   takes the width of its widest item.

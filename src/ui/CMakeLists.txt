@@ -161,6 +161,10 @@ set(iv_icons
     "tabler/color-picker.svg=color-picker"
     "tabler/list.svg=view-list-brief"
     "tabler/list-details.svg=view-list-details"
+    "tabler/info-circle-filled.svg=message-info"
+    "tabler/help-circle-filled.svg=message-question"
+    "tabler/alert-triangle-filled.svg=message-warning"
+    "tabler/circle-x-filled.svg=message-error"
 )
 set(iv_icon_files)
 foreach(entry IN LISTS iv_icons)

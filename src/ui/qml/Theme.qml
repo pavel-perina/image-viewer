@@ -49,7 +49,6 @@ QtObject {
     readonly property color danger: "#e06c60"
     readonly property color warningFill: "#d9992b"  // behind a white glyph
     readonly property color dangerFill: "#c9443f"
-    readonly property color onFill: "#ffffff"       // a glyph on warningFill and the like
     readonly property color caret: withAlpha(text, 0.55)  // the small triangles that unfold
     readonly property color scrim: "#59000000"      // over the window, under a dialog
     readonly property color dialogShadow: "#0d000000"  // one of the layers that make it

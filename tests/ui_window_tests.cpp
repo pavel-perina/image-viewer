@@ -310,6 +310,44 @@ TEST(MessageBox, TakesTheHeightOfAllItsText) {
         << "the names of files to delete are in there, but it is " << content->height();
 }
 
+// Why: each kind of message shows its own sign, in its colour, so that a warning or an error
+// is told from news at a glance; a name missing from the resources would leave a blank space.
+// Input: a message box of each kind. The truth: the icon is found, named for the kind, in the
+// accent for info and questions and in Theme's warning and danger fills for the others.
+TEST(MessageBox, EachKindShowsItsSignInItsColour) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 400; visible: true
+            property alias box: box
+            MessageBox { id: box; title: "A caption"; text: "Text"; standardButtons: Dialog.Ok }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* box = root->property("box").value<QObject*>();
+    QObject* theme = engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    const auto colour = [&](const char* role) { return theme->property(role).value<QColor>(); };
+    const QList<std::pair<QString, QColor>> kinds = {
+        {QStringLiteral("info"), colour("accent")},
+        {QStringLiteral("question"), colour("accent")},
+        {QStringLiteral("warning"), colour("warningFill")},
+        {QStringLiteral("error"), colour("dangerFill")},
+    };
+    for (const auto& [kind, ink] : kinds) {
+        box->setProperty("kind", kind);
+        auto* icon = box->findChild<QQuickItem*>(QStringLiteral("messageIcon"));
+        ASSERT_NE(icon, nullptr);
+        EXPECT_EQ(icon->property("name").toString(), QStringLiteral("message-") + kind);
+        EXPECT_TRUE(icon->property("valid").toBool()) << kind.toStdString();
+        EXPECT_EQ(icon->property("ink").value<QColor>(), ink) << kind.toStdString();
+    }
+}
+
 TEST(MessageBox, KeysWorkAsInAStandardMessageBox) {
     QQmlEngine engine;
     QQmlComponent component(&engine);
