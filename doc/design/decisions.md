@@ -1231,6 +1231,7 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 * Hidden is what the system calls it: a name starting with a dot on Linux, the hidden attribute
   on Windows. It is for folders only; hidden files, images included, stay out.
 * With the switch off, a hidden folder can still be opened by typing its path. The tree then
-  shows no current folder, as Qt's model leaves the hidden one out; the thumbnails and the path
+  usually shows no current folder, as Qt's model leaves the hidden one out; now and then the
+  model has been seen to list it all the same, which does no harm. The thumbnails and the path
   bar work as anywhere. Turning the switch on there reveals the folder in the tree, as the
   tree keeps following the folder it was asked to show.
