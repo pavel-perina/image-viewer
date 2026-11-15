@@ -329,13 +329,15 @@ change nothing useful. The first press of a double click does this too, for that
 * In the large view the wheel moves between images and Ctrl+wheel zooms. The preview has no other
   use for the wheel, so there it keeps zooming, which also works with Ctrl.
 * Zoom goes by steps on one ladder, three to a doubling (2^(k/3), x1.26 each), through 25, 50,
-  100, 200 and 400% exactly: + and -, a wheel's notch and a touchpad alike (`zoomStep` in core).
-  From a zoom between rungs, as fitting leaves it, a step goes to the next rung. Before, each
-  step was x1.25 from wherever the zoom was, so 100% went on to 195 and 244 and never met 200.
-  A touchpad needs a swipe of three notches' worth per step: it sends a swipe as many small
-  steps, and at a notch per step went from the whole picture to its pixels almost at once. It is
-  told from a wheel by the device the system names, or by the phases and pixel distances of its
-  scrolls, which wheels do not send.
+  100, 200 and 400% exactly: + and - and a wheel's notch (`zoomStep` in core). From a zoom
+  between rungs, as fitting leaves it, a step goes to the next rung. Before, each step was x1.25
+  from wherever the zoom was, so 100% went on to 195 and 244 and never met 200.
+* A touchpad zooms smoothly, a doubling for a swipe of three notches' worth, and holds at 25,
+  50, 100, 200 and 400% for a tenth of a doubling on each side (`detentZoom`), with the rest of
+  the way stretched so that the zoom never jumps. Steps made it easy to land on those but lost
+  the smoothness; smooth alone made them hard to land on. It is told from a wheel by the device
+  the system names, or by the phases and pixel distances of its scrolls, which wheels do not
+  send.
 * Keys go to what has the focus. In the browser the thumbnails and the folder tree each handle the
   arrows, Home, End, PgUp, PgDown, Backspace and Enter themselves, and start with the thumbnails;
   the window's shortcuts keep only what means the same everywhere, and moving between images in

@@ -71,6 +71,15 @@ private:
 // rungs, one step up is the next rung above it and one down the next below.
 double zoomStep(double zoom, int steps);
 
+// For a touchpad, which zooms smoothly: the zoom shown for a swipe that would reach `free`
+// without stops. It is held at each power of two (25, 50, 100, 200, 400%) while `free` is
+// within `hold` doublings of it, so that those are easy to land on, and the rest of each half
+// doubling is stretched to fill the gap, so that the zoom never jumps.
+double detentZoom(double free, double hold);
+// The other way: a `free` that shows `shown`, the middle of the stop for a power of two. Where
+// a swipe starts from a zoom set otherwise.
+double freeZoomFor(double shown, double hold);
+
 struct TileRange {
     int firstCol = 0;
     int firstRow = 0;

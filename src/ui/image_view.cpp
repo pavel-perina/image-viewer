@@ -102,11 +102,12 @@ constexpr double kDefaultFocal35mm = 28;
 // Degrees from vertical or horizontal for a line found. Pictures needing more are rare, and
 // diagonal edges, such as traces on a board, would otherwise come in.
 constexpr double kMaxLineLean = 15;
-// A wheel's turning, in eighths of a degree, that moves one step: a notch of a mouse wheel
-// (one zoom step, three to a doubling), or a longer swipe of a touchpad, which sends many
-// small steps at once and would otherwise fly through the zooms.
+// A notch of a mouse wheel, in eighths of a degree: one zoom step, three to a doubling.
 constexpr int kWheelNotch = 120;
-constexpr int kTouchpadPerZoomStep = 3 * kWheelNotch;
+// A touchpad zooms smoothly instead, a doubling for a swipe of three notches' worth, and holds
+// at 25, 50, 100, 200 and 400% for a tenth of a doubling on each side, to be landed on.
+constexpr double kTouchpadPerDoubling = 3 * kWheelNotch;
+constexpr double kTouchpadHold = 0.1;
 // Tile textures kept on the GPU. Past this, the least recently drawn ones are dropped.
 constexpr qint64 kTextureBudgetBytes = 768ll * 1024 * 1024;
 // Limits how much is uploaded per frame, so a burst of tiles cannot stall panning.
@@ -245,6 +246,10 @@ struct ImageView::Impl {
     bool wheelNavigates = false;
     int wheelTurned = 0;  // towards a whole notch, as a touchpad sends small steps
     int zoomTurned = 0;   // the same, towards a zoom step
+    // Where a touchpad's swipe has taken the zoom, as if it had no stops, and the zoom it then
+    // showed: when the zoom has since changed otherwise, the swipe starts again from there.
+    double touchpadFree = 1;
+    double touchpadShown = 0;
 
     // While the button is held on an image that fits, it shows at 100% around that place.
     struct Loupe {
@@ -1765,10 +1770,24 @@ void ImageView::wheelEvent(QWheelEvent* event) {
         event->accept();
         return;
     }
-    const int perStep = fromTouchpad(*event) ? kTouchpadPerZoomStep : kWheelNotch;
-    if (const int steps = wholeSteps(m_impl->zoomTurned, event->angleDelta().y(), perStep); steps != 0) {
-        const double dpr = m_impl->devicePixelRatio();
-        m_impl->viewport.zoomSteps(steps, event->position().x() * dpr, event->position().y() * dpr);
+    const double dpr = m_impl->devicePixelRatio();
+    const double x = event->position().x() * dpr;
+    const double y = event->position().y() * dpr;
+    auto& vp = m_impl->viewport;
+    if (fromTouchpad(*event)) {
+        if (vp.zoom() != m_impl->touchpadShown) {
+            m_impl->touchpadFree = freeZoomFor(vp.zoom(), kTouchpadHold);
+        }
+        m_impl->touchpadFree *= std::exp2(event->angleDelta().y() / kTouchpadPerDoubling);
+        const double target = detentZoom(m_impl->touchpadFree, kTouchpadHold);
+        vp.zoomBy(target / vp.zoom(), x, y);
+        if (vp.zoom() != target) {  // held at a limit: turning back moves at once
+            m_impl->touchpadFree = freeZoomFor(vp.zoom(), kTouchpadHold);
+        }
+        m_impl->touchpadShown = vp.zoom();
+        m_impl->viewChanged();
+    } else if (const int steps = wholeSteps(m_impl->zoomTurned, event->angleDelta().y(), kWheelNotch); steps != 0) {
+        vp.zoomSteps(steps, x, y);
         m_impl->viewChanged();
     }
     event->accept();

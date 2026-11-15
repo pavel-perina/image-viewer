@@ -1177,11 +1177,12 @@ TEST(ImageView, AnotherImageArrivingWhileHeldKeepsItsOwnView) {
 }
 
 // Why: the wheel, + and - zoom by the same steps, three to a doubling, through 100 and 200%
-// exactly; a touchpad, which sends a swipe as many small steps, needs a longer one per step,
-// or it flies from the whole picture to its pixels at once. Input: a picture at 100%, turned
-// by a wheel's notches and by a touchpad's steps (told by their scroll phase). The truth is the
-// core's ladder (zoomStep).
-TEST(ImageView, TheWheelZoomsByStepsAndATouchpadMoreSlowly) {
+// exactly; a touchpad zooms smoothly instead, but holds at 100 and 200% to be landed on, and
+// takes a swipe of three notches' worth for a doubling, or it flies from the whole picture to
+// its pixels at once. Input: a picture at 100%, turned by a wheel's notches and by a
+// touchpad's small steps (told by their scroll phase). The truth is the core's ladder
+// (zoomStep) and its stops (detentZoom).
+TEST(ImageView, TheWheelZoomsByStepsAndATouchpadSmoothlyWithStops) {
     LoupeFixture f;
     f.view->actualSize();
     ASSERT_EQ(f.view->zoom(), 1.0);
@@ -1195,11 +1196,21 @@ TEST(ImageView, TheWheelZoomsByStepsAndATouchpadMoreSlowly) {
     EXPECT_EQ(f.view->zoom(), 1.0) << "the keys go by the same steps";
 
     for (int i = 0; i < 6; ++i) {
-        f.wheel(40, Qt::NoModifier, Qt::ScrollUpdate);
+        f.wheel(5, Qt::NoModifier, Qt::ScrollUpdate);
     }
-    EXPECT_EQ(f.view->zoom(), 1.0) << "two notches' worth of a touchpad is not yet a step";
-    f.wheel(120, Qt::NoModifier, Qt::ScrollUpdate);
-    EXPECT_DOUBLE_EQ(f.view->zoom(), iv::zoomStep(1, 1)) << "three are";
+    EXPECT_EQ(f.view->zoom(), 1.0) << "held at 100% for a little of the swipe";
+    double last = f.view->zoom();
+    for (int i = 0; i < 25; ++i) {  // to 280 of the 360 that make a doubling
+        f.wheel(10, Qt::NoModifier, Qt::ScrollUpdate);
+        EXPECT_GE(f.view->zoom(), last);
+        last = f.view->zoom();
+    }
+    EXPECT_GT(f.view->zoom(), 1.0);
+    EXPECT_LT(f.view->zoom(), 2.0) << "smoothly, between the stops";
+    f.wheel(80, Qt::NoModifier, Qt::ScrollUpdate);
+    EXPECT_EQ(f.view->zoom(), 2.0) << "three notches' worth, a doubling, onto the stop";
+    f.wheel(-20, Qt::NoModifier, Qt::ScrollUpdate);
+    EXPECT_EQ(f.view->zoom(), 2.0) << "held there turning back a little too";
 }
 
 TEST(ImageView, WheelCanAskForAnotherImageAndCtrlZooms) {

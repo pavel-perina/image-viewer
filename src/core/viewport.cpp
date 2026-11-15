@@ -92,6 +92,34 @@ double zoomStep(double zoom, int steps) {
     return to % kPerDoubling == 0 ? std::ldexp(1.0, to / kPerDoubling) : std::exp2(static_cast<double>(to) / kPerDoubling);
 }
 
+double detentZoom(double free, double hold) {
+    if (free <= 0) {
+        return free;
+    }
+    const double doublings = std::log2(free);
+    const double power = std::round(doublings);
+    const double away = doublings - power;  // from -0.5 to 0.5
+    if (std::abs(away) <= hold) {
+        return std::ldexp(1.0, static_cast<int>(power));
+    }
+    const double stretched = (std::abs(away) - hold) / (0.5 - hold) * 0.5;
+    return std::exp2(power + std::copysign(stretched, away));
+}
+
+double freeZoomFor(double shown, double hold) {
+    if (shown <= 0) {
+        return shown;
+    }
+    const double doublings = std::log2(shown);
+    const double power = std::round(doublings);
+    const double away = doublings - power;
+    if (std::abs(away) < 1e-9) {
+        return std::ldexp(1.0, static_cast<int>(power));
+    }
+    const double free = hold + std::abs(away) / 0.5 * (0.5 - hold);
+    return std::exp2(power + std::copysign(free, away));
+}
+
 void Viewport::panBy(double dx, double dy) {
     m_offsetX += dx;
     m_offsetY += dy;
