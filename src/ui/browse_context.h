@@ -32,6 +32,8 @@ class BrowseContext : public QObject {
     Q_PROPERTY(QStringList selectedPaths READ selectedPaths NOTIFY selectionChanged)
     Q_PROPERTY(SortKey sortKey READ sortKey WRITE setSortKey NOTIFY sortChanged)
     Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending NOTIFY sortChanged)
+    // Hidden folders are counted in the summary too.
+    Q_PROPERTY(bool showHiddenFolders READ showHiddenFolders WRITE setShowHiddenFolders NOTIFY showHiddenFoldersChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY jobChanged)
     Q_PROPERTY(QString jobName READ jobName NOTIFY jobChanged)
     Q_PROPERTY(int jobDone READ jobDone NOTIFY jobChanged)
@@ -71,6 +73,8 @@ public:
     SortKey sortKey() const;
     void setSortKey(SortKey key);
     bool sortDescending() const;
+    bool showHiddenFolders() const;
+    void setShowHiddenFolders(bool show);
     void setSortDescending(bool descending);
     bool busy() const;  // while a file job runs; another cannot start until it ends
     QString jobName() const;
@@ -161,6 +165,7 @@ signals:
     void filesChanged();
     void selectionChanged();
     void sortChanged();
+    void showHiddenFoldersChanged();
     void jobChanged();
     void historyChanged();
     void summaryChanged();

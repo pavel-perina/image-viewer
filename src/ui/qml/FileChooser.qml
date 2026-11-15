@@ -205,12 +205,14 @@ DialogWindow {
 
     BrowseContext {
         id: browse
+        showHiddenFolders: ViewSettings.showHiddenFolders
     }
 
     FolderListing {
         id: listing
         path: browse.directory
         showFiles: chooser.mode !== "folder"
+        showHiddenFolders: ViewSettings.showHiddenFolders
         extensions: chooser.mode === "folder" || chooser.typeIndex >= chooser.types.length ? []
                                                                                           : chooser.types[chooser.typeIndex].extensions
     }

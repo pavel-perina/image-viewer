@@ -15,6 +15,7 @@
 
 #include "core/image_details.h"
 #include "core/work_queue.h"
+#include "ui/hidden_folders.h"
 
 namespace iv {
 
@@ -32,8 +33,8 @@ struct Entry {
     QString type;
 };
 
-std::vector<Entry> readFolder(const QString& path, const QStringList& extensions, bool showFiles) {
-    QDir::Filters filters = QDir::Dirs | QDir::NoDotAndDotDot;
+std::vector<Entry> readFolder(const QString& path, const QStringList& extensions, bool showFiles, bool showHiddenFolders) {
+    QDir::Filters filters = subfolderFilters(showHiddenFolders);
     if (showFiles) {
         filters |= QDir::Files;
     }
@@ -43,7 +44,7 @@ std::vector<Entry> readFolder(const QString& path, const QStringList& extensions
     std::vector<Entry> entries;
     entries.reserve(static_cast<std::size_t>(infos.size()));
     for (const QFileInfo& info : infos) {
-        if (info.isHidden()) {
+        if (info.isHidden() && !(showHiddenFolders && info.isDir())) {
             continue;
         }
         Entry entry{info.fileName(), info.absoluteFilePath(), info.isDir(), -1, info.lastModified(), {}};
@@ -79,6 +80,7 @@ struct FolderListing::Impl {
     QString path;
     QStringList extensions;
     bool showFiles = true;
+    bool showHiddenFolders = false;
     SortKey sortKey = SortKey::Name;
     bool descending = false;
     bool loading = false;
@@ -180,6 +182,16 @@ void FolderListing::setShowFiles(bool show) {
     }
 }
 
+bool FolderListing::showHiddenFolders() const { return m_impl->showHiddenFolders; }
+
+void FolderListing::setShowHiddenFolders(bool show) {
+    if (show != m_impl->showHiddenFolders) {
+        m_impl->showHiddenFolders = show;
+        emit showHiddenFoldersChanged();
+        refresh();
+    }
+}
+
 FolderListing::SortKey FolderListing::sortKey() const { return m_impl->sortKey; }
 
 void FolderListing::setSortKey(SortKey key) {
@@ -269,8 +281,9 @@ void FolderListing::refresh() {
         emit loadingChanged();
     }
     m_impl->queue.submit(m_impl->group, kListPriority,
-                         [this, path, generation, extensions = m_impl->extensions, showFiles = m_impl->showFiles](std::stop_token) {
-        std::vector<Entry> entries = readFolder(path, extensions, showFiles);
+                         [this, path, generation, extensions = m_impl->extensions, showFiles = m_impl->showFiles,
+                          hidden = m_impl->showHiddenFolders](std::stop_token) {
+        std::vector<Entry> entries = readFolder(path, extensions, showFiles, hidden);
         QMetaObject::invokeMethod(this, [this, generation, entries = std::move(entries)]() mutable {
             if (generation != m_impl->generation) {
                 return;

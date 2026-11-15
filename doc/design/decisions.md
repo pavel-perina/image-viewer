@@ -1216,3 +1216,17 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   The path bar's buttons (back, forward, up, refresh, the star) show icons too, at 24 pixels
   as drawn, in flat buttons the height of a control: drawn at 16 they were too small to read.
 
+
+## Hidden folders are shown by one switch
+
+* Show Hidden Folders (Ctrl+H, as in most file managers) is one setting, kept between sessions,
+  for the folder tree, the file chooser's list, the path bar's subfolder menu and the folder
+  count in the status line, in the browser and the file chooser alike: a folder seen in one
+  and missing from another would look like a fault. It is in the View menu until there is a
+  settings dialog.
+* Hidden is what the system calls it: a name starting with a dot on Linux, the hidden attribute
+  on Windows. It is for folders only; hidden files, images included, stay out.
+* With the switch off, a hidden folder can still be opened by typing its path. The tree then
+  shows no current folder, as Qt's model leaves the hidden one out; the thumbnails and the path
+  bar work as anywhere. Turning the switch on there reveals the folder in the tree, as the
+  tree keeps following the folder it was asked to show.

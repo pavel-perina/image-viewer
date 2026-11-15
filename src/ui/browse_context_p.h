@@ -41,6 +41,7 @@ struct BrowseContext::Impl {
     QTimer refreshTimer;
     SortKey sortKey = SortByName;
     bool sortDescending = false;
+    bool showHiddenFolders = false;
     int currentIndex = -1;
     int anchor = -1;  // where a range selection starts
     QList<HistoryEntry> backStack;

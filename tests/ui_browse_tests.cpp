@@ -122,6 +122,46 @@ TEST(DirectoryTreeModel, ShowsOneColumnAndMapsPaths) {
     EXPECT_EQ(model.pathForIndex(index), dir.path());
 }
 
+// A folder with a visible and a hidden subfolder, and a hidden file, for the tests below: a dot
+// name on Linux, the hidden attribute too on Windows.
+static void makeHiddenEntries(const QTemporaryDir& dir) {
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("shown")));
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral(".hidden")));
+    hideOnWindows(dir.filePath(QStringLiteral(".hidden")));
+    touchFile(dir.filePath(QStringLiteral(".secret.jpg")), 10);
+    hideOnWindows(dir.filePath(QStringLiteral(".secret.jpg")));
+}
+
+// Why: hidden folders show in the folder tree only when asked, and turning that on or off shows
+// or drops them at once, without reopening the folder. Input: makeHiddenEntries. The truth is
+// the names of the folder's rows in the model.
+TEST(DirectoryTreeModel, ShowsHiddenFoldersOnlyWhenAsked) {
+    QTemporaryDir dir;
+    makeHiddenEntries(dir);
+    iv::DirectoryTreeModel model;
+    const auto names = [&] {
+        const QModelIndex parent = model.indexForPath(dir.path());
+        QStringList list;
+        for (int row = 0; row < model.rowCount(parent); ++row) {
+            list << model.fileName(model.index(row, 0, parent));
+        }
+        list.sort();
+        return list;
+    };
+    QSignalSpy loaded(&model, &QFileSystemModel::directoryLoaded);
+    model.fetchMore(model.indexForPath(dir.path()));
+    ASSERT_TRUE(waitUntil([&] { return names() == QStringList{QStringLiteral("shown")}; }));
+    EXPECT_FALSE(model.showHidden());
+
+    QSignalSpy changed(&model, &iv::DirectoryTreeModel::showHiddenChanged);
+    model.setShowHidden(true);
+    EXPECT_EQ(changed.count(), 1);
+    EXPECT_TRUE(waitUntil([&] { return names() == (QStringList{QStringLiteral(".hidden"), QStringLiteral("shown")}); }))
+        << names().join(u',').toStdString();
+    model.setShowHidden(false);
+    EXPECT_TRUE(waitUntil([&] { return names() == QStringList{QStringLiteral("shown")}; }));
+}
+
 TEST(ThumbnailProvider, DeliversThumbnailsForAnyFileName) {
     QTemporaryDir dir;
 #ifdef Q_OS_WIN
@@ -521,6 +561,21 @@ TEST(SubfolderList, ListsFoldersOnlyInNaturalOrderAndFollowsThePath) {
     EXPECT_TRUE(list.folders().isEmpty());
 }
 
+// Why: the path bar's subfolder menu lists hidden folders only when asked, and reads the folder
+// again when that changes. Input: makeHiddenEntries. The truth is the list of names.
+TEST(SubfolderList, ListsHiddenFoldersOnlyWhenAsked) {
+    QTemporaryDir dir;
+    makeHiddenEntries(dir);
+    iv::SubfolderList list;
+    list.setPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return !list.loading(); }));
+    EXPECT_EQ(list.folders(), QStringList{QStringLiteral("shown")});
+
+    list.setShowHidden(true);
+    ASSERT_TRUE(waitUntil([&] { return !list.loading(); }));
+    EXPECT_EQ(list.folders(), (QStringList{QStringLiteral(".hidden"), QStringLiteral("shown")}));
+}
+
 TEST(SubfolderList, DestroyingWhileLoadingIsSafe) {
     QTemporaryDir dir;
     for (int i = 0; i < 20; ++i) {
@@ -551,6 +606,21 @@ TEST(BrowseContext, SummarizesFoldersFilesAndSelection) {
     ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("two")));
     context.refresh();
     EXPECT_TRUE(waitUntil([&] { return context.summary().startsWith(QStringLiteral("2 directories | ")); }));
+}
+
+// Why: the browser's status line counts the folders that can be seen, so a hidden folder counts
+// only while hidden folders are shown, and a hidden image is never listed. Input:
+// makeHiddenEntries. The truth is the summary's text.
+TEST(BrowseContext, CountsHiddenFoldersOnlyWhenTheyAreShown) {
+    QTemporaryDir dir;
+    makeHiddenEntries(dir);
+    BrowseContext context;
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.summary().startsWith(QStringLiteral("1 directory | 0 files")); }))
+        << context.summary().toStdString();
+    context.setShowHiddenFolders(true);
+    EXPECT_TRUE(waitUntil([&] { return context.summary().startsWith(QStringLiteral("2 directories | 0 files")); }))
+        << context.summary().toStdString();
 }
 
 TEST(BrowseContext, JumpsBackThroughTheHistoryAtOnce) {
@@ -688,6 +758,21 @@ TEST(FolderListing, ListsFoldersFirstNaturallyAndFiltersAndSorts) {
     EXPECT_EQ(listing.kindOf(dir.path()), QStringLiteral("folder"));
     EXPECT_EQ(listing.kindOf(dir.filePath(QStringLiteral("notes.txt"))), QStringLiteral("file"));
     EXPECT_EQ(listing.kindOf(dir.filePath(QStringLiteral("nothing"))), QString());
+}
+
+// Why: the file chooser lists hidden folders only when asked, while hidden files stay out
+// either way. Input: makeHiddenEntries. The truth is the listed names.
+TEST(FolderListing, ListsHiddenFoldersOnlyWhenAskedAndNeverHiddenFiles) {
+    QTemporaryDir dir;
+    makeHiddenEntries(dir);
+    iv::FolderListing listing;
+    listing.setPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading(); }));
+    EXPECT_EQ(listingNames(listing), QStringList{QStringLiteral("shown")});
+
+    listing.setShowHiddenFolders(true);
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading() && listing.count() == 2; }));
+    EXPECT_EQ(listingNames(listing), (QStringList{QStringLiteral(".hidden"), QStringLiteral("shown")}));
 }
 
 TEST(FolderListing, ReadsTheFolderAgainWhenItChanges) {

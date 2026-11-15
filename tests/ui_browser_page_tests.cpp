@@ -618,6 +618,42 @@ TEST(PathBar, AClickInItsListsDoesNotReachTheThumbnailsBelow) {
     QSettings().remove(QStringLiteral("Folders"));
 }
 
+// Why: a hidden folder can be opened by typing its path while hidden folders are not shown, and
+// the tree then has no row for it; turning them on must reveal it there, without going
+// elsewhere and back. Input: a folder inside a hidden one, opened with the switch off. The truth
+// is the folder's row being on screen in the tree.
+TEST(BrowserPage, TurningHiddenFoldersOnRevealsTheHiddenFolderOpen) {
+    const QString inner = QStringLiteral(".hidden/inner");
+    MainFixture f([&](const QTemporaryDir& dir) {
+        ASSERT_TRUE(QDir(dir.path()).mkpath(inner));
+        hideOnWindows(dir.filePath(QStringLiteral(".hidden")));
+        writeJpeg(dir.filePath(inner + QStringLiteral("/a.jpg")));
+    }, inner);
+    ASSERT_NE(f.window, nullptr);
+    QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "ViewSettings");
+    ASSERT_NE(settings, nullptr);
+    ASSERT_FALSE(settings->property("showHiddenFolders").toBool());
+    auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));
+    ASSERT_NE(tree, nullptr);
+    auto* model = qobject_cast<iv::DirectoryTreeModel*>(tree->property("model").value<QObject*>());
+    const QString folder = f.dir.filePath(inner);
+    const auto shown = [&] {
+        QQuickItem* row = nullptr;
+        QMetaObject::invokeMethod(tree, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(QModelIndex, model->indexForPath(folder)));
+        if (!row || !row->isVisible()) {
+            return false;
+        }
+        const QPointF centre = row->mapToItem(tree, QPointF(row->width() / 2, row->height() / 2));
+        return tree->contains(centre);
+    };
+    ASSERT_TRUE(waitUntil([&] { return f.context->fileCount() == 1; })) << "it opens all the same";
+    EXPECT_FALSE(shown());
+
+    settings->setProperty("showHiddenFolders", true);
+    EXPECT_TRUE(waitUntil(shown));
+    settings->setProperty("showHiddenFolders", false);  // the settings outlive the test
+}
+
 TEST(BrowserPage, TreeShowsTheOpenFolderAtStartupHoweverDeep) {
     const QString deep = QStringLiteral("d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/d13/d14/d15/d16/d17/d18/d19/d20/"
                                         "d21/d22/d23/d24/d25/d26/d27/d28/d29/d30/d31/d32/d33/d34/d35/d36/d37/d38/d39/d40");

@@ -12,7 +12,8 @@ namespace iv {
 
 // The folders and files of one folder, folders first, read in the background and read again when
 // the folder changes. For views that list files by name, size, type and date rather than as
-// thumbnails, such as the file chooser. Hidden entries are left out.
+// thumbnails, such as the file chooser. Hidden files are left out, and hidden folders unless
+// showHiddenFolders.
 class FolderListing : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
@@ -20,6 +21,7 @@ class FolderListing : public QAbstractListModel {
     // Extensions of the files to list, such as "jpg", in any case; empty lists every file.
     Q_PROPERTY(QStringList extensions READ extensions WRITE setExtensions NOTIFY extensionsChanged)
     Q_PROPERTY(bool showFiles READ showFiles WRITE setShowFiles NOTIFY showFilesChanged)
+    Q_PROPERTY(bool showHiddenFolders READ showHiddenFolders WRITE setShowHiddenFolders NOTIFY showHiddenFoldersChanged)
     Q_PROPERTY(SortKey sortKey READ sortKey WRITE setSortKey NOTIFY sortChanged)
     Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending NOTIFY sortChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
@@ -49,6 +51,8 @@ public:
     void setExtensions(const QStringList& extensions);
     bool showFiles() const;
     void setShowFiles(bool show);
+    bool showHiddenFolders() const;
+    void setShowHiddenFolders(bool show);
     SortKey sortKey() const;
     void setSortKey(SortKey key);
     bool sortDescending() const;
@@ -71,6 +75,7 @@ signals:
     void pathChanged();
     void extensionsChanged();
     void showFilesChanged();
+    void showHiddenFoldersChanged();
     void sortChanged();
     void loadingChanged();
     void countChanged();

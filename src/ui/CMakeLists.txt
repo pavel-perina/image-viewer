@@ -44,6 +44,7 @@ qt_add_library(iv_ui STATIC
     overlay_style.h
     probe_overlay.cpp
     probe_overlay.h
+    hidden_folders.h
     program_font.cpp
     program_font.h
     retired_settings.cpp

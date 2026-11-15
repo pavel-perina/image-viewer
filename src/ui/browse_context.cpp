@@ -19,6 +19,7 @@
 #include "core/image_details.h"
 #include "core/thumbnail.h"
 #include "ui/color_settings.h"
+#include "ui/hidden_folders.h"
 
 namespace iv {
 
@@ -159,9 +160,10 @@ void BrowseContext::Impl::travel(BrowseContext* owner, QList<HistoryEntry>& from
 void BrowseContext::Impl::scan(BrowseContext* owner, const QStringList& toSelect) {
     queue.cancelGroup(group);
     const std::uint64_t generation = ++scanGeneration;
-    queue.submit(group, kScanPriority, [owner, this, generation, toSelect, dir = directory, key = sortKey, down = sortDescending](std::stop_token) {
+    queue.submit(group, kScanPriority, [owner, this, generation, toSelect, dir = directory, key = sortKey, down = sortDescending,
+                                        hidden = showHiddenFolders](std::stop_token) {
         QList<FileEntry> entries = scanDirectory(dir, key, down);
-        const int subfolders = static_cast<int>(QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size());
+        const int subfolders = static_cast<int>(QDir(dir).entryList(subfolderFilters(hidden)).size());
         QMetaObject::invokeMethod(owner, [owner, this, generation, toSelect, subfolders, entries = std::move(entries)] {
             if (generation == scanGeneration) {
                 subfolderCount = subfolders;
@@ -490,6 +492,16 @@ void BrowseContext::setSortDescending(bool descending) {
     if (descending != m_impl->sortDescending) {
         m_impl->sortDescending = descending;
         emit sortChanged();
+        refresh();
+    }
+}
+
+bool BrowseContext::showHiddenFolders() const { return m_impl->showHiddenFolders; }
+
+void BrowseContext::setShowHiddenFolders(bool show) {
+    if (show != m_impl->showHiddenFolders) {
+        m_impl->showHiddenFolders = show;
+        emit showHiddenFoldersChanged();
         refresh();
     }
 }

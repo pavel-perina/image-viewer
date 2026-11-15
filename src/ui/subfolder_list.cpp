@@ -8,6 +8,7 @@
 #include <stop_token>
 
 #include "core/work_queue.h"
+#include "ui/hidden_folders.h"
 
 namespace iv {
 
@@ -23,6 +24,7 @@ struct SubfolderList::Impl {
     std::uint64_t generation = 0;
     QString path;
     QStringList folders;
+    bool showHidden = false;
     bool loading = false;
 };
 
@@ -37,6 +39,17 @@ SubfolderList::~SubfolderList() {
 QString SubfolderList::path() const { return m_impl->path; }
 QStringList SubfolderList::folders() const { return m_impl->folders; }
 bool SubfolderList::loading() const { return m_impl->loading; }
+bool SubfolderList::showHidden() const { return m_impl->showHidden; }
+
+void SubfolderList::setShowHidden(bool show) {
+    if (show != m_impl->showHidden) {
+        m_impl->showHidden = show;
+        emit showHiddenChanged();
+        if (!m_impl->path.isEmpty()) {
+            setPath(m_impl->path);
+        }
+    }
+}
 
 void SubfolderList::setPath(const QString& path) {
     m_impl->queue.cancelGroup(m_impl->group);
@@ -49,8 +62,8 @@ void SubfolderList::setPath(const QString& path) {
     if (path.isEmpty()) {
         return;
     }
-    m_impl->queue.submit(m_impl->group, kListPriority, [this, path, generation](std::stop_token) {
-        QStringList names = QDir(path).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    m_impl->queue.submit(m_impl->group, kListPriority, [this, path, generation, hidden = m_impl->showHidden](std::stop_token) {
+        QStringList names = QDir(path).entryList(subfolderFilters(hidden));
         QCollator collator;
         collator.setNumericMode(true);
         collator.setCaseSensitivity(Qt::CaseInsensitive);

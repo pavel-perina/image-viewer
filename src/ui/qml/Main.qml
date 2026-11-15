@@ -98,6 +98,7 @@ ApplicationWindow {
     // Created here rather than in C++, so a tab can later own one context and its pages.
     BrowseContext {
         id: context
+        showHiddenFolders: ViewSettings.showHiddenFolders
         onEmptied: window.viewing = false
     }
 
@@ -341,6 +342,14 @@ ApplicationWindow {
         }
     }
     Action {
+        id: hiddenFoldersAction
+        text: "Show &Hidden Folders"
+        shortcut: "Ctrl+H"
+        checkable: true
+        checked: ViewSettings.showHiddenFolders
+        onTriggered: ViewSettings.showHiddenFolders = checked
+    }
+    Action {
         id: colorManagedAction
         text: "&Colour Management"
         shortcut: "C"
@@ -461,6 +470,7 @@ ApplicationWindow {
                     }
                 }
             }
+            AppMenuItem { action: hiddenFoldersAction }
             MenuSeparator {}
             AppMenuItem { action: beforeAfterAction }
             AppMenuItem { action: compareAction }

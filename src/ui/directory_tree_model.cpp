@@ -11,6 +11,15 @@ DirectoryTreeModel::DirectoryTreeModel(QObject* parent) : QFileSystemModel(paren
 
 int DirectoryTreeModel::columnCount(const QModelIndex&) const { return 1; }
 
+bool DirectoryTreeModel::showHidden() const { return filter().testFlag(QDir::Hidden); }
+
+void DirectoryTreeModel::setShowHidden(bool show) {
+    if (show != showHidden()) {
+        setFilter(filter() ^ QDir::Hidden);
+        emit showHiddenChanged();
+    }
+}
+
 QModelIndex DirectoryTreeModel::indexForPath(const QString& path) const { return index(path); }
 
 QString DirectoryTreeModel::pathForIndex(const QModelIndex& index) const { return filePath(index); }

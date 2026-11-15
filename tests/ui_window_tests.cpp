@@ -1104,6 +1104,33 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
 }
 
+// Why: Show Hidden Folders is one switch, under Ctrl+H, kept between sessions, which every
+// listing follows. Input: the window on a folder with a hidden subfolder. The truth is the
+// menu action, the saved setting and the browser's folder count.
+TEST(Main, CtrlHShowsHiddenFoldersAndKeepsIt) {
+    MainFixture f([](const QTemporaryDir& dir) {
+        writeJpeg(dir.filePath(QStringLiteral("a.jpg")));
+        ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral(".hidden")));
+        hideOnWindows(dir.filePath(QStringLiteral(".hidden")));
+    }, QString());
+    ASSERT_NE(f.window, nullptr);
+    QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "ViewSettings");
+    ASSERT_NE(settings, nullptr);
+    ASSERT_FALSE(settings->property("showHiddenFolders").toBool());
+    ASSERT_TRUE(waitUntil([&] { return f.context->summary().startsWith(QStringLiteral("0 directories")); }))
+        << f.context->summary().toStdString();
+
+    QTest::keyClick(f.window, Qt::Key_H, Qt::ControlModifier);
+    EXPECT_TRUE(settings->property("showHiddenFolders").toBool());
+    EXPECT_TRUE(f.context->showHiddenFolders());
+    EXPECT_TRUE(waitUntil([&] { return f.context->summary().startsWith(QStringLiteral("1 directory")); }))
+        << f.context->summary().toStdString();
+
+    QTest::keyClick(f.window, Qt::Key_H, Qt::ControlModifier);
+    EXPECT_FALSE(settings->property("showHiddenFolders").toBool());
+    EXPECT_FALSE(f.context->showHiddenFolders());
+}
+
 // Why: Auto Contrast is one toggle that stays as it is set: turned on, the next images have it
 // too, and turned off, they do not, with no second button to keep it. The button is lit
 // while the image shown has it. Input: two dim 16-bit gray images, which load without it,
