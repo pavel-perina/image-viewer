@@ -96,6 +96,8 @@ colour scheme does not change them.
 
 The interface uses the Inter typeface, embedded in the executable, under the SIL Open Font License
 (`assets/fonts/Inter-LICENSE.txt`).
+The icons are from [Tabler Icons](https://tabler.io/icons), under the MIT licence
+(`assets/icons/tabler/LICENSE`).
 
 ## Controls
 

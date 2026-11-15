@@ -125,24 +125,24 @@ qt_add_resources(iv_ui "fonts"
 )
 
 # The icons, at qrc:/icons/<name>.svg for ThemedIcon. They are named by meaning, following the
-# freedesktop icon naming spec where it has a name, while the files keep the names they are
-# exported under.
+# freedesktop icon naming spec where it has a name, while the files keep the names of the set
+# they come from (assets/icons/<set>/, each with its licence).
 set(iv_icons
-    "24x24_zoom_in.svg=zoom-in"
-    "24x24_zoom_out.svg=zoom-out"
-    "24x24_zoom_fit.svg=zoom-fit-best"
-    "24x24_zoom_reset.svg=zoom-original"
-    "24x24_info.svg=dialog-information"
-    "24x24_fullscreen.svg=view-fullscreen"
-    "24x24_refresh.svg=view-refresh"
-    "24x24_directory_back.svg=go-previous"
-    "24x24_directory_forward.svg=go-next"
-    "24x24_directory_up.svg=go-up"
-    "24x24_favorites.svg=non-starred"
-    "24x24_favorites_alt.svg=starred"
-    "24x24_search.svg=edit-find"
-    "24x24_sort.svg=view-sort"
-    "24x24_position.svg=position"
+    "tabler/zoom-in.svg=zoom-in"
+    "tabler/zoom-out.svg=zoom-out"
+    "tabler/zoom-scan.svg=zoom-fit-best"
+    "tabler/zoom-reset.svg=zoom-original"
+    "tabler/info-circle.svg=dialog-information"
+    "tabler/arrows-maximize.svg=view-fullscreen"
+    "tabler/refresh.svg=view-refresh"
+    "tabler/arrow-left.svg=go-previous"
+    "tabler/arrow-right.svg=go-next"
+    "tabler/arrow-up.svg=go-up"
+    "tabler/star.svg=non-starred"
+    "tabler/star-filled.svg=starred"
+    "tabler/search.svg=edit-find"
+    "tabler/sort-descending.svg=view-sort"
+    "tabler/current-location.svg=position"
 )
 set(iv_icon_files)
 foreach(entry IN LISTS iv_icons)

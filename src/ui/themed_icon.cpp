@@ -31,7 +31,7 @@ QByteArray recolorIcon(QByteArray svg, const QColor& ink, const QColor& accent) 
     // placeholder in any of the ways an editor writes it.
     static const QRegularExpression placeholder(
         QStringLiteral(R"(((?:fill|stroke|stop-color)\s*(?::|=\s*["'])\s*))"
-                       R"((white|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|)"
+                       R"((white|currentColor|#fff(?:fff)?|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|)"
                        R"(lime|#0f0|#00ff00|rgb\(\s*0\s*,\s*255\s*,\s*0\s*\))(?![0-9a-z]))"),
         QRegularExpression::CaseInsensitiveOption);
     const QString text = QString::fromUtf8(svg);
@@ -41,7 +41,8 @@ QByteArray recolorIcon(QByteArray svg, const QColor& ink, const QColor& accent) 
     for (auto it = placeholder.globalMatch(text); it.hasNext();) {
         const QRegularExpressionMatch match = it.next();
         const QString value = match.captured(2).toLower().remove(u' ');
-        const bool white = value == u"white" || value == u"#fff" || value == u"#ffffff" || value == u"rgb(255,255,255)";
+        const bool white = value == u"white" || value == u"currentcolor" || value == u"#fff" || value == u"#ffffff"
+                           || value == u"rgb(255,255,255)";
         result += QStringView(text).mid(done, match.capturedStart(2) - done);
         result += (white ? ink : accent).name(QColor::HexRgb);
         done = match.capturedEnd(2);

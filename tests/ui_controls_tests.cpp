@@ -383,16 +383,17 @@ TEST(Controls, EveryDigitIsAsWideAsTheOthers) {
     }
 }
 
-// Why: icons follow the palette, so the drawings carry placeholder colours (white for the ink,
-// pure green for the accent; assets/icons/README.md) that must become the theme's however the
-// editor wrote them, while a colour drawn on purpose stays. Input: a made-up SVG with each
-// spelling of each placeholder and one red; the truth is the README's rule.
+// Why: icons follow the palette, so the drawings carry placeholder colours (white or
+// currentColor for the ink, pure green for the accent; assets/icons/README.md) that must become
+// the theme's however the editor wrote them, while a colour drawn on purpose stays. Input: a
+// made-up SVG with each spelling of each placeholder and one red; the truth is the README's rule.
 TEST(Icons, PlaceholdersTakeTheThemesColoursAndOtherColoursStay) {
     const QByteArray svg = R"svg(<svg><path style="fill:white;stroke:rgb(0,255,0);"/>)svg"
                            R"svg(<path fill="#FFFFFF" stroke="#00ff00"/><path style="fill:rgb(255, 255, 255)"/>)svg"
-                           R"svg(<path style="fill:lime"/><path style="fill:#ff0000;stroke:whitesmoke"/></svg>)svg";
+                           R"svg(<path style="fill:lime"/><path style="fill:#ff0000;stroke:whitesmoke"/>)svg"
+                           R"svg(<path stroke="currentColor"/><path fill="currentcolor"/></svg>)svg";
     const QString result = QString::fromUtf8(iv::recolorIcon(svg, QColor(0x12, 0x34, 0x56), QColor(0xab, 0xcd, 0xef)));
-    EXPECT_EQ(result.count(QStringLiteral("#123456")), 3) << result.toStdString();
+    EXPECT_EQ(result.count(QStringLiteral("#123456")), 5) << result.toStdString();
     EXPECT_EQ(result.count(QStringLiteral("#abcdef")), 3) << result.toStdString();
     EXPECT_TRUE(result.contains(QStringLiteral("fill:#ff0000"))) << result.toStdString();
     EXPECT_TRUE(result.contains(QStringLiteral("stroke:whitesmoke"))) << result.toStdString();
@@ -400,8 +401,8 @@ TEST(Icons, PlaceholdersTakeTheThemesColoursAndOtherColoursStay) {
 
 // Why: an icon exported with a colour that is not a placeholder, or one that does not load,
 // would show the wrong colour or nothing on some palette. Input: every icon in the resources,
-// drawn in a red ink and a blue accent; no solid pixel may be left white or green, and each
-// icon must draw something. The zoom icon has both parts, so it shows both colours.
+// drawn in a red ink and a blue accent; no solid pixel may be left white, green or black (an
+// unreplaced currentColor), and each icon must draw something, some of it in the ink.
 TEST(Icons, EveryIconDrawsInTheThemesColours) {
     const QColor ink(200, 40, 30);
     const QColor accent(30, 80, 210);
@@ -411,7 +412,7 @@ TEST(Icons, EveryIconDrawsInTheThemesColours) {
         name.chop(4);
         const QImage image = iv::renderIcon(name, QSize(24, 24), ink, accent);
         ASSERT_FALSE(image.isNull()) << name.toStdString();
-        int drawn = 0, inInk = 0, inAccent = 0;
+        int drawn = 0, inInk = 0;
         for (int y = 0; y < image.height(); ++y) {
             for (int x = 0; x < image.width(); ++x) {
                 const QColor pixel = image.pixelColor(x, y);
@@ -422,14 +423,13 @@ TEST(Icons, EveryIconDrawsInTheThemesColours) {
                 ++drawn;
                 EXPECT_NE(pixel, QColor(Qt::white)) << name.toStdString() << " at " << x << "," << y;
                 EXPECT_NE(pixel, QColor(0, 255, 0)) << name.toStdString() << " at " << x << "," << y;
+                // currentColor left as it is draws black
+                EXPECT_NE(pixel, QColor(Qt::black)) << name.toStdString() << " at " << x << "," << y;
                 inInk += distance(pixel, ink) < 4;
-                inAccent += distance(pixel, accent) < 4;
             }
         }
         EXPECT_GT(drawn, 10) << name.toStdString();
-        if (name == u"zoom-in") {
-            EXPECT_GT(inInk, 0);
-            EXPECT_GT(inAccent, 0);
-        }
+        EXPECT_GT(inInk, 0) << name.toStdString();  // the accent is only in icons drawn with it
     }
 }
+

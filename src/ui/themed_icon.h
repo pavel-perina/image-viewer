@@ -15,7 +15,8 @@ class QSvgRenderer;
 namespace iv {
 
 // The SVG of an icon with its placeholder colours replaced, as assets/icons/README.md describes
-// them: white becomes ink and pure green (rgb(0,255,0)) accent, in fill, stroke and stop-color.
+// them: white and currentColor (what single-colour sets such as Tabler draw in) become ink, and
+// pure green (rgb(0,255,0)) accent, in fill, stroke and stop-color.
 // Any other colour stays as drawn. Only the colour is used, not its alpha.
 QByteArray recolorIcon(QByteArray svg, const QColor& ink, const QColor& accent);
 

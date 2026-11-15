@@ -37,6 +37,8 @@ New-Item -ItemType Directory -Force (Join-Path $licences 'image-viewer') | Out-N
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $licences 'image-viewer')
 New-Item -ItemType Directory -Force (Join-Path $licences 'inter') | Out-Null
 Copy-Item (Join-Path $root 'assets\fonts\Inter-LICENSE.txt') (Join-Path $licences 'inter')
+New-Item -ItemType Directory -Force (Join-Path $licences 'tabler-icons') | Out-Null
+Copy-Item (Join-Path $root 'assets\icons\tabler\LICENSE') (Join-Path $licences 'tabler-icons')
 $graphFile = Join-Path $root 'build\conan\graph.json'
 $graph = & conan install $root -of (Join-Path $root 'build\conan') -s build_type=Release `
     -c tools.cmake.cmaketoolchain:generator=Ninja -f json

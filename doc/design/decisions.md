@@ -1169,9 +1169,18 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 
 ## Icons take the theme's colours
 
-* The icons are SVG drawings (`assets/icons`) in two placeholder colours, white for the ink and
-  pure green for the accent, which `ThemedIcon` replaces with the theme's before drawing. Qt's
-  own icon tinting paints a whole icon in one colour, which would lose the accent.
+* The icons are SVG (`assets/icons`) in placeholder colours, white or `currentColor` for the
+  ink and pure green for the accent, which `ThemedIcon` replaces with the theme's before
+  drawing. Qt's own icon tinting paints a whole icon in one colour, which would lose the accent.
+* They come from Tabler Icons (MIT), not our own drawings. Ours were aligned to whole pixels,
+  yet looked uneven: sizes and line weights differed from icon to icon, and curves and
+  diagonals blur at 24 pixels whatever is done, so crisp straight parts beside soft round ones
+  looked half in focus. A set drawn as one keeps size, weight and corners alike, which matters
+  more than pixel alignment, and its straight lines on the 24 grid are as crisp. Tabler over
+  Lucide (ISC), which looks alike: Tabler has icons for fit and 1:1 zoom, and far more icons
+  for the tools to come. Icons are copied one by one into a folder per set, with its licence,
+  so that one from another set can be taken where it is better. Our own drawings stay for what
+  no set has.
 * `ThemedIcon` is an item that draws the SVG itself, not an image provider, so that it works in
   every engine without being registered, and draws sharp at any scale of the screen.
 * On the tool bar, `IconButton` shows the icon in place of the text. The text and the shortcut
