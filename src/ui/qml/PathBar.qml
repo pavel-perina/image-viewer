@@ -115,7 +115,7 @@ Rectangle {
         spacing: 1
         BarButton {
             id: backButton
-            icon: "back"
+            kind: "back"
             usable: bar.context.canGoBack
             tip: "Back (Alt+Left), right-click for history"
             menuOpen: historyMenu.visible
@@ -123,19 +123,19 @@ Rectangle {
             onSecondaryActivated: bar.showBackHistory(backButton)
         }
         BarButton {
-            icon: "forward"
+            kind: "forward"
             usable: bar.context.canGoForward
             tip: "Forward (Alt+Right)"
             onActivated: bar.context.goForward()
         }
         BarButton {
-            icon: "up"
+            kind: "up"
             usable: bar.context.canGoUp
             tip: "Parent folder (Alt+Up)"
             onActivated: bar.context.goUp()
         }
         BarButton {
-            icon: "refresh"
+            kind: "refresh"
             usable: bar.context.directory !== ""
             tip: "Scan the folder again (F5)"
             onActivated: bar.context.refresh()
@@ -149,12 +149,12 @@ Rectangle {
     // Sets the path apart from the buttons, which are not part of it.
     Rectangle {
         anchors.fill: pathArea
-        anchors.topMargin: 3
-        anchors.bottomMargin: 3
-        radius: 3
-        color: palette.base
+        anchors.topMargin: (bar.height - Theme.controlHeight) / 2
+        anchors.bottomMargin: (bar.height - Theme.controlHeight) / 2
+        radius: Theme.controlRadius
+        color: Theme.base
         border.width: 1
-        border.color: bar.hoverColor
+        border.color: Theme.mid
         visible: !bar.editing
     }
 
@@ -289,8 +289,8 @@ Rectangle {
         TextField {
             id: field
             anchors.fill: parent
-            anchors.topMargin: 3
-            anchors.bottomMargin: 3
+            anchors.topMargin: (bar.height - Theme.controlHeight) / 2
+            anchors.bottomMargin: (bar.height - Theme.controlHeight) / 2
             visible: bar.editing
             verticalAlignment: TextInput.AlignVCenter
             selectByMouse: true
@@ -302,10 +302,10 @@ Rectangle {
                 bar.finished()
             }
             background: Rectangle {
-                radius: 3
-                color: palette.base
+                radius: Theme.controlRadius
+                color: Theme.base
                 border.width: 1
-                border.color: bar.problem ? Theme.danger : palette.highlight
+                border.color: bar.problem ? Theme.danger : Theme.accent
             }
             ToolTip.visible: bar.problem !== ""
             ToolTip.text: bar.problem

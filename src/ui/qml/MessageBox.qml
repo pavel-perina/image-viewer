@@ -74,45 +74,14 @@ AppDialog {
             text: box.title + "\n\n" + box.text
         }
 
-        Item {
+        // Filled, in the colour of its kind, with the sign cut out of it.
+        ThemedIcon {
             objectName: "messageIcon"
             Layout.alignment: Qt.AlignTop
             implicitWidth: 32
             implicitHeight: 32
-
-            Canvas {
-                id: icon
-                anchors.fill: parent
-                Connections {
-                    target: box
-                    function onKindChanged() { icon.requestPaint() }
-                }
-                onPaint: {
-                    const ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.fillStyle = box.kind === "error" ? Theme.dangerFill : box.kind === "warning" ? Theme.warningFill : Theme.accent
-                    ctx.beginPath()
-                    if (box.kind === "warning") {
-                        ctx.moveTo(16, 2)
-                        ctx.lineTo(31, 29)
-                        ctx.lineTo(1, 29)
-                        ctx.closePath()
-                    } else {
-                        ctx.arc(16, 16, 15, 0, 2 * Math.PI)
-                    }
-                    ctx.fill()
-                }
-            }
-            Label {
-                anchors.fill: parent
-                anchors.topMargin: box.kind === "warning" ? 4 : 0
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-                color: Theme.onFill
-                font.bold: true
-                font.pixelSize: 20
-                text: box.kind === "error" ? "×" : box.kind === "warning" ? "!" : box.kind === "question" ? "?" : "i"
-            }
+            name: "message-" + box.kind
+            ink: box.kind === "error" ? Theme.dangerFill : box.kind === "warning" ? Theme.warningFill : Theme.accent
         }
 
         ColumnLayout {

@@ -1,38 +1,39 @@
 #include <QCoreApplication>
 #include <QDir>
-#include <QFont>
-#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QSettings>
 #include <QStringList>
 #include <QtQml/QQmlExtensionPlugin>
 
 #include "build_info.h"
 #include "ui/color_settings.h"
+#include "ui/program_font.h"
+#include "ui/retired_settings.h"
 #include "ui/thumbnail_provider.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
+Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
 
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
     QCoreApplication::setApplicationVersion(QStringLiteral(IV_BUILD_COMMIT ", built " IV_BUILD_TIME));
-    // Fusion unless another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Material, for one.
+    // Our own style (src/ui/controls), which takes from Fusion what it does not redo, unless
+    // another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Fusion, for one.
     if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
-        QQuickStyle::setStyle(QStringLiteral("Fusion"));
+        QQuickStyle::setStyle(QStringLiteral("ImageViewerStyle"));
     }
 
-    // The same font everywhere, at the size the system asks for. What Inter lacks, such as Chinese
-    // file names, comes from the system's fonts as before.
-    if (const int id = QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/InterVariable.ttf")); id >= 0) {
-        QFont font = QGuiApplication::font();
-        font.setFamilies(QFontDatabase::applicationFontFamilies(id));
-        QGuiApplication::setFont(font);
-    }
+    iv::useProgramFont();  // at the size the system asks for
 
     iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
+    {
+        QSettings settings;
+        iv::forgetRetiredSettings(settings);
+    }
 
     const QStringList arguments = QCoreApplication::arguments();
 

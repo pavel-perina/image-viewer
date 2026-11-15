@@ -34,35 +34,8 @@ ApplicationWindow {
     height: 800
     visible: true
 
-    // All roles, as one left out comes from the system theme. These set every group, then the
-    // disabled one is changed. Menus and dialogs are popups in this window and take it too.
-    palette.window: Theme.window
-    palette.windowText: Theme.text
-    palette.base: Theme.base
-    palette.alternateBase: Theme.alternateBase
-    palette.text: Theme.text
-    palette.button: Theme.button
-    palette.buttonText: Theme.text
-    palette.brightText: Theme.highlightedText
-    palette.highlight: Theme.highlight
-    palette.highlightedText: Theme.highlightedText
-    palette.accent: Theme.accent
-    palette.light: Theme.light
-    palette.midlight: Theme.midlight
-    palette.mid: Theme.mid
-    palette.dark: Theme.dark
-    palette.shadow: Theme.shadow
-    palette.link: Theme.link
-    palette.linkVisited: Theme.linkVisited
-    palette.toolTipBase: Theme.toolTip
-    palette.toolTipText: Theme.text
-    palette.placeholderText: Theme.placeholderText
-    palette.disabled.windowText: Theme.textDisabled
-    palette.disabled.text: Theme.textDisabled
-    palette.disabled.buttonText: Theme.textDisabled
-    palette.disabled.button: Theme.buttonDisabled
-    palette.disabled.highlight: Theme.highlightDisabled
-    palette.disabled.highlightedText: Theme.textMuted
+    // Qt's palette roles come from ThemePalette, which sets them for the whole application, so
+    // that dialogs in windows of their own have them too.
     color: Theme.window
     title: (window.edited ? "*" : "") + (context.currentName ? context.currentName + " - Image Viewer" : "Image Viewer")
 
@@ -337,8 +310,6 @@ ApplicationWindow {
         id: probeAction
         text: "&Probe Colours"
         shortcut: "P"
-        checkable: true
-        checked: window.probing
         enabled: window.viewing && !window.cropping && viewerPage.view.status === ImageView.Ready
         onTriggered: window.probing ? viewerPage.stopProbe() : viewerPage.startProbe()
     }
@@ -363,18 +334,11 @@ ApplicationWindow {
         checkable: true
         enabled: window.activeView.contrastAdjustable
         checked: window.activeView.autoContrast
+        // For this image and the next ones, until turned off: kept between sessions.
         onTriggered: {
             window.activeView.autoContrast = checked
-            if (!checked)
-                ViewSettings.keepAutoContrast = false  // or the next image would have it again
+            ViewSettings.keepAutoContrast = checked
         }
-    }
-    Action {
-        id: keepAutoContrastAction
-        text: "&Keep Auto Contrast"
-        checkable: true
-        checked: ViewSettings.keepAutoContrast
-        onTriggered: ViewSettings.keepAutoContrast = checked
     }
     Action {
         id: colorManagedAction
@@ -399,14 +363,6 @@ ApplicationWindow {
         checkable: true
         checked: viewerPage.panelAnimated
         onTriggered: viewerPage.panelAnimated = checked
-    }
-    Action {
-        id: sharpResamplingAction
-        text: "&Sharp Resampling"
-        shortcut: "M"
-        checkable: true
-        checked: viewerPage.sharpResampling
-        onTriggered: viewerPage.sharpResampling = checked
     }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
@@ -520,8 +476,6 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
-            AppMenuItem { action: keepAutoContrastAction }
-            AppMenuItem { action: sharpResamplingAction }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }
             AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.start("", "") }
@@ -553,46 +507,66 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
-            ToolButton { action: modeAction }
+            // Shows where it goes: the picture from the browser, the thumbnails from the viewer.
+            IconButton { objectName: "modeButton"; action: modeAction; iconName: window.viewing ? "view-browser" : "view-image" }
             ToolSeparator {}
-            ToolButton { action: previousAction }
-            ToolButton { action: nextAction }
+            IconButton { objectName: "previousButton"; action: previousAction; iconName: "image-previous" }
+            IconButton { objectName: "nextButton"; action: nextAction; iconName: "image-next" }
             ToolSeparator {}
-            ToolButton { action: previousPageAction; visible: window.activeView.pageCount > 1 }
-            ToolButton { action: nextPageAction; visible: window.activeView.pageCount > 1 }
-            ToolSeparator { visible: window.activeView.pageCount > 1 }
-            ToolButton { action: zoomInAction }
-            ToolButton { action: zoomOutAction }
-            ToolButton { action: fitAction }
-            ToolButton { action: actualSizeAction }
-            // Auto Contrast and its lock, as one split button.
-            Row {
-                visible: window.activeView.contrastAdjustable
-                ToolButton { objectName: "autoContrastButton"; action: autoContrastAction }
-                LockButton {
-                    objectName: "keepAutoContrastButton"
-                    action: keepAutoContrastAction
-                    tip: "Keep Auto Contrast for the next images"
-                }
+            IconButton {
+                objectName: "previousPageButton"
+                action: previousPageAction
+                iconName: "page-previous"
+                visible: window.activeView.pageCount > 1
             }
-            ToolButton { action: infoAction; visible: window.viewing }
+            IconButton {
+                objectName: "nextPageButton"
+                action: nextPageAction
+                iconName: "page-next"
+                visible: window.activeView.pageCount > 1
+            }
+            ToolSeparator { visible: window.activeView.pageCount > 1 }
+            IconButton { objectName: "zoomInButton"; action: zoomInAction; iconName: "zoom-in" }
+            IconButton { objectName: "zoomOutButton"; action: zoomOutAction; iconName: "zoom-out" }
+            IconButton { objectName: "fitButton"; action: fitAction; iconName: "zoom-fit-best" }
+            IconButton { objectName: "actualSizeButton"; action: actualSizeAction; iconName: "zoom-original" }
+            IconButton {
+                objectName: "autoContrastButton"
+                action: autoContrastAction
+                iconName: "auto-contrast"
+                visible: window.activeView.contrastAdjustable
+            }
+            IconButton { objectName: "infoButton"; action: infoAction; iconName: "dialog-information"; visible: window.viewing }
             ToolSeparator { visible: window.viewing }
-            ToolButton { action: cropAction; visible: window.viewing }
-            ToolButton { action: straightenAction; visible: window.viewing }
-            ToolButton { action: adjustAction; text: "Adjust"; visible: window.viewing }
+            IconButton { objectName: "cropButton"; action: cropAction; iconName: "transform-crop"; visible: window.viewing }
+            IconButton { objectName: "straightenButton"; action: straightenAction; iconName: "straighten"; visible: window.viewing }
+            IconButton { objectName: "annotateButton"; action: annotateAction; iconName: "annotate"; visible: window.viewing }
+            IconButton { objectName: "resizeButton"; action: resizeAction; iconName: "image-resize"; visible: window.viewing }
+            IconButton { objectName: "adjustButton"; action: adjustAction; iconName: "adjust-colours"; visible: window.viewing }
+            // Down while probing, as the probe is a tool at work; a tool is no option to tick,
+            // so the action is not checkable and the menu shows no box for it.
+            IconButton {
+                objectName: "probeButton"
+                action: probeAction
+                iconName: "color-picker"
+                visible: window.viewing
+                checked: window.probing
+            }
             ToolSeparator { visible: window.viewing }
-            ToolButton { action: beforeAfterAction; text: "Before/After"; visible: window.viewing }
+            IconButton { objectName: "beforeAfterButton"; action: beforeAfterAction; iconName: "before-after"; visible: window.viewing }
             // Shows the original while held down.
-            ToolButton {
+            IconButton {
                 id: originalButton
                 objectName: "originalButton"
-                text: "Original"
+                text: "Original (hold)"
+                iconName: "show-original"
                 visible: window.viewing
                 enabled: viewerPage.canCompareEdit || viewerPage.comparing === "edit"
                 focusPolicy: Qt.NoFocus
             }
-            ToolButton { action: probeAction; text: "Probe"; visible: window.viewing }
             Item { Layout.fillWidth: true }
+            // The bar is hidden at full screen, so this only enters it; Esc or F11 leaves.
+            IconButton { objectName: "fullScreenButton"; action: fullScreenAction; iconName: "view-fullscreen" }
         }
     }
 
@@ -712,7 +686,6 @@ ApplicationWindow {
             id: browserPage
             context: context
             active: !window.viewing
-            sharpResampling: viewerPage.sharpResampling
             onViewRequested: window.viewing = true
             onFileMenuRequested: fileActions.fileMenu.popup()
             onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)

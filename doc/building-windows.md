@@ -49,6 +49,29 @@ puts the compiler and `pkgconf` on `PATH`, and needs running once per cmd window
 
 The libraries are linked statically, so only the Qt DLLs are needed at run time.
 
+**"Cannot open include file" for standard headers** such as `<string>` or `<vector>` means
+`conanbuild.bat` wasn't run in this cmd window. Without it the compiler starts without the include
+and library paths of Visual Studio and the Windows SDK. It can't be run from PowerShell, as the
+variables it sets end with the cmd it runs in.
+
+**Always pass `-of build/conan`** (or another folder) to `conan install`. Without it Conan writes
+its files into the repository root, and without the Ninja setting it writes them for the Visual
+Studio generator, which the steps here don't use.
+
+### RelWithDebInfo
+
+For a build with debugging information, keep the libraries as Release and make only this project
+RelWithDebInfo, with `&:`. Conan then reuses the Release libraries without building anything:
+
+    conan install . -of build/conan-relwithdebinfo -s build_type=Release -s "&:build_type=RelWithDebInfo" -c tools.cmake.cmaketoolchain:generator=Ninja --build=missing
+    build\conan-relwithdebinfo\conanbuild.bat
+    cmake -S . -B build\relwithdebinfo -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_TOOLCHAIN_FILE=%CD%/build/conan-relwithdebinfo/conan_toolchain.cmake -DCMAKE_PREFIX_PATH=C:/Qt/6.12.0/msvc2022_64
+    cmake --build build\relwithdebinfo
+
+Configuring `build\release` with `-DCMAKE_BUILD_TYPE=RelWithDebInfo` doesn't work. The files Conan
+wrote there describe the libraries for Release only, so CMake finds no libraries for
+RelWithDebInfo, and the Visual C++ runtime isn't set for it either.
+
 ## Running
 
 Each time `imageviewer.exe` is linked, a post-build step runs `windeployqt`, which copies the Qt
@@ -174,8 +197,9 @@ This is not legal advice. Have it checked before a commercial release.
   Static linking or modifying Qt makes this harder. Either one is a reason to consider the
   commercial licence.
 * Check the licence of each module used, as not every Qt module is LGPL (some are GPL-only).
-  Core, Gui, Qml, Quick and QuickControls2 are LGPL. **Shader Tools** is used only at build time,
-  by `qt_add_shaders`/`qsb`, to compile the shaders. The app doesn't link it or ship it, but
+  Core, Gui, Qml, Quick, QuickControls2 and Svg (which draws the icons) are LGPL. Svg is one of
+  Qt's essential modules, installed with Qt by default. **Shader Tools** is used only at build
+  time, by `qt_add_shaders`/`qsb`, to compile the shaders. The app doesn't link it or ship it, but
   confirm its licence on its documentation page anyway. Qt Test is used only by the tests.
 * The Qt Online Installer asks open-source users to accept its terms. The LGPL obligations above
   apply either way.

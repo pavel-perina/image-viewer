@@ -61,12 +61,16 @@ Rectangle {
         onWheel: (wheel) => wheel.accepted = true
     }
 
+    // The right margin is left to the scroll bar, which sits in it; the heading and the buttons
+    // keep it themselves.
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.panelMargin
+        anchors.rightMargin: 0
         spacing: Theme.panelSpacing
 
         Label {
+            Layout.rightMargin: Theme.panelMargin
             text: panel.title
             font.bold: true
             font.pointSize: Theme.titleSize
@@ -89,8 +93,10 @@ Rectangle {
 
             ColumnLayout {
                 id: column
-                // Room for the scroll bar, so that it does not cover the controls' right edge.
-                width: scroller.width - (scroller.interactive ? Theme.panelSpacing : 0)
+                // The scroll bar takes the margin, so the width is the same whether it scrolls
+                // or not. Were it narrower while scrolling, a column of wrapped text that only
+                // just fits could keep switching between the two widths, laid out anew each frame.
+                width: scroller.width - Theme.panelMargin
                 height: panel.fills ? scroller.height : implicitHeight
                 spacing: Theme.panelSpacing
             }
@@ -119,6 +125,7 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.rightMargin: Theme.panelMargin
             visible: panel.buttons
             Button {
                 focusPolicy: Qt.NoFocus

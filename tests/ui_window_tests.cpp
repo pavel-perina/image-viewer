@@ -1,5 +1,7 @@
 #include "ui_test_support.h"
 #include "ui/app_info.h"
+#include "ui/retired_settings.h"
+#include "ui/theme_palette.h"
 
 TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
     QTemporaryDir dir;
@@ -144,11 +146,68 @@ TEST(ViewerPage, PanelTakesRoomFromTheImageExceptAtFullScreen) {
     page->setProperty("panelPinned", false);  // the settings outlive the test
 }
 
+// Why: a setting the program has dropped (sharp resampling, now always on) must not linger
+// in the file with the value an older version saved. Input: a settings file with a retired
+// key and one still in use. The truth: the retired one is gone, the other kept as it was.
+TEST(Settings, ThoseNoLongerUsedAreForgottenAndTheOthersKept) {
+    const QTemporaryDir dir;
+    QSettings settings(dir.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("InfoPanel/sharpResampling"), false);
+    settings.setValue(QStringLiteral("InfoPanel/panelPinned"), true);
+    iv::forgetRetiredSettings(settings);
+    EXPECT_FALSE(settings.contains(QStringLiteral("InfoPanel/sharpResampling")));
+    EXPECT_TRUE(settings.value(QStringLiteral("InfoPanel/panelPinned")).toBool());
+}
+
 TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
     MainFixture f(1);
     ASSERT_NE(f.window, nullptr);
     waitUntil([] { return false; }, 200);
     EXPECT_EQ(f.warnings, QStringList());
+}
+
+// Why: the tool bar's buttons show icons instead of words, so their names and keys must still
+// be found, in the tip, and an icon name that is not in the resources would leave a blank
+// button. Input: the whole window; the truth is the actions' names and shortcuts, with the
+// mnemonic and a menu's "..." left out.
+TEST(Main, ToolBarButtonsShowIconsAndNameThemselvesInTheirTips) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    const QList<std::pair<QString, QString>> buttons = {
+        {QStringLiteral("modeButton"), QStringLiteral("View")},
+        {QStringLiteral("previousButton"), QStringLiteral("Previous")},
+        {QStringLiteral("nextButton"), QStringLiteral("Next")},
+        {QStringLiteral("previousPageButton"), QStringLiteral("Prev Page")},
+        {QStringLiteral("nextPageButton"), QStringLiteral("Next Page")},
+        {QStringLiteral("zoomInButton"), QStringLiteral("Zoom In (+)")},
+        {QStringLiteral("zoomOutButton"), QStringLiteral("Zoom Out (-)")},
+        {QStringLiteral("fitButton"), QStringLiteral("Fit (F)")},
+        {QStringLiteral("actualSizeButton"), QStringLiteral("1:1 (1)")},
+        {QStringLiteral("autoContrastButton"), QStringLiteral("Auto Contrast")},
+        {QStringLiteral("cropButton"), QStringLiteral("Crop (X)")},
+        {QStringLiteral("straightenButton"), QStringLiteral("Straighten (S)")},
+        {QStringLiteral("annotateButton"), QStringLiteral("Annotate (D)")},
+        {QStringLiteral("resizeButton"), QStringLiteral("Resize (Ctrl+R)")},
+        {QStringLiteral("adjustButton"), QStringLiteral("Adjust Colours (A)")},
+        {QStringLiteral("beforeAfterButton"), QStringLiteral("Before and After (B)")},
+        {QStringLiteral("originalButton"), QStringLiteral("Original (hold)")},
+        {QStringLiteral("probeButton"), QStringLiteral("Probe Colours (P)")},
+        {QStringLiteral("fullScreenButton"), QStringLiteral("Full Screen (F11)")},
+    };
+    for (const auto& [name, tip] : buttons) {
+        QObject* button = f.find(name);
+        ASSERT_NE(button, nullptr) << name.toStdString();
+        EXPECT_EQ(button->property("tip").toString(), tip) << name.toStdString();
+        auto* icon = button->property("contentItem").value<QQuickItem*>();
+        ASSERT_NE(icon, nullptr) << name.toStdString();
+        EXPECT_TRUE(icon->property("valid").toBool()) << name.toStdString();
+    }
+    EXPECT_EQ(f.warnings, QStringList());
+
+    // Set IV_TOOLBAR_PNG to a file name to have the window saved, to look at the icons.
+    if (const QString file = qEnvironmentVariable("IV_TOOLBAR_PNG"); !file.isEmpty()) {
+        f.window->grabWindow().save(file);
+    }
 }
 
 TEST(Main, EditingThePathTurnsOffShortcutsForKeysATextFieldLeaves) {
@@ -249,6 +308,44 @@ TEST(MessageBox, TakesTheHeightOfAllItsText) {
     auto* content = box->property("contentItem").value<QQuickItem*>();
     EXPECT_TRUE(waitUntil([&] { return content->height() > std::max(oneLine, 32.0) + 30; }, 1000))
         << "the names of files to delete are in there, but it is " << content->height();
+}
+
+// Why: each kind of message shows its own sign, in its colour, so that a warning or an error
+// is told from news at a glance; a name missing from the resources would leave a blank space.
+// Input: a message box of each kind. The truth: the icon is found, named for the kind, in the
+// accent for info and questions and in Theme's warning and danger fills for the others.
+TEST(MessageBox, EachKindShowsItsSignInItsColour) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 400; visible: true
+            property alias box: box
+            MessageBox { id: box; title: "A caption"; text: "Text"; standardButtons: Dialog.Ok }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* box = root->property("box").value<QObject*>();
+    QObject* theme = engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    const auto colour = [&](const char* role) { return theme->property(role).value<QColor>(); };
+    const QList<std::pair<QString, QColor>> kinds = {
+        {QStringLiteral("info"), colour("accent")},
+        {QStringLiteral("question"), colour("accent")},
+        {QStringLiteral("warning"), colour("warningFill")},
+        {QStringLiteral("error"), colour("dangerFill")},
+    };
+    for (const auto& [kind, ink] : kinds) {
+        box->setProperty("kind", kind);
+        auto* icon = box->findChild<QQuickItem*>(QStringLiteral("messageIcon"));
+        ASSERT_NE(icon, nullptr);
+        EXPECT_EQ(icon->property("name").toString(), QStringLiteral("message-") + kind);
+        EXPECT_TRUE(icon->property("valid").toBool()) << kind.toStdString();
+        EXPECT_EQ(icon->property("ink").value<QColor>(), ink) << kind.toStdString();
+    }
 }
 
 TEST(MessageBox, KeysWorkAsInAStandardMessageBox) {
@@ -671,6 +768,74 @@ TEST(FileChooser, EscapeCancels) {
     EXPECT_EQ(f.chosen->size(), 0);
 }
 
+// Why: the chooser is large and worth resizing, so it is a window of its own that the system
+// decorates, moves and resizes, rather than a sheet drawn inside the main window, which could
+// do none of it. Input: the chooser opened over its window. The truth is the windows: two of
+// them, the chooser marked a dialog, modal, and belonging to the window it was declared in.
+// Why: Escape closes the chooser, but while the path is being edited it only ends that, as
+// it does in the browser; the chooser's own Escape waits for what has the keys to pass it on.
+// Input: the path bar of the chooser put in editing, then Escape twice. The truth is the
+// chooser open after the first, with the editing ended, and cancelled after the second.
+TEST(FileChooser, EscapeWhileEditingThePathOnlyEndsTheEditing) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    auto* bar = f.chooser->findChild<QQuickItem*>(QStringLiteral("chooserPathBar"));
+    ASSERT_NE(bar, nullptr);
+    QMetaObject::invokeMethod(bar, "edit");
+    ASSERT_TRUE(waitUntil([&] { return bar->property("editing").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return !bar->property("editing").toBool(); }));
+    EXPECT_TRUE(f.chooser->property("opened").toBool());
+    EXPECT_EQ(f.cancelled->size(), 0);
+
+    f.item("fileList")->forceActiveFocus();
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return f.cancelled->size() == 1; }));
+}
+
+TEST(FileChooser, IsADialogWindowOfItsOwnOverItsWindow) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    ASSERT_NE(f.window, nullptr);
+    EXPECT_NE(f.window, f.owner);
+    EXPECT_EQ(f.window->transientParent(), f.owner);
+    EXPECT_EQ(f.window->flags() & Qt::WindowType_Mask, Qt::Dialog);
+    EXPECT_NE(f.window->modality(), Qt::NonModal);
+    EXPECT_TRUE(f.window->isVisible());
+}
+
+// Why: a chooser made larger stays so; opening it at its first size each time would undo it.
+// Input: the chooser opened, resized, closed and opened again. The truth is its size then,
+// which is kept in the settings (of the test's own home).
+// Why: Brief and Details are icons, so their names are in the tips, and an icon missing from
+// the resources would leave them blank. Input: the chooser; the truth is the buttons' names.
+TEST(FileChooser, TheViewButtonsShowIconsAndNameThemselves) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.start(QString());
+    for (const auto& [name, tip] : {std::pair{"briefButton", "Brief"}, std::pair{"detailsButton", "Details"}}) {
+        auto* button = f.chooser->findChild<QQuickItem*>(QString::fromLatin1(name));
+        ASSERT_NE(button, nullptr) << name;
+        EXPECT_EQ(button->property("tip").toString(), QString::fromLatin1(tip));
+        auto* icon = button->property("contentItem").value<QQuickItem*>();
+        ASSERT_NE(icon, nullptr) << name;
+        EXPECT_TRUE(icon->property("valid").toBool()) << name;
+    }
+}
+
+TEST(FileChooser, KeepsTheSizeItWasGiven) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    f.window->resize(760, 520);
+    ASSERT_TRUE(waitUntil([&] { return f.window->width() == 760 && f.window->height() == 520; }));
+    QMetaObject::invokeMethod(f.chooser, "close");
+    ASSERT_TRUE(waitUntil([&] { return !f.window->isVisible(); }));
+    f.window->resize(400, 300);  // as if the window had been made anew at another size
+
+    f.start(QStringLiteral("a.jpg"));
+    EXPECT_EQ(f.window->width(), 760);
+    EXPECT_EQ(f.window->height(), 520);
+}
+
 TEST(FileChooser, OpenEntersFoldersAndOpensFiles) {
     ChooserFixture f(QStringLiteral("open"));
     f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
@@ -709,6 +874,65 @@ TEST(FileChooser, FolderModeChoosesTheSelectedFolderOrElseTheOneShown) {
     EXPECT_EQ(f.chosen->at(1).at(0).toString(), f.dir.filePath(QStringLiteral("sub")));
 }
 
+// Why: the name, the type and the two buttons beside them are read as two rows; a field
+// taller than the list below it, or a button off its field's line, looks careless. Input: the
+// chooser saving. The truth is the items' places and sizes in the window: each row's field
+// and button are as high as each other and start at the same height.
+TEST(FileChooser, EachFieldIsAsHighAsItsButtonAndOnItsLine) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    QQuickItem* name = f.item("nameField");
+    QQuickItem* type = f.item("typeBox");
+    QQuickItem* save = f.item("acceptButton");
+    auto* cancel = f.chooser->findChild<QQuickItem*>(QStringLiteral("cancelButton"));
+    ASSERT_NE(cancel, nullptr);
+    const auto top = [](QQuickItem* item) { return item->mapToScene(QPointF()).y(); };
+    EXPECT_EQ(name->height(), type->height());
+    EXPECT_EQ(name->height(), save->height());
+    EXPECT_EQ(type->height(), cancel->height());
+    EXPECT_EQ(top(name), top(save));
+    EXPECT_EQ(top(type), top(cancel));
+    EXPECT_EQ(save->width(), cancel->width());
+}
+
+// Why: the places, the folders and the files are three lists side by side and are to read as
+// such: on the same colour, each framed, and with the same gap between them across as down.
+// Input: the chooser saving, in the window's palette from Theme. The truth is the frames'
+// places, and the colour of an empty spot of each list against Theme.base.
+TEST(FileChooser, ThePlacesTheFoldersAndTheFilesAreListsAlike) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    auto* places = f.chooser->findChild<QQuickItem*>(QStringLiteral("placesView"));
+    QQuickItem* files = f.item("fileList");
+    ASSERT_NE(places, nullptr);
+    QQuickItem* placesFrame = places->parentItem();
+    QQuickItem* tree = f.chooser->findChild<QQuickItem*>(QStringLiteral("chooserTree"));
+    ASSERT_NE(tree, nullptr);
+    QQuickItem* treeFrame = tree->parentItem()->parentItem();  // the tree, its loader, the frame
+    const QRectF placesBox = placesFrame->mapRectToScene(placesFrame->boundingRect());
+    const QRectF treeBox = treeFrame->mapRectToScene(treeFrame->boundingRect());
+    const QRectF filesBox = files->mapRectToScene(files->boundingRect());
+    const double down = treeBox.top() - placesBox.bottom();
+    const double across = filesBox.left() - placesBox.right();
+    EXPECT_GT(down, 0);
+    EXPECT_EQ(down, across);
+
+    QObject* theme = f.engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    const QColor base = theme->property("base").value<QColor>();
+    const QImage shot = f.window->grabWindow();
+    const auto near = [&](QPointF at) {
+        const QColor c = shot.pixelColor(at.toPoint());
+        return std::abs(c.red() - base.red()) + std::abs(c.green() - base.green()) + std::abs(c.blue() - base.blue()) <= 6;
+    };
+    EXPECT_TRUE(near(placesBox.bottomLeft() + QPointF(placesBox.width() / 2, -6))) << "below the last place";
+    EXPECT_TRUE(near(treeBox.bottomLeft() + QPointF(treeBox.width() - 30, -3))) << "the tree, near its foot";
+    EXPECT_TRUE(near(filesBox.bottomLeft() + QPointF(filesBox.width() / 2, -10))) << "below the files";
+}
+
+// Why: letters typed into the name must not crop, straighten or move between images, as the
+// main window's shortcuts would. The chooser is a window of its own, so its keys are its own.
+// Input: the save chooser over a browser with one image, and S, X, Space and Backspace typed in
+// it. The truth is the name holding what was typed and the main window still browsing.
 TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
     MainFixture f(1);
     ASSERT_NE(f.window, nullptr);
@@ -719,17 +943,19 @@ TEST(Main, TypingASaveNameDoesNotReachTheWindowShortcuts) {
 
     auto* chooser = window->findChild<QObject*>(QStringLiteral("saveDialog"));
     ASSERT_NE(chooser, nullptr);
+    auto* chooserWindow = qobject_cast<QQuickWindow*>(chooser);
+    ASSERT_NE(chooserWindow, nullptr);
     QMetaObject::invokeMethod(chooser, "start", Q_ARG(QVariant, dir.path()), Q_ARG(QVariant, QStringLiteral("a.jpg")));
     auto* field = chooser->property("nameField").value<QQuickItem*>();
-    ASSERT_TRUE(waitUntil([&] { return field->hasActiveFocus(); }));
+    ASSERT_TRUE(waitUntil([&] { return field->hasActiveFocus() && chooserWindow->isExposed(); }));
     // S straightens and X crops the selected image, Space and Backspace move between images.
-    QTest::keyClick(window, Qt::Key_End);
-    typeText(window, QStringLiteral("sx p"));
-    QTest::keyClick(window, Qt::Key_Backspace);
+    QTest::keyClick(chooserWindow, Qt::Key_End);
+    typeText(chooserWindow, QStringLiteral("sx p"));
+    QTest::keyClick(chooserWindow, Qt::Key_Backspace);
     EXPECT_EQ(field->property("text").toString(), QStringLiteral("a.jpgsx "));
     EXPECT_FALSE(window->property("viewing").toBool());
     EXPECT_TRUE(chooser->property("opened").toBool());
-    QTest::keyClick(window, Qt::Key_Escape);
+    QTest::keyClick(chooserWindow, Qt::Key_Escape);
 }
 
 TEST(Keys, TheThumbnailsHaveTheKeysAfterEditingThePathOrAName) {
@@ -878,7 +1104,12 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
 }
 
-TEST(Main, TheLockKeepsAutoContrastAndTurningItOffReleasesTheLock) {
+// Why: Auto Contrast is one toggle that stays as it is set: turned on, the next images have it
+// too, and turned off, they do not, with no second button to keep it. The button is lit
+// while the image shown has it. Input: two dim 16-bit gray images, which load without it,
+// stepped between. The truth is the view's auto contrast, the button's state and the setting
+// that is kept between sessions.
+TEST(Main, AutoContrastStaysAsItIsSetForTheNextImages) {
     MainFixture f([](const QTemporaryDir& dir) {
         TiffImage gray;
         gray.width = 100;
@@ -893,22 +1124,28 @@ TEST(Main, TheLockKeepsAutoContrastAndTurningItOffReleasesTheLock) {
     auto* view = f.window->property("activeView").value<ImageView*>();
     ASSERT_NE(view, nullptr);
     ASSERT_TRUE(waitUntil([&] { return view->contrastAdjustable(); }));
-    QObject* lock = f.find(QStringLiteral("keepAutoContrastButton"));
     QObject* button = f.find(QStringLiteral("autoContrastButton"));
-    ASSERT_NE(lock, nullptr);
     ASSERT_NE(button, nullptr);
+    EXPECT_EQ(f.find(QStringLiteral("keepAutoContrastButton")), nullptr) << "no second button";
     ASSERT_FALSE(view->autoContrast());
+    EXPECT_FALSE(button->property("checked").toBool());
 
-    QMetaObject::invokeMethod(lock, "click");
-    EXPECT_TRUE(lock->property("checked").toBool());
+    QMetaObject::invokeMethod(button, "click");
     EXPECT_TRUE(view->autoContrast());
+    EXPECT_TRUE(button->property("checked").toBool());
+    EXPECT_TRUE(view->keepAutoContrast());
     QTest::keyClick(f.window, Qt::Key_Right);
     ASSERT_TRUE(waitUntil([&] { return view->source().endsWith(QStringLiteral("b.tif")) && view->contrastAdjustable(); }));
-    EXPECT_TRUE(view->autoContrast()) << "kept for the next image";
+    EXPECT_TRUE(view->autoContrast()) << "on for the next image";
+    EXPECT_TRUE(button->property("checked").toBool());
 
     QMetaObject::invokeMethod(button, "click");
     EXPECT_FALSE(view->autoContrast());
-    EXPECT_FALSE(lock->property("checked").toBool()) << "turned off, it is no longer kept";
+    EXPECT_FALSE(view->keepAutoContrast());
+    QTest::keyClick(f.window, Qt::Key_Left);
+    ASSERT_TRUE(waitUntil([&] { return view->source().endsWith(QStringLiteral("a.tif")) && view->contrastAdjustable(); }));
+    EXPECT_FALSE(view->autoContrast()) << "off for the next image";
+    EXPECT_FALSE(button->property("checked").toBool());
 }
 
 TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
@@ -1000,4 +1237,81 @@ TEST(Main, EnterAppliesAndEscLeavesWhicheverToolIsAtWork) {
     EXPECT_FALSE(f.window->property("toolActive").toBool());
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
     EXPECT_TRUE(f.window->property("viewing").toBool());
+}
+
+// Why: the colours are worked out from a few choices, and changing one must reach everything
+// bound to Theme at once, Fusion's palette included, with no page doing anything. Input: the
+// main window, its hue turned from willow to a blue. The truth is Theme's window colour, the
+// window's own palette, and that the willow comes back with the hue.
+// Why: probing is a tool at work, as cropping is, not an option to tick, so the Edit menu shows
+// no box for it; the toolbar's Probe is down while it is at work. Input: the main window. The
+// truth is the action behind the toolbar's Probe: not checkable.
+TEST(Main, TheProbeIsAToolAndNotAnOptionToTick) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    QObject* button = f.find(QStringLiteral("probeButton"));
+    ASSERT_NE(button, nullptr);
+    QObject* action = button->property("action").value<QObject*>();
+    ASSERT_NE(action, nullptr);
+    EXPECT_FALSE(action->property("checkable").toBool());
+}
+
+// Why: a dialog in a window of its own does not inherit the main window's palette, and a role
+// it lacks comes from the system theme (white menus on a light desktop). The roles are the
+// application's, so any window has them. Input: a bare window with a button, apart from the
+// main window, and a change of hue. The truth is the window's palette against Theme, at once.
+TEST(Main, AWindowOfItsOwnHasTheThemesColours) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        Window {
+            width: 200; height: 100; visible: true
+            property color expected: Theme.window
+            property color expectedHighlight: Theme.highlight
+            property alias button: button
+            Button { id: button; text: "Save" }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    ASSERT_NE(root, nullptr);
+    auto* button = root->property("button").value<QQuickItem*>();
+    const auto paletteColour = [&](const char* role) {
+        return button->property("palette").value<QObject*>()->property(role).value<QColor>();
+    };
+    EXPECT_EQ(paletteColour("window"), root->property("expected").value<QColor>());
+    EXPECT_EQ(paletteColour("highlight"), root->property("expectedHighlight").value<QColor>());
+
+    auto* palette = engine.singletonInstance<iv::ThemePalette*>("ImageViewer", "ThemePalette");
+    const double willow = palette->hue();
+    palette->setHue(250);
+    QCoreApplication::processEvents();
+    EXPECT_EQ(paletteColour("window"), root->property("expected").value<QColor>()) << "followed at once";
+    EXPECT_GT(paletteColour("window").blue(), paletteColour("window").green());
+    palette->setHue(willow);
+}
+
+TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
+    MainFixture f(0);
+    ASSERT_NE(f.window, nullptr);
+    auto* palette = f.engine.singletonInstance<iv::ThemePalette*>("ImageViewer", "ThemePalette");
+    QObject* theme = f.engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    ASSERT_NE(palette, nullptr);
+    ASSERT_NE(theme, nullptr);
+    const double willow = palette->hue();
+    const QColor before = theme->property("window").value<QColor>();
+    EXPECT_GT(before.green(), before.blue()) << "willow is green";
+    EXPECT_EQ(f.window->color(), before) << "the window is painted in it";
+
+    palette->setHue(250);
+    const QColor blue = theme->property("window").value<QColor>();
+    EXPECT_GT(blue.blue(), blue.green());
+    EXPECT_EQ(f.window->color(), blue) << "followed by the binding alone";
+
+    palette->setHue(willow);
+    EXPECT_EQ(theme->property("window").value<QColor>(), before);
+    EXPECT_EQ(f.warnings, QStringList());
 }

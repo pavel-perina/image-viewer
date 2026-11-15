@@ -758,3 +758,23 @@ TEST(Annotate, ThePanelDoesNotScrollWhenItFits) {
     EXPECT_LE(scroller->property("contentHeight").toDouble(), scroller->height());
     EXPECT_FALSE(scroller->property("interactive").toBool());
 }
+
+// Why: were the controls narrower while the panel scrolls, to make room for the scroll bar, a
+// panel of wrapped text that only just fits could switch between the two widths every frame
+// and starve the rest of the window (the Straighten panel once did, and pictures stopped
+// loading). Input: the Annotate panel first fitting, then scrolling in a low window. The truth
+// is the width of the column that holds the controls, which must not change.
+TEST(Annotate, ThePanelsControlsKeepTheirWidthWhetherItScrollsOrNot) {
+    AnnotatePage f;
+    f.overlay->setTool(Tool::Text);
+    auto* scroller = f.page->findChild<QQuickItem*>(QStringLiteral("annotatePanel"))->findChild<QQuickItem*>(QStringLiteral("toolPanelScroller"));
+    ASSERT_NE(scroller, nullptr);
+    QQuickItem* column = scroller->property("contentItem").value<QQuickItem*>()->childItems().value(0);
+    ASSERT_NE(column, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return !scroller->property("interactive").toBool(); }));
+    const qreal fitting = column->width();
+
+    f.view.resize(900, 300);
+    ASSERT_TRUE(waitUntil([&] { return scroller->property("interactive").toBool(); }));
+    EXPECT_EQ(column->width(), fitting);
+}

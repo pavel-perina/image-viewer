@@ -6,7 +6,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import ImageViewer
 
-// Chooses a file to open, a name to save as, or a folder, inside the window. The places and the
+// Chooses a file to open, a name to save as, or a folder, in a window of its own. The places and the
 // folder tree are on the left, the path bar above and the files of the folder in the middle, as a
 // brief or a detailed list.
 //
@@ -14,7 +14,7 @@ import ImageViewer
 // only fills in the name. Choosing another type changes the extension of the name, typing a known
 // extension chooses its type, and a name without one gets the type's. A name of a folder opens
 // that folder instead, and a file that exists is replaced only when the user says so.
-AppDialog {
+DialogWindow {
     id: chooser
     objectName: "fileChooser"
 
@@ -38,11 +38,14 @@ AppDialog {
     // The file name to come back to after a folder name typed in its place opens that folder.
     property string lastFileName
     property bool finished: false
+    // The two buttons are as wide as each other, and a little wider than either needs.
+    readonly property real buttonWidth: Math.max(acceptButton.implicitWidth, cancelButton.implicitWidth, 120)
 
-    width: Math.round(parent.width * 0.85)
-    height: Math.round(parent.height * 0.85)
+    // One size for every chooser, kept from one time to the next.
+    sizeKey: "fileChooser"
+    initialWidth: 980
+    initialHeight: 680
     padding: 10
-    closePolicy: Popup.CloseOnEscape
 
     // Opens the chooser in a folder, else where it was last, else in the home folder, with a name
     // filled in for saving.
@@ -182,18 +185,17 @@ AppDialog {
     }
 
     onTypeIndexChanged: typeBox.currentIndex = typeIndex
-    onOpened: {
-        if (mode === "save") {
+    onOpenedChanged: {
+        if (!opened) {
+            if (!finished)
+                cancelled()
+        } else if (mode === "save") {
             nameField.forceActiveFocus()
             const dot = nameField.text.lastIndexOf(".")
             nameField.select(0, dot > 0 ? dot : nameField.text.length)
         } else {
             fileList.forceActiveFocus()
         }
-    }
-    onClosed: {
-        if (!finished)
-            cancelled()
     }
 
     Settings {
@@ -213,7 +215,8 @@ AppDialog {
                                                                                           : chooser.types[chooser.typeIndex].extensions
     }
 
-    contentItem: ColumnLayout {
+    ColumnLayout {
+        anchors.fill: parent
         spacing: 8
 
         RowLayout {
@@ -225,16 +228,18 @@ AppDialog {
                 context: browse
                 recordVisits: false
             }
-            ToolButton {
+            IconButton {
                 objectName: "briefButton"
                 text: "Brief"
+                iconName: "view-list-brief"
                 checkable: true
                 checked: !fileList.details
                 onClicked: fileList.details = false
             }
-            ToolButton {
+            IconButton {
                 objectName: "detailsButton"
                 text: "Details"
+                iconName: "view-list-details"
                 checkable: true
                 checked: fileList.details
                 onClicked: fileList.details = true
@@ -251,46 +256,62 @@ AppDialog {
                 SplitView.preferredWidth: 220
                 SplitView.minimumWidth: 120
 
-                ListView {
-                    id: placesView
-                    objectName: "placesView"
-                    SplitView.preferredHeight: parent.height * 0.45
+                // The places and the folders stand on what the files do, so the three read
+                // as lists alike.
+                ListFrame {
+                    SplitView.preferredHeight: side.height * 0.45
                     SplitView.minimumHeight: 60
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: AppScrollBar {}
-                    section.property: "section"
-                    section.delegate: Label {
-                        required property string section
-                        width: ListView.view.width
-                        topPadding: 6
-                        leftPadding: 6
-                        bottomPadding: 2
-                        text: section
-                        opacity: 0.6
-                        font.weight: Font.DemiBold
-                    }
-                    delegate: ItemDelegate {
-                        required property var modelData
-                        width: ListView.view.width
-                        height: 26
-                        leftPadding: 14
-                        text: modelData.name
-                        highlighted: modelData.path === browse.directory
-                        onClicked: chooser.openFolder(modelData.path)
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 800
-                        ToolTip.text: browse.nativePath(modelData.path)
+                    focused: placesView.activeFocus
+
+                    ListView {
+                        id: placesView
+                        objectName: "placesView"
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: AppScrollBar {}
+                        section.property: "section"
+                        section.delegate: Label {
+                            required property string section
+                            width: ListView.view.width
+                            topPadding: 6
+                            leftPadding: 6
+                            bottomPadding: 2
+                            text: section
+                            opacity: 0.6
+                            font.weight: Font.DemiBold
+                        }
+                        delegate: ItemDelegate {
+                            required property var modelData
+                            width: ListView.view.width
+                            height: 26
+                            leftPadding: 14
+                            text: modelData.name
+                            highlighted: modelData.path === browse.directory
+                            onClicked: chooser.openFolder(modelData.path)
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 800
+                            ToolTip.text: browse.nativePath(modelData.path)
+                        }
                     }
                 }
 
-                // Made only while shown, as each tree watches the file system.
-                Loader {
+                ListFrame {
                     SplitView.fillHeight: true
                     SplitView.minimumHeight: 60
-                    active: chooser.visible
-                    sourceComponent: FolderTree {
-                        context: browse
+                    focused: treeLoader.item ? treeLoader.item.activeFocus : false
+
+                    // Made only while shown, as each tree watches the file system.
+                    Loader {
+                        id: treeLoader
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        active: chooser.visible
+                        sourceComponent: FolderTree {
+                            objectName: "chooserTree"
+                            context: browse
+                        }
                     }
                 }
             }
@@ -325,91 +346,88 @@ AppDialog {
             wrapMode: Text.Wrap
         }
 
-        RowLayout {
+        // The name and the type on the left, each with its button at the right of its row, so
+        // that the fields and the buttons line up across. Choosing a folder has no fields, and
+        // its buttons stand alone at the right.
+        GridLayout {
             Layout.fillWidth: true
-            spacing: 8
+            columns: 3
+            columnSpacing: 8
+            rowSpacing: 6
 
-            GridLayout {
+            Label {
+                text: "Name:"
+                visible: chooser.mode !== "folder"
+            }
+            TextField {
+                id: nameField
+                objectName: "nameField"
                 Layout.fillWidth: true
                 visible: chooser.mode !== "folder"
-                columns: 2
-                columnSpacing: 8
-                rowSpacing: 6
-
-                Label {
-                    text: "Name:"
-                }
-                TextField {
-                    id: nameField
-                    objectName: "nameField"
-                    Layout.fillWidth: true
-                    selectByMouse: true
-                    onTextEdited: {
-                        chooser.problem = ""
-                        if (chooser.mode !== "save")
-                            return
-                        const type = chooser.typeOf(text)
-                        if (type >= 0) {
-                            chooser.typeIndex = type
-                            chooser.lastFileName = text
-                        }
+                selectByMouse: true
+                onTextEdited: {
+                    chooser.problem = ""
+                    if (chooser.mode !== "save")
+                        return
+                    const type = chooser.typeOf(text)
+                    if (type >= 0) {
+                        chooser.typeIndex = type
+                        chooser.lastFileName = text
                     }
-                    onAccepted: chooser.submit()
                 }
-
-                Label {
-                    text: "Type:"
-                    visible: chooser.types.length > 0
-                }
-                ComboBox {
-                    id: typeBox
-                    objectName: "typeBox"
-                    Layout.fillWidth: true
-                    visible: chooser.types.length > 0
-                    model: chooser.types.map(type => type.extensions.length === 0 ? type.label
-                                             : type.label + " (" + type.extensions.map(e => "*." + e).join(" ") + ")")
-                    onActivated: (index) => {
-                        chooser.typeIndex = index
-                        if (chooser.mode === "save") {
-                            nameField.text = chooser.withType(nameField.text, index)
-                            chooser.lastFileName = nameField.text
-                        }
-                    }
-                    Component.onCompleted: currentIndex = chooser.typeIndex
-                }
+                onAccepted: chooser.submit()
             }
-
             Item {
+                Layout.columnSpan: 2
                 Layout.fillWidth: true
                 visible: chooser.mode === "folder"
             }
+            Button {
+                id: acceptButton
+                objectName: "acceptButton"
+                Layout.preferredWidth: chooser.buttonWidth
+                highlighted: true
+                text: {
+                    if (chooser.mode !== "folder")
+                        return chooser.acceptText
+                    const entry = fileList.currentIndex >= 0 ? listing.get(fileList.currentIndex) : null
+                    return "Choose \u201c" + chooser.folderName(entry && entry.isFolder ? entry.path : browse.directory) + "\u201d"
+                }
+                enabled: chooser.mode !== "open" || nameField.text.trim() !== "" || fileList.currentIndex >= 0
+                onClicked: chooser.submit()
+            }
 
-            GridLayout {
-                Layout.alignment: Qt.AlignBottom
-                columns: chooser.mode === "folder" ? 2 : 1
-                columnSpacing: 8
-                rowSpacing: 6
-
-                Button {
-                    id: acceptButton
-                    objectName: "acceptButton"
-                    Layout.fillWidth: true
-                    highlighted: true
-                    text: {
-                        if (chooser.mode !== "folder")
-                            return chooser.acceptText
-                        const entry = fileList.currentIndex >= 0 ? listing.get(fileList.currentIndex) : null
-                        return "Choose \u201c" + chooser.folderName(entry && entry.isFolder ? entry.path : browse.directory) + "\u201d"
+            Label {
+                text: "Type:"
+                visible: chooser.mode !== "folder" && chooser.types.length > 0
+            }
+            ComboBox {
+                id: typeBox
+                objectName: "typeBox"
+                Layout.fillWidth: true
+                visible: chooser.mode !== "folder" && chooser.types.length > 0
+                model: chooser.types.map(type => type.extensions.length === 0 ? type.label
+                                         : type.label + " (" + type.extensions.map(e => "*." + e).join(" ") + ")")
+                onActivated: (index) => {
+                    chooser.typeIndex = index
+                    if (chooser.mode === "save") {
+                        nameField.text = chooser.withType(nameField.text, index)
+                        chooser.lastFileName = nameField.text
                     }
-                    enabled: chooser.mode !== "open" || nameField.text.trim() !== "" || fileList.currentIndex >= 0
-                    onClicked: chooser.submit()
                 }
-                Button {
-                    objectName: "cancelButton"
-                    Layout.fillWidth: true
-                    text: "Cancel"
-                    onClicked: chooser.close()
-                }
+                Component.onCompleted: currentIndex = chooser.typeIndex
+            }
+            Item {
+                Layout.columnSpan: 2
+                Layout.fillWidth: true
+                visible: !typeBox.visible
+            }
+            Button {
+                id: cancelButton
+                objectName: "cancelButton"
+                Layout.preferredWidth: chooser.buttonWidth
+                text: "Cancel"
+                onClicked: chooser.close()
             }
         }
     }

@@ -17,7 +17,8 @@ Rectangle {
     readonly property alias view: surface.view
     property alias panelPinned: settings.panelPinned
     property alias panelAnimated: settings.panelAnimated
-    property alias sharpResampling: settings.sharpResampling
+    // Always on in the program; off only to compare with bilinear, as the GPU tests do.
+    property bool sharpResampling: true
     property bool panelRevealed: false
     readonly property bool panelShown: fullScreen ? panelRevealed : panelPinned
     // The tool at work, one at a time: "crop", "probe", "straighten", "adjust" or "annotate",
@@ -278,7 +279,7 @@ Rectangle {
         visible: page.comparing !== ""
         scrollBarsVisible: false
         wheelNavigates: false
-        sharp: settings.sharpResampling
+        sharp: page.sharpResampling
     }
 
     ImageSurface {
@@ -291,7 +292,7 @@ Rectangle {
         anchors.right: page.fullScreen ? parent.right : page.sidePanel.left
         source: page.active ? page.context.currentPath : ""
         histogramEnabled: (page.panelShown && !page.toolActive) || page.adjusting
-        sharp: settings.sharpResampling
+        sharp: page.sharpResampling
         wheelNavigates: !page.toolActive && page.comparing === ""
     }
 
@@ -432,7 +433,6 @@ Rectangle {
         category: "InfoPanel"
         property bool panelPinned: false
         property bool panelAnimated: true
-        property bool sharpResampling: true
         property alias logScale: panel.logScale
         property alias fitRange: panel.fitRange
     }

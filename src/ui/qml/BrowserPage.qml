@@ -12,7 +12,6 @@ SplitView {
     required property BrowseContext context
     required property bool active
     readonly property alias preview: previewPanel.view
-    property bool sharpResampling: false
     readonly property alias pathBar: pathBar
 
     // Emitted when the user wants the current image in the large view.
@@ -70,24 +69,37 @@ SplitView {
         SplitView.preferredWidth: 300
         SplitView.minimumWidth: 120
 
-        FolderTree {
-            id: folderTree
-            objectName: "folderTree"
+        // The folders under a caption as the preview has, though they do not collapse.
+        ColumnLayout {
             SplitView.fillHeight: true
             SplitView.minimumHeight: 80
-            context: page.context
-            onFolderMenuRequested: (path) => page.folderMenuRequested(path)
-            onRenameRequested: (path) => page.folderRenameRequested(path)
-            onTrashRequested: (path) => page.folderTrashRequested(path)
-            onFilesRequested: grid.forceActiveFocus()
-            onFilesDropped: (paths, folder, moving) => page.filesDropped(paths, folder, moving)
+            spacing: 0
+
+            PaneHeader {
+                objectName: "foldersHeader"
+                Layout.fillWidth: true
+                Layout.preferredHeight: previewPanel.headerHeight
+                text: "Folders"
+            }
+
+            FolderTree {
+                id: folderTree
+                objectName: "folderTree"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                context: page.context
+                onFolderMenuRequested: (path) => page.folderMenuRequested(path)
+                onRenameRequested: (path) => page.folderRenameRequested(path)
+                onTrashRequested: (path) => page.folderTrashRequested(path)
+                onFilesRequested: grid.forceActiveFocus()
+                onFilesDropped: (paths, folder, moving) => page.filesDropped(paths, folder, moving)
+            }
         }
 
         PreviewPanel {
             id: previewPanel
             context: page.context
             active: page.active
-            sharp: page.sharpResampling
             SplitView.preferredHeight: 300
             SplitView.minimumHeight: collapsed ? headerHeight : 140
             SplitView.maximumHeight: collapsed ? headerHeight : Number.POSITIVE_INFINITY

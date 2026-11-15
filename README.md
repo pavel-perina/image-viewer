@@ -40,13 +40,13 @@ with a click, Ctrl+C copies the hex, and remembered colours show as a list or as
 
 ## Build
 
-Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools), libjpeg-turbo, libtiff, SQLite, LittleCMS 2
+Needs a C++23 compiler, CMake 3.28+, Qt 6.8+ (Quick, QuickControls2, ShaderTools, Svg), libjpeg-turbo, libtiff, SQLite, LittleCMS 2
 and, for the tests, GoogleTest. libpng, libwebp, libavif and libjxl are optional, and each adds its format.
 Google Benchmark is optional and adds `iv_benchmarks` (see `doc/design/performance-notes.md`).
 
 openSUSE:
 
-    sudo zypper in qt6-base-devel qt6-declarative-devel qt6-shadertools-devel libjpeg62-devel libtiff-devel liblcms2-devel sqlite3-devel libpng16-devel libwebp-devel libavif-devel libjxl-devel gtest
+    sudo zypper in qt6-base-devel qt6-declarative-devel qt6-shadertools-devel qt6-svg-devel libjpeg62-devel libtiff-devel liblcms2-devel sqlite3-devel libpng16-devel libwebp-devel libavif-devel libjxl-devel gtest
 
 Windows: see `doc/building-windows.md`. It builds with Conan and runs, but some tests still fail there.
 
@@ -95,7 +95,9 @@ The colours, for the controls too, are all set in `src/ui/qml/Theme.qml`, so the
 colour scheme does not change them.
 
 The interface uses the Inter typeface, embedded in the executable, under the SIL Open Font License
-(`src/app/fonts/Inter-LICENSE.txt`).
+(`assets/fonts/Inter-LICENSE.txt`).
+The icons are from [Tabler Icons](https://tabler.io/icons), under the MIT licence
+(`assets/icons/tabler/LICENSE`).
 
 ## Controls
 

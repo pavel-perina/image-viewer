@@ -24,6 +24,8 @@ public:
     // Multiplies the zoom, keeping the given view position over the same image point. A
     // step that would cross 100% stops there, so that scale is easy to land on.
     void zoomBy(double factor, double viewX, double viewY);
+    // Moves the zoom by whole steps on the ladder of zoomStep, the same way.
+    void zoomSteps(int steps, double viewX, double viewY);
     void panBy(double dx, double dy);
 
     // Zoom and position to return to later. A fit mode fits the view as it is by then.
@@ -63,6 +65,20 @@ private:
     double m_offsetX = 0;
     double m_offsetY = 0;
 };
+
+// The zoom `steps` rungs away on a ladder of three per doubling, 2^(k/3): each step is the
+// same, x1.26, and every third lands exactly on 25, 50, 100, 200 or 400%. From a zoom between
+// rungs, one step up is the next rung above it and one down the next below.
+double zoomStep(double zoom, int steps);
+
+// For a touchpad, which zooms smoothly: the zoom shown for a swipe that would reach `free`
+// without stops. It is held at each power of two (25, 50, 100, 200, 400%) while `free` is
+// within `hold` doublings of it, so that those are easy to land on, and the rest of each half
+// doubling is stretched to fill the gap, so that the zoom never jumps.
+double detentZoom(double free, double hold);
+// The other way: a `free` that shows `shown`, the middle of the stop for a power of two. Where
+// a swipe starts from a zoom set otherwise.
+double freeZoomFor(double shown, double hold);
 
 struct TileRange {
     int firstCol = 0;

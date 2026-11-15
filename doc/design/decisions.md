@@ -91,11 +91,12 @@ change nothing useful. The first press of a double click does this too, for that
   auto contrast, since gray images are often measurements that use a small part of it. 16-bit
   images keep the full range by default because stretching a
   photograph would falsify its exposure, so one that uses a small part of the range looks
-  dark until auto contrast is turned on. Thumbnails follow the same default. The choice is
-  per image and does not carry over to the next one, unless it is kept with the padlock beside
-  the button (Keep Auto Contrast, remembered between sessions): then every image with more than
-  8 bits has it. Turning Auto Contrast off also stops keeping it, as the next image would
-  otherwise have it again. 8-bit images never do: they are shown as they are.
+  dark until auto contrast is turned on. Thumbnails follow the same default. Auto Contrast is
+  one toggle that stays as it is set, remembered between sessions: turned on, every image
+  with more than 8 bits has it, and turned off, none has it but those that default to it. The
+  button is lit while the image shown has it. A padlock beside it once kept it for the next
+  images, but it read as a tool of its own. 8-bit images never have it: they are shown as
+  they are.
 
 ## Histogram and details
 * A histogram measures the file's values, not what is on screen, with 256 or 65536 bins,
@@ -129,9 +130,11 @@ change nothing useful. The first press of a double click does this too, for that
   20 megapixels. Levels stored in a file stay as they are.
 * Levels go down to 1024 pixels on the long edge. Without sharp resampling the view moves to the
   next level earlier (a reduction of at most 1.6), as bilinear filtering skips pixels beyond that.
-* Sharp resampling is on by default and can be turned off in the menu. Bilinear enlarges a level
-  by up to 1.25, which shows as blur just above each level's scale. Sharp resampling uses Magic
-  Kernel Sharp 2013 in linear light, in two separable passes. That kernel already
+* Sharp resampling is always on; the menu's switch and its setting are gone, and a value saved
+  by an older version is removed at start (`forgetRetiredSettings`, which lists every setting
+  the program has dropped). Only the GPU tests turn it off, to compare. Bilinear enlarges a
+  level by up to 1.25, which shows as blur just above each level's scale. Sharp resampling uses
+  Magic Kernel Sharp 2013 in linear light, in two separable passes. That kernel already
   contains the post-sharpening step, stretched along when minifying, so no separate pass
   follows, and another would sharpen twice.
 * It is built from `ShaderEffect` and layers, public API only. Tiles cannot be filtered one by
@@ -181,10 +184,11 @@ change nothing useful. The first press of a double click does this too, for that
   dark themes but larger controls, and the panels, laid out for Fusion, overflow in them;
   Material also paints the bars in its own colours.
 * Fusion takes a palette of our own, dark, as Fusion draws every state of every control from the
-  palette. `Theme.qml` holds every colour, and `Main.qml` gives all of Fusion's roles from it,
-  disabled ones included: any role left out comes from the system theme, which on a light desktop
-  gave white menus and black text over our dark panels. Popups take the window's palette, and
-  there is one window. The surround of the image stays neutral gray, and what is drawn over
+  palette. `Theme.qml` holds every colour, and all of Fusion's roles are given from the same
+  colours, disabled ones included: any role left out comes from the system theme, which on a
+  light desktop gave white menus and black text over our dark panels. `ThemePalette` sets them
+  as the application's palette, so that every window has them; `Main.qml` gave them to its own
+  window until dialogs became windows of their own, which do not inherit a window's palette. The surround of the image stays neutral gray, and what is drawn over
   pictures stays light. A light theme would be a second set of values. The plan from here: icons of our own, single-colour SVG tinted by the
   theme. Controls that still look wrong get restyled one by one in a style that falls back to
   Fusion for the rest. States are layered rather than drawn per combination: a base colour from
@@ -192,11 +196,12 @@ change nothing useful. The first press of a double click does this too, for that
   ring for keyboard focus on top.
 * Inter 4.1 is embedded and set as the application font at the size the system asks for: the
   variable file only (880 KB), as it holds every weight; no italics are used. Characters it lacks
-  come from the system's fonts. Its digits are proportional; labels with values that change
-  under the cursor can turn on tabular figures (`font.features: { "tnum": 1 }`). The variable
-  file has no hinting, which may look soft at small sizes on Windows at 100% scaling; hinted
-  static files would be the fix. The tests keep the system font, as they do not go through
-  `main.cpp`.
+  come from the system's fonts. Tabular figures (`tnum`) are on for the whole program, so that
+  every digit is as wide as the others: numbers that change under the cursor, in fields and in
+  columns, keep still and line up. Inter's proportional digits looked better only in running
+  text, which the program hardly has. The variable file has no hinting, which may look soft at
+  small sizes on Windows at 100% scaling; hinted static files would be the fix. The tests use
+  the same font, at 10 points.
 
 * `Theme` also holds the sizes that pages share: the heading and caption text sizes, the
   monospace family, and the tool panels' width, margin and row spacing. A number that lays
@@ -246,6 +251,7 @@ change nothing useful. The first press of a double click does this too, for that
 * Exiv2 is GPL and ruled out. Candidates for metadata are a permissive EXIF reader, or
   external ExifTool for full metadata.
 * Qt Charts and Qt Graphs are not available under LGPL, so the histogram is drawn by us.
+* Qt Svg (LGPL) draws the icons. It is one of Qt's essential modules, installed with it.
 * The project itself will be MIT or BSD-2. Link Qt dynamically to keep LGPL simple.
 * Thumbnails will be stored as compressed blobs, so they do not need zstd.
 
@@ -317,8 +323,21 @@ change nothing useful. The first press of a double click does this too, for that
   parents in full, in the background, and the folder is then centred as they fill in above it.
 * The buttons to move around stand apart from the path, with arrows unlike its carets, because
   they looked like part of it. One star holds favourites and recent folders, kept by `FolderLists`.
+* The folders and the preview each have a caption (`PaneHeader`), so they read as panes alike.
+  Only the preview collapses, and its caret is at the right, so that both captions start at one
+  place; the tree collapsing would leave nothing to browse by.
 * In the large view the wheel moves between images and Ctrl+wheel zooms. The preview has no other
   use for the wheel, so there it keeps zooming, which also works with Ctrl.
+* Zoom goes by steps on one ladder, three to a doubling (2^(k/3), x1.26 each), through 25, 50,
+  100, 200 and 400% exactly: + and - and a wheel's notch (`zoomStep` in core). From a zoom
+  between rungs, as fitting leaves it, a step goes to the next rung. Before, each step was x1.25
+  from wherever the zoom was, so 100% went on to 195 and 244 and never met 200.
+* A touchpad zooms smoothly, a doubling for a swipe of three notches' worth, and holds at 25,
+  50, 100, 200 and 400% for a tenth of a doubling on each side (`detentZoom`), with the rest of
+  the way stretched so that the zoom never jumps. Steps made it easy to land on those but lost
+  the smoothness; smooth alone made them hard to land on. It is told from a wheel by the device
+  the system names, or by the phases and pixel distances of its scrolls, which wheels do not
+  send.
 * Keys go to what has the focus. In the browser the thumbnails and the folder tree each handle the
   arrows, Home, End, PgUp, PgDown, Backspace and Enter themselves, and start with the thumbnails;
   the window's shortcuts keep only what means the same everywhere, and moving between images in
@@ -331,6 +350,9 @@ change nothing useful. The first press of a double click does this too, for that
 * Dialogs are drawn inside the window, which the system does not decorate, so `AppDialog` brings
   a frame, title bar and shadow. Messages share `MessageBox`: caption, text, an icon for info,
   question, warning or error, and buttons, with Enter, Esc and Ctrl+C as in standard message boxes.
+  The icon is Tabler's filled one, in the accent for info and questions and in the warning or
+  danger fill for the others, the sign cut out of it: filled shapes stay clean at 32 pixels,
+  where lines drawn for 24 would blur.
 * Qt Quick menus neither show shortcuts nor grow with their items, so `AppMenuItem` shows the
   action's shortcut dimmed on the right, as `KeyNames` writes it for the system, and `AppMenu`
   takes the width of its widest item.
@@ -608,6 +630,10 @@ the question before leaving an edited image. Still planned lists the rest.
   options is taller than a window that is not full screen). The heading and the buttons stay
   in view. It scrolls only when the rows do not fit, so a drag on a panel that fits is never
   taken for scrolling, and a field reached with Tab is scrolled into view.
+* The scroll bar sits in the panel's right margin, so the rows are as wide whether they scroll
+  or not. They used to narrow to make room for it, and a panel of wrapped text that only just
+  fitted then switched between the two widths each frame: the Straighten panel did so with
+  the program's own controls, and pictures stopped loading.
 * The rows are the default property, so a derived panel reads as a list of its controls. Only
   items become rows: `Settings`, `Binding`, `Connections` and the like may sit among them. A
   dialog a panel opens must not be an item among the rows; Adjust makes its chooser of colour
@@ -1079,3 +1105,114 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   rebuild within one minute recompiles nothing; only `main.cpp` includes it.
 * Without git, as in an unpacked archive, it says "unknown".
 * The project version stays in `CMakeLists.txt` for the installer's file name.
+
+## The palette is worked out from a hue
+
+* `Theme`'s colours, but for those that must stay fixed, come from three choices: a hue, how
+  colourful accents are, and how much the hue tints surfaces and text (`core/palette`, through
+  `ThemePalette`). A palette then changes by one number, and everything bound to `Theme`
+  follows at once, Fusion's palette and the tools on the image included.
+* Each role has a fixed lightness in Oklab, and only its hue and chroma follow the choices, so
+  contrast stays the same whatever hue is picked; the tests check text against every surface,
+  and the order of the surfaces, all round the circle. Chroma the screen cannot show is reduced
+  rather than clipped per channel, which would shift hue and lightness.
+* The lightnesses come from a willow-green mock-up, with accents and text a little brighter:
+  dark, calm surfaces with a little green, a light accent for marks and focus, and a darker one
+  for selection and the default button.
+* Fixed on purpose: the gray around a picture (a tint would shift how its colours look),
+  warnings and dangers, folders, annotation colours, and what tools draw on the image.
+* The rules are in core, without Qt, as they are arithmetic worth testing; `ThemePalette`
+  only hands their result to QML as a map that `Theme` binds to.
+
+## The controls have a style of their own
+
+* Buttons, check boxes, combo boxes, spin boxes, sliders, menus and tool bars are drawn by a
+  Qt Quick Controls style of the program's own, `ImageViewerStyle` in `src/ui/controls`, which
+  takes every other control from Fusion. Pages keep writing `Button` and the like, so a control
+  can be redone without touching them, and one at a time.
+* The fallback is declared `QtQuick.Controls.Fusion/auto`, and the style's own version is 6.0
+  for it: `auto` asks Fusion for the importing module's version, and Fusion has no 1.0. A
+  plain import without a version is not taken as a fallback at all, and every control not
+  redone came from Basic instead: tree rows 50 pixels high, white text fields, taller menu bars.
+* Each control is a few rounded rectangles: a base (a soft gradient, or the colour of a field),
+  a light line inside the top edge, a lighter or darker layer for hover and press, and a ring in
+  the accent for keyboard focus. Every colour comes from `Theme`, so the palette's hue reaches
+  them too; sizes too (`controlHeight` 28, a multiple of 4 so that it stays whole at 125%).
+* Three kinds of button, by what pressing does: the default (`highlighted`, Apply and the like)
+  filled with the accent, the ordinary one, and the quiet one (`flat`), text alone. Fusion's
+  default button mixed the accent into the plain colour and could hardly be told apart.
+* A check box shows when it is off, with a clear edge, which Fusion's hardly did on the dark
+  palette. Menus keep a column on the left for a check box or an icon on every line, so the
+  words of all lines start at one place; before, a checkable line pushed its words right. Plain
+  `Action`s in an `AppMenu` get the same line, with their shortcut.
+* Text fields, combo boxes, spin boxes and the path bar are one kind of thing, a field, and look
+  alike: the colour of a field, an edge in `mid`, the same corners and the height of a button.
+  In the file chooser each field has its button on its row (Name and Save, Type and Cancel), in
+  one grid, so they line up across.
+* Lists side by side stand on `ListFrame`, the colour of a field with a thin frame; in the file
+  chooser the places and the folders as well as the files, which alone had one before. The gap
+  between panes of a `SplitView` is the same across as down, of the window's colour, with a
+  line only under the mouse: Fusion's was a bright line, thicker one way than the other where a
+  frame stood beside it.
+* Tool bar buttons are flat, the icon alone, until the mouse is over one (a light layer), it is
+  pressed (a stronger one) or it is on (a tint and edge of the accent). Fusion's showed nothing
+  under the mouse, and drew pressed and on as the same grey box, so a toggle such as Auto
+  Contrast looked stuck mid-click. Groups are parted by a one-pixel line in `mid`, like the one
+  between a spin box's number and its arrows; Fusion's was all but invisible. The tool bars
+  are flat in the window's colour, parted from the menu bar and the page by a line in `dark`:
+  Fusion's light line under the menu bar stood out on a dark window.
+* A menu line of an exclusive group (Sort By) has a round mark with a dot, as a radio button
+  does; a box with a tick says each line can be turned on alone. Disabled, a mark keeps its
+  edge whether it is on or not. A tool (the probe) is not an option and has no mark: its action
+  is not checkable, and only its toolbar button is down while it is at work.
+* Qt's SpinBox counts in whole numbers; `DecimalSpinBox` counts in hundredths and shows the
+  point. It is not named DoubleSpinBox, which newer Qt has.
+* The tests run in this style whatever the environment says, so that they see what people
+  see. A gallery of the controls in their states is part of the tests, and can be saved as a
+  picture (`IV_GALLERY_PNG`).
+* Written from scratch on Qt's templates; nothing is taken from Qt's own styles, which are
+  under other licences.
+
+## Large dialogs are windows of their own
+
+* The file chooser is a `DialogWindow`: a real window marked a dialog (`Qt.Dialog`), modal to
+  the window it belongs to, which the system decorates, moves and resizes, and which may leave
+  the main window or go to another screen. Drawn inside the main window, as it was, it could do
+  none of it, and its own title strip only imitated a window.
+* Short questions (Replace the file?, the name of a folder, messages) stay in the window as an
+  `AppDialog`: they need no room and should not wander off. Others move when they need resizing.
+* It keeps the calls an `AppDialog` has (`open()`, `close()`, `opened`), so its users did not
+  change. Its size is kept in the settings by a name of its own (one for every file chooser),
+  and fitted to the screen. It is placed over the middle of its window where the system allows;
+  on Wayland the compositor places it.
+* Escape closes it after what has the keys has passed Escape on, so that it first ends the
+  editing of the path, as in the browser.
+* Its title bar is the system's. On Windows a dialog has no icon there and no taskbar button; on
+  Linux the window decoration decides, and some show the program's icon on dialogs too.
+
+## Icons take the theme's colours
+
+* The icons are SVG (`assets/icons`) in placeholder colours, white or `currentColor` for the
+  ink and pure green for the accent, which `ThemedIcon` replaces with the theme's before
+  drawing. Qt's own icon tinting paints a whole icon in one colour, which would lose the accent.
+* They come from Tabler Icons (MIT), not our own drawings. Ours were aligned to whole pixels,
+  yet looked uneven: sizes and line weights differed from icon to icon, and curves and
+  diagonals blur at 24 pixels whatever is done, so crisp straight parts beside soft round ones
+  looked half in focus. A set drawn as one keeps size, weight and corners alike, which matters
+  more than pixel alignment, and its straight lines on the 24 grid are as crisp. Tabler over
+  Lucide (ISC), which looks alike: Tabler has icons for fit and 1:1 zoom, and far more icons
+  for the tools to come. Icons are copied one by one into a folder per set, with its licence,
+  so that one from another set can be taken where it is better. Our own drawings stay for what
+  no set has.
+* `ThemedIcon` is an item that draws the SVG itself, not an image provider, so that it works in
+  every engine without being registered, and draws sharp at any scale of the screen.
+* On the tool bar, `IconButton` shows the icon in place of the text. The text and the shortcut
+  become the tip and still name the button for accessibility.
+* Every tool bar button has an icon: the mode (showing where it goes: the picture from the
+  browser, the thumbnails from the viewer), previous and next image and page, zoom, Auto
+  Contrast, the info panel, the tools (Crop, Straighten, Annotate, Resize, Adjust and the
+  probe, in one group, as each cancels the one open), Before/After, Original
+  (whose tip says to hold it) and full screen. So do Brief and Details in the file chooser.
+  The path bar's buttons (back, forward, up, refresh, the star) show icons too, at 24 pixels
+  as drawn, in flat buttons the height of a control: drawn at 16 they were too small to read.
+

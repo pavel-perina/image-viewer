@@ -267,12 +267,13 @@ TEST(BrowserPage, PreviewShowsHandlesOnlyWhenZoomedIntoPartOfTheImage) {
     EXPECT_FALSE(horizontal->isVisible()) << "fitted again";
 }
 
-TEST(BrowserPage, PreviewUsesTheSharpSetting) {
+// Why: sharp resampling is always on, in the preview as in the viewer; there is no setting to
+// turn it off. Input: the browser page. The truth is the preview's view asking for it (the
+// view itself falls back to bilinear where there is no GPU).
+TEST(BrowserPage, ThePreviewIsDrawnSharp) {
     BrowserPageFixture f;
     auto* preview = f.view.rootObject()->property("preview").value<ImageView*>();
     ASSERT_NE(preview, nullptr);
-    EXPECT_FALSE(preview->resampling());
-    f.view.rootObject()->setProperty("sharpResampling", true);
     EXPECT_TRUE(preview->resampling());
 }
 
@@ -460,6 +461,32 @@ TEST(BrowserPage, PreviewCollapsesAndDescribesItsImage) {
     EXPECT_EQ(preview->source(), f.context.currentPath());
 }
 
+// Why: the folders and the preview are panes alike, so each has a caption, and the captions
+// start at one place: the preview's caret, which collapses it, is at the right, out of the
+// way. The folders do not collapse. Input: the browser page. The truth is the captions' words
+// in the window, and the folders' caption having no caret shown.
+TEST(BrowserPage, TheFoldersAndThePreviewHaveCaptionsThatStartAtOnePlace) {
+    BrowserPageFixture f;
+    QQuickItem* folders = findNamed(f.view.rootObject(), QStringLiteral("foldersHeader"));
+    QQuickItem* preview = findNamed(f.view.rootObject(), QStringLiteral("previewHeader"));
+    ASSERT_NE(folders, nullptr);
+    ASSERT_NE(preview, nullptr);
+    const auto words = [](QQuickItem* header) -> QQuickItem* {
+        for (QQuickItem* child : header->childItems()) {
+            if (child->property("text").isValid() && child->property("elide").isValid()) {
+                return child;
+            }
+        }
+        return nullptr;
+    };
+    ASSERT_NE(words(folders), nullptr);
+    ASSERT_NE(words(preview), nullptr);
+    EXPECT_EQ(words(folders)->property("text").toString(), QStringLiteral("Folders"));
+    EXPECT_EQ(words(folders)->mapToScene(QPointF()).x(), words(preview)->mapToScene(QPointF()).x());
+    EXPECT_FALSE(folders->property("collapsible").toBool());
+    EXPECT_TRUE(preview->property("collapsible").toBool());
+}
+
 TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     BrowserPageFixture f;
     QSettings().remove(QStringLiteral("Folders"));
@@ -494,6 +521,9 @@ TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     QVariantList rows = star->property("menuRows").toList();
     QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, rows.first()));
     EXPECT_TRUE(star->property("lit").toBool());
+    QQuickItem* starIcon = findNamed(star, QStringLiteral("icon"));
+    ASSERT_NE(starIcon, nullptr);
+    EXPECT_EQ(starIcon->property("name").toString(), QStringLiteral("starred")) << "a favourite has a filled star";
     QMetaObject::invokeMethod(star, "activated");
     texts = rowTexts(star->property("menuRows").toList());
     EXPECT_TRUE(texts.value(0).startsWith(QStringLiteral("Remove ")));
@@ -508,6 +538,22 @@ TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     EXPECT_EQ(f.context.directory(), inner);
     EXPECT_FALSE(star->property("lit").toBool());
     QSettings().remove(QStringLiteral("Folders"));
+}
+
+// Why: the path bar's buttons have no words, so a missing icon leaves an empty button. Input:
+// the browser page; every button must find its icon in the resources.
+TEST(PathBar, EveryButtonShowsItsIcon) {
+    BrowserPageFixture f;
+    QQuickItem* bar = f.view.rootObject()->property("pathBar").value<QQuickItem*>();
+    ASSERT_NE(bar, nullptr);
+    for (const QString& name : {QStringLiteral("backButton"), QStringLiteral("forwardButton"), QStringLiteral("upButton"),
+                               QStringLiteral("refreshButton"), QStringLiteral("folderButton")}) {
+        QQuickItem* button = findNamed(bar, name);
+        ASSERT_NE(button, nullptr) << name.toStdString();
+        QQuickItem* icon = findNamed(button, QStringLiteral("icon"));
+        ASSERT_NE(icon, nullptr) << name.toStdString();
+        EXPECT_TRUE(icon->property("valid").toBool()) << name.toStdString();
+    }
 }
 
 TEST(PathBar, TheStarListsPlacesThatFoldAway) {

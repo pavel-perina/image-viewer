@@ -10,8 +10,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 | `src/core` | Library `iv_core`. Pure C++23, **no Qt**. Decoders, tiles, colour, edits, writers. |
 | `src/ui` | Library `iv_ui`, QML module `ImageViewer`. C++ classes that QML uses. |
 | `src/ui/qml` | The QML. Pages, panels, dialogs, shared controls. |
-| `src/ui/shaders` | Fragment shaders: resampling (`mks_*`) and the colour preview. |
-| `src/app` | Only `main()`, the font and the Windows install rules. |
+| `src/ui/controls` | QML module `ImageViewerStyle`: the controls' own look (buttons, check boxes, fields, menus, tool bars), falling back to Fusion for the rest. |
+| `src/app` | Only `main()` and the Windows install rules. |
+| `assets` | What is not code: `fonts`, `shaders` (resampling `mks_*`, the colour preview), `icons`. |
 | `tests` | GoogleTest. `iv_core_tests` (no Qt) and `iv_ui_tests` (offscreen QML). |
 | `doc/design` | `architecture.md` (goals), `decisions.md` (what was decided and why), `main-window.md`. |
 | `doc` | `building-windows.md`, `manual-checks.md`. |
@@ -24,7 +25,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Formats:** `jpeg_source`, `tiff_source`, `png_source`, `webp_source`, `avif_source`,
   `jxl_source`. Metadata: `exif`, `xmp`, `image_details`.
 * **Colour:** `color` (ICC, display transform), `color_edit` (levels, curves, cube tables),
-  `oklab.h`, `histogram`, `pixel_probe`.
+  `oklab.h`, `histogram`, `pixel_probe`, `palette` (the interface's colours, worked out from a
+  hue), `rgba.h`.
 * **Editing:** `document` (the edit list, undo), `crop`, `perspective` (straighten),
   `image_ops` (resize, grayscale), `shapes` (annotation shapes: points, grips, hit-testing),
   `image_layer` (blending a drawn layer into the picture, pixelate), `coverage` (growing,
@@ -40,6 +42,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
+* **Look:** `theme_palette` (the palette's choices and colours, for `Theme`), `themed_icon`
+  (an icon from `assets/icons` in the theme's colours).
+* **Settings:** `retired_settings` (removes, at start, the settings the program has dropped).
 * **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
   from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
   `shape_painter` (draws annotation shapes, for the screen and for burning in).
@@ -49,8 +54,11 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Files:** `file_operations`, `file_job_runner`, `file_clipboard`.
 * **QML pages:** `Main.qml` (window, menus, dialogs), `BrowserPage.qml`, `ViewerPage.qml`,
   `FileActions.qml` (what the file menus do), `FileChooser.qml`.
-* **QML shared controls:** `AppDialog`, `AppMenu`, `AppMenuItem`, `BarButton`, `AppScrollBar`,
-  `MessageBox`, `NumberRow` (a label with a number to set), `SearchCombo` (a combo box with
+* **QML shared controls:** `AppDialog` (a dialog inside the window), `DialogWindow` (a large
+  dialog in a window of its own), `AppMenu`, `AppMenuItem`, `BarButton`, `IconButton` (a tool bar button showing an icon), `AppScrollBar`,
+  `MessageBox`, `NumberRow` (a label with a number to set), `DecimalSpinBox`, `ListFrame` (what
+  a list stands on: base colour and a frame), `PaneHeader` (a pane's caption, which may collapse
+  it), `SearchCombo` (a combo box with
   fzf-style search, over `fuzzy_list_model`), `ToolPanel` (the base of every tool's panel:
   heading, rows, Cancel and Apply), `Theme` (every colour, and the sizes pages share).
 
@@ -64,9 +72,11 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   suite and the sanitizers once, at the end.
 * UI tests must run offscreen, or they open windows on the desktop:
 
-      QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=Fusion \
+      QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
           build/tests/iv_ui_tests --gtest_filter='Crop.*'
 
+* The tests use the program's own style, whatever `QT_QUICK_CONTROLS_STYLE` says, and its own
+  font (Inter, bundled) at 10 points, whatever the platform gives.
 * The software renderer skips the GPU shader tests. Run those under Xvfb with OpenGL.
 * Tests use made-up images and a temporary home folder. Never read the user's pictures, cache
   or settings.

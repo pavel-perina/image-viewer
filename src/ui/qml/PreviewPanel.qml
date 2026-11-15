@@ -10,7 +10,6 @@ Rectangle {
 
     required property BrowseContext context
     required property bool active
-    property bool sharp: false
     property alias collapsed: settings.previewCollapsed
     readonly property alias view: surface.view
     readonly property int headerHeight: 26
@@ -27,30 +26,14 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Item {
+        PaneHeader {
             objectName: "previewHeader"
             Layout.fillWidth: true
             Layout.preferredHeight: panel.headerHeight
-
-            Rectangle {
-                anchors.fill: parent
-                color: headerHover.hovered ? Theme.hover : "transparent"
-            }
-            Caret {
-                id: caret
-                anchors.left: parent.left
-                anchors.leftMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                rotationAngle: panel.collapsed ? 0 : 90
-            }
-            Label {
-                anchors.left: caret.right
-                anchors.leftMargin: 4
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Preview"
-            }
-            HoverHandler { id: headerHover }
-            TapHandler { onTapped: panel.collapsed = !panel.collapsed }
+            text: "Preview"
+            collapsible: true
+            collapsed: panel.collapsed
+            onToggled: panel.collapsed = !panel.collapsed
         }
 
         Rectangle {
@@ -64,7 +47,6 @@ Rectangle {
                 anchors.fill: parent
                 // Reading the image would be wasted on a closed panel.
                 source: panel.active && !panel.collapsed ? panel.context.currentPath : ""
-                sharp: panel.sharp
             }
 
             Connections {

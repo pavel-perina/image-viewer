@@ -44,12 +44,20 @@ qt_add_library(iv_ui STATIC
     overlay_style.h
     probe_overlay.cpp
     probe_overlay.h
+    program_font.cpp
+    program_font.h
+    retired_settings.cpp
+    retired_settings.h
     shape_painter.cpp
     shape_painter.h
     image_view.cpp
     image_view.h
     subfolder_list.cpp
     subfolder_list.h
+    theme_palette.cpp
+    theme_palette.h
+    themed_icon.cpp
+    themed_icon.h
     thumbnail_provider.cpp
     thumbnail_provider.h
     thumbnail_store.cpp
@@ -76,20 +84,24 @@ qt_add_qml_module(iv_ui
         qml/ColorPreviewEffect.qml
         qml/CompareSplitter.qml
         qml/CropPanel.qml
+        qml/DecimalSpinBox.qml
+        qml/DialogWindow.qml
         qml/FileActions.qml
         qml/FolderButton.qml
         qml/FileChooser.qml
         qml/FileListView.qml
         qml/FolderTree.qml
+        qml/IconButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
         qml/JpegMenu.qml
         qml/LevelsControl.qml
-        qml/LockButton.qml
+        qml/ListFrame.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/MessageBox.qml
         qml/NumberRow.qml
+        qml/PaneHeader.qml
         qml/PathBar.qml
         qml/PreviewPanel.qml
         qml/ProbePanel.qml
@@ -105,19 +117,85 @@ qt_add_qml_module(iv_ui
         qml/ViewerPage.qml
 )
 
+# Inter 4.1 (SIL Open Font License, assets/fonts/Inter-LICENSE.txt), every weight in the one
+# variable file, for useProgramFont. BASE keeps it at :/fonts/.
+qt_add_resources(iv_ui "fonts"
+    PREFIX "/"
+    BASE ${CMAKE_SOURCE_DIR}/assets
+    FILES ${CMAKE_SOURCE_DIR}/assets/fonts/InterVariable.ttf
+)
+
+# The icons, at qrc:/icons/<name>.svg for ThemedIcon. They are named by meaning, following the
+# freedesktop icon naming spec where it has a name, while the files keep the names of the set
+# they come from (assets/icons/<set>/, each with its licence).
+set(iv_icons
+    "tabler/zoom-in.svg=zoom-in"
+    "tabler/zoom-out.svg=zoom-out"
+    "tabler/zoom-scan.svg=zoom-fit-best"
+    "tabler/zoom-reset.svg=zoom-original"
+    "tabler/info-circle.svg=dialog-information"
+    "tabler/arrows-maximize.svg=view-fullscreen"
+    "tabler/refresh.svg=view-refresh"
+    "tabler/arrow-left.svg=go-previous"
+    "tabler/arrow-right.svg=go-next"
+    "tabler/arrow-up.svg=go-up"
+    "tabler/star.svg=non-starred"
+    "tabler/star-filled.svg=starred"
+    "tabler/search.svg=edit-find"
+    "tabler/sort-descending.svg=view-sort"
+    "tabler/current-location.svg=position"
+    "tabler/photo.svg=view-image"
+    "tabler/layout-grid.svg=view-browser"
+    "tabler/chevron-left.svg=image-previous"
+    "tabler/chevron-right.svg=image-next"
+    "tabler/file-arrow-left.svg=page-previous"
+    "tabler/file-arrow-right.svg=page-next"
+    "tabler/contrast.svg=auto-contrast"
+    "tabler/crop.svg=transform-crop"
+    "tabler/perspective.svg=straighten"
+    "tabler/pencil.svg=annotate"
+    "tabler/dimensions.svg=image-resize"
+    "tabler/adjustments-horizontal.svg=adjust-colours"
+    "tabler/square-half.svg=before-after"
+    "tabler/eye.svg=show-original"
+    "tabler/color-picker.svg=color-picker"
+    "tabler/list.svg=view-list-brief"
+    "tabler/list-details.svg=view-list-details"
+    "tabler/info-circle-filled.svg=message-info"
+    "tabler/help-circle-filled.svg=message-question"
+    "tabler/alert-triangle-filled.svg=message-warning"
+    "tabler/circle-x-filled.svg=message-error"
+)
+set(iv_icon_files)
+foreach(entry IN LISTS iv_icons)
+    string(REPLACE "=" ";" parts "${entry}")
+    list(GET parts 0 file)
+    list(GET parts 1 name)
+    set(path ${CMAKE_SOURCE_DIR}/assets/icons/${file})
+    set_source_files_properties(${path} PROPERTIES QT_RESOURCE_ALIAS ${name}.svg)
+    list(APPEND iv_icon_files ${path})
+endforeach()
+qt_add_resources(iv_ui "icons"
+    PREFIX "/icons"
+    FILES ${iv_icon_files}
+)
+
+# The shaders live in assets/shaders; BASE keeps them at qrc:/shaders/.
 qt_add_shaders(iv_ui "iv_shaders"
     PREFIX "/"
+    BASE ${CMAKE_SOURCE_DIR}/assets
     FILES
-        shaders/mks_horizontal.frag
-        shaders/mks_vertical.frag
+        ${CMAKE_SOURCE_DIR}/assets/shaders/mks_horizontal.frag
+        ${CMAKE_SOURCE_DIR}/assets/shaders/mks_vertical.frag
 )
 
 # texelFetch needs GLSL ES 3 or GLSL 1.30.
 qt_add_shaders(iv_ui "iv_color_shaders"
     PREFIX "/"
     GLSL "300es,330"
+    BASE ${CMAKE_SOURCE_DIR}/assets
     FILES
-        shaders/color_preview.frag
+        ${CMAKE_SOURCE_DIR}/assets/shaders/color_preview.frag
 )
 
 target_include_directories(iv_ui
@@ -127,5 +205,5 @@ target_include_directories(iv_ui
 
 target_link_libraries(iv_ui
     PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
-    PRIVATE iv_core
+    PRIVATE iv_core Qt6::Svg
 )
