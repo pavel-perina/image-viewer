@@ -197,8 +197,9 @@ This is not legal advice. Have it checked before a commercial release.
   Static linking or modifying Qt makes this harder. Either one is a reason to consider the
   commercial licence.
 * Check the licence of each module used, as not every Qt module is LGPL (some are GPL-only).
-  Core, Gui, Qml, Quick and QuickControls2 are LGPL. **Shader Tools** is used only at build time,
-  by `qt_add_shaders`/`qsb`, to compile the shaders. The app doesn't link it or ship it, but
+  Core, Gui, Qml, Quick, QuickControls2 and Svg (which draws the icons) are LGPL. Svg is one of
+  Qt's essential modules, installed with Qt by default. **Shader Tools** is used only at build
+  time, by `qt_add_shaders`/`qsb`, to compile the shaders. The app doesn't link it or ship it, but
   confirm its licence on its documentation page anyway. Qt Test is used only by the tests.
 * The Qt Online Installer asks open-source users to accept its terms. The LGPL obligations above
   apply either way.
