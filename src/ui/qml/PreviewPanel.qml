@@ -10,7 +10,6 @@ Rectangle {
 
     required property BrowseContext context
     required property bool active
-    property bool sharp: false
     property alias collapsed: settings.previewCollapsed
     readonly property alias view: surface.view
     readonly property int headerHeight: 26
@@ -48,7 +47,6 @@ Rectangle {
                 anchors.fill: parent
                 // Reading the image would be wasted on a closed panel.
                 source: panel.active && !panel.collapsed ? panel.context.currentPath : ""
-                sharp: panel.sharp
             }
 
             Connections {

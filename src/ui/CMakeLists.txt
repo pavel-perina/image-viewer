@@ -46,6 +46,8 @@ qt_add_library(iv_ui STATIC
     probe_overlay.h
     program_font.cpp
     program_font.h
+    retired_settings.cpp
+    retired_settings.h
     shape_painter.cpp
     shape_painter.h
     image_view.cpp

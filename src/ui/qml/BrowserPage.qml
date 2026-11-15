@@ -12,7 +12,6 @@ SplitView {
     required property BrowseContext context
     required property bool active
     readonly property alias preview: previewPanel.view
-    property bool sharpResampling: false
     readonly property alias pathBar: pathBar
 
     // Emitted when the user wants the current image in the large view.
@@ -101,7 +100,6 @@ SplitView {
             id: previewPanel
             context: page.context
             active: page.active
-            sharp: page.sharpResampling
             SplitView.preferredHeight: 300
             SplitView.minimumHeight: collapsed ? headerHeight : 140
             SplitView.maximumHeight: collapsed ? headerHeight : Number.POSITIVE_INFINITY

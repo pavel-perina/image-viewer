@@ -1,5 +1,6 @@
 #include "ui_test_support.h"
 #include "ui/app_info.h"
+#include "ui/retired_settings.h"
 #include "ui/theme_palette.h"
 
 TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
@@ -143,6 +144,19 @@ TEST(ViewerPage, PanelTakesRoomFromTheImageExceptAtFullScreen) {
     page->setProperty("fullScreen", false);
     EXPECT_TRUE(waitUntil([&] { return image->width() == withPanel; }));
     page->setProperty("panelPinned", false);  // the settings outlive the test
+}
+
+// Why: a setting the program has dropped (sharp resampling, now always on) must not linger
+// in the file with the value an older version saved. Input: a settings file with a retired
+// key and one still in use. The truth: the retired one is gone, the other kept as it was.
+TEST(Settings, ThoseNoLongerUsedAreForgottenAndTheOthersKept) {
+    const QTemporaryDir dir;
+    QSettings settings(dir.filePath(QStringLiteral("settings.ini")), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("InfoPanel/sharpResampling"), false);
+    settings.setValue(QStringLiteral("InfoPanel/panelPinned"), true);
+    iv::forgetRetiredSettings(settings);
+    EXPECT_FALSE(settings.contains(QStringLiteral("InfoPanel/sharpResampling")));
+    EXPECT_TRUE(settings.value(QStringLiteral("InfoPanel/panelPinned")).toBool());
 }
 
 TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {

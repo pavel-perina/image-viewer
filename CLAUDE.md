@@ -44,6 +44,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
 * **Look:** `theme_palette` (the palette's choices and colours, for `Theme`), `themed_icon`
   (an icon from `assets/icons` in the theme's colours).
+* **Settings:** `retired_settings` (removes, at start, the settings the program has dropped).
 * **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
   from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
   `shape_painter` (draws annotation shapes, for the screen and for burning in).

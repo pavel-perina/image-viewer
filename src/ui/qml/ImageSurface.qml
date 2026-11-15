@@ -10,7 +10,7 @@ Item {
     property alias source: imageView.source
     property alias histogramEnabled: imageView.histogramEnabled
     property alias wheelNavigates: imageView.wheelNavigates
-    property bool sharp: false
+    property bool sharp: true
     readonly property alias view: imageView
     // The software renderer has no shaders, so it shows the picture unadjusted while adjusting.
     readonly property bool colorPreviewShown: imageView.colorPreviewActive && GraphicsInfo.api !== GraphicsInfo.Software

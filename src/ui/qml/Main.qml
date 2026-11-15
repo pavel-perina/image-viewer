@@ -364,14 +364,6 @@ ApplicationWindow {
         checked: viewerPage.panelAnimated
         onTriggered: viewerPage.panelAnimated = checked
     }
-    Action {
-        id: sharpResamplingAction
-        text: "&Sharp Resampling"
-        shortcut: "M"
-        checkable: true
-        checked: viewerPage.sharpResampling
-        onTriggered: viewerPage.sharpResampling = checked
-    }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
     Action { id: fitAction; text: "Fit"; shortcut: "F"; onTriggered: window.activeView.fitToView() }
@@ -484,7 +476,6 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
-            AppMenuItem { action: sharpResamplingAction }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }
             AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.start("", "") }
@@ -695,7 +686,6 @@ ApplicationWindow {
             id: browserPage
             context: context
             active: !window.viewing
-            sharpResampling: viewerPage.sharpResampling
             onViewRequested: window.viewing = true
             onFileMenuRequested: fileActions.fileMenu.popup()
             onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)

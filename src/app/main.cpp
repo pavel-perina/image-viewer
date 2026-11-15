@@ -3,12 +3,14 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QSettings>
 #include <QStringList>
 #include <QtQml/QQmlExtensionPlugin>
 
 #include "build_info.h"
 #include "ui/color_settings.h"
 #include "ui/program_font.h"
+#include "ui/retired_settings.h"
 #include "ui/thumbnail_provider.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
@@ -28,6 +30,10 @@ int main(int argc, char* argv[]) {
     iv::useProgramFont();  // at the size the system asks for
 
     iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
+    {
+        QSettings settings;
+        iv::forgetRetiredSettings(settings);
+    }
 
     const QStringList arguments = QCoreApplication::arguments();
 

@@ -267,12 +267,13 @@ TEST(BrowserPage, PreviewShowsHandlesOnlyWhenZoomedIntoPartOfTheImage) {
     EXPECT_FALSE(horizontal->isVisible()) << "fitted again";
 }
 
-TEST(BrowserPage, PreviewUsesTheSharpSetting) {
+// Why: sharp resampling is always on, in the preview as in the viewer; there is no setting to
+// turn it off. Input: the browser page. The truth is the preview's view asking for it (the
+// view itself falls back to bilinear where there is no GPU).
+TEST(BrowserPage, ThePreviewIsDrawnSharp) {
     BrowserPageFixture f;
     auto* preview = f.view.rootObject()->property("preview").value<ImageView*>();
     ASSERT_NE(preview, nullptr);
-    EXPECT_FALSE(preview->resampling());
-    f.view.rootObject()->setProperty("sharpResampling", true);
     EXPECT_TRUE(preview->resampling());
 }
 
