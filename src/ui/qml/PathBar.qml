@@ -115,7 +115,7 @@ Rectangle {
         spacing: 1
         BarButton {
             id: backButton
-            icon: "back"
+            kind: "back"
             usable: bar.context.canGoBack
             tip: "Back (Alt+Left), right-click for history"
             menuOpen: historyMenu.visible
@@ -123,19 +123,19 @@ Rectangle {
             onSecondaryActivated: bar.showBackHistory(backButton)
         }
         BarButton {
-            icon: "forward"
+            kind: "forward"
             usable: bar.context.canGoForward
             tip: "Forward (Alt+Right)"
             onActivated: bar.context.goForward()
         }
         BarButton {
-            icon: "up"
+            kind: "up"
             usable: bar.context.canGoUp
             tip: "Parent folder (Alt+Up)"
             onActivated: bar.context.goUp()
         }
         BarButton {
-            icon: "refresh"
+            kind: "refresh"
             usable: bar.context.directory !== ""
             tip: "Scan the folder again (F5)"
             onActivated: bar.context.refresh()

@@ -63,7 +63,7 @@ BarButton {
         property bool placesShown: true
     }
 
-    icon: "star"
+    kind: "star"
     menuOpen: menu.visible
     lit: isFavorite
     tip: "Favorite and recent folders"
