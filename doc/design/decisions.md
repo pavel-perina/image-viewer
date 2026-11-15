@@ -43,9 +43,8 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * PNG, WebP, AVIF and JPEG XL cannot be entered at a tile or scaled while decoding, so they share
   a source that decodes the whole picture on first use and serves tiles as views. Large ones
   get overviews like any flat image. Each is optional at build time.
-* Alpha is not displayed yet. These formats flatten it onto mid gray, where dark and light
-  content both stay visible, while TIFF still drops it. Real transparency needs an alpha
-  format through the whole display path.
+* Alpha is decoded and kept for PNG, WebP, AVIF and JPEG XL, but not drawn, written or edited
+  yet: see "Transparency". TIFF still drops it.
 * AV1 and JPEG XL have no flag for lossless. AVIF storing RGB directly is treated as lossless.
   JPEG XL keeping the original colour space is called "likely lossless".
 
@@ -435,7 +434,7 @@ change nothing useful. The first press of a double click does this too, for that
 * Depth: each format keeps what it can. 16-bit stays 16-bit in PNG, TIFF and JPEG XL, becomes
   10-bit in AVIF, and 8-bit in JPEG and WebP. Float stays float in TIFF and JPEG XL and becomes
   16-bit in PNG and AVIF, taking 0 to 1 as the range. The unused fourth channel is never written,
-  as the viewer does not keep alpha.
+  as alpha is not written yet (see "Transparency").
 * Images whose pixels are all gray, at any depth, are written as grayscale where the format has
   it (JPEG, PNG, TIFF, JPEG XL). An RGB profile then becomes a gray one made with lcms from its
   green curve and D50 white. For a matrix profile with one curve for all three channels, which
@@ -1235,3 +1234,32 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   model has been seen to list it all the same, which does no harm. The thumbnails and the path
   bar work as anywhere. Turning the switch on there reveals the folder in the tree, as the
   tree keeps following the folder it was asked to show.
+
+
+## Transparency
+
+* A picture may have alpha: how much of each pixel shows. A flag on `ImageBuffer` and on
+  `SubimageInfo` says so, rather than new pixel formats. The pixels cannot say it themselves,
+  as the fourth channel of a picture without alpha holds whatever the decoder left there, and
+  16-bit and float pictures have had the channel all along. A gray picture with alpha becomes
+  a colour one on reading, so no gray format with alpha is needed.
+* The colours are kept as they are, not multiplied by alpha. Converting a picture to another
+  lossless format then gives back the same numbers exactly, which multiplying and dividing in
+  8 bits cannot, and adjusting contrast or colour changes a colour and leaves how much of it
+  shows alone, so edges stay right. Colours are multiplied only inside filters, in floating
+  point, and for the screen. Files that store them multiplied (AVIF and JPEG XL may) are
+  divided when read.
+* It is built in steps. Done: PNG, WebP, AVIF and JPEG XL decode alpha. Everything that reads
+  pixels still sees the picture on mid gray, as it looked before, by calling `flattened`: the
+  screen, the probe, the histogram, overviews, edits and saving. Each of those calls goes as
+  its step arrives. Thumbnails stay on mid gray for good, so their cache keeps opaque pictures.
+* Planned: the writers keep alpha (PNG, WebP, AVIF, JPEG XL; lossless WebP keeping the colour
+  under transparent pixels); resizing, straightening and overviews filter with the colours
+  multiplied, and transparent pixels do not count in the histogram or Auto Contrast; the view
+  draws transparency over a light or dark checkerboard or one colour, as chosen, and the
+  probe shows alpha.
+* Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A
+  batch cannot ask for each file, so it will say so once and count the files it filled. Until
+  then every format is written from the picture on mid gray, without a warning.
+* TIFF is left as it is until a transparent TIFF is met. Its alpha stored multiplied could not
+  be divided back exactly in 8 bits.

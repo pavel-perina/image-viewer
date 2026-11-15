@@ -37,7 +37,7 @@ enum class SubimageRole {
 struct StoredFormat {
     std::string container;          // "JPEG", "TIFF"
     std::string compression;        // with whether it is lossy, such as "LZW, lossless"
-    std::string colorModel;         // "RGB", "Grayscale", "YCbCr", "Palette", "RGB + alpha (not shown)"
+    std::string colorModel;         // "RGB", "Grayscale", "YCbCr", "Palette", "RGB + alpha"
     std::string chromaSubsampling;  // "4:2:0", empty if not applicable
     int bitsPerSample = 8;
     bool floatSamples = false;
@@ -51,6 +51,8 @@ struct StoredFormat {
 struct SubimageInfo {
     SubimageRole role = SubimageRole::Page;
     PixelFormat format = PixelFormat::Bgrx8;
+    // Whether its tiles have alpha, as ImageBuffer::hasAlpha says.
+    bool alpha = false;
     Orientation orientation = Orientation::Normal;
     // Embedded, or made from what the file says about its colours. Empty means sRGB.
     std::vector<std::uint8_t> iccProfile;

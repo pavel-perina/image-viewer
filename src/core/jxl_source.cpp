@@ -154,7 +154,9 @@ Result<ImageBuffer> decode(const std::vector<std::uint8_t>& bytes, PixelFormat f
         throw std::bad_alloc();
     }
     if (JxlDecoderSetParallelRunner(decoder.get(), JxlThreadParallelRunner, runner.get()) != JXL_DEC_SUCCESS ||
-        JxlDecoderSubscribeEvents(decoder.get(), JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS) {
+        JxlDecoderSubscribeEvents(decoder.get(), JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS ||
+        // A file may store its colours multiplied by alpha; they are wanted without.
+        JxlDecoderSetUnpremultiplyAlpha(decoder.get(), JXL_TRUE) != JXL_DEC_SUCCESS) {
         return std::unexpected("cannot start JPEG XL decoder");
     }
     JxlDecoderSetInput(decoder.get(), bytes.data(), bytes.size());
@@ -184,10 +186,7 @@ Result<ImageBuffer> decode(const std::vector<std::uint8_t>& bytes, PixelFormat f
             if (format == PixelFormat::Bgrx8) {
                 swapRedAndBlue(image);
             }
-            if (hasAlpha) {
-                flattenAlpha(image);
-            }
-            return image;
+            return image.withAlpha(hasAlpha);
         case JXL_DEC_ERROR:
         case JXL_DEC_NEED_MORE_INPUT:
             return std::unexpected("cannot decode JPEG XL image");
@@ -228,6 +227,7 @@ Result<std::shared_ptr<ImageSource>> openJxlSource(std::vector<std::uint8_t> byt
     } else {
         info.format = gray && !hasAlpha ? PixelFormat::Gray16 : PixelFormat::Rgba16;
     }
+    info.alpha = hasAlpha;
     if (basic.xsize > 1'000'000'000 || basic.ysize > 1'000'000'000 || !fitsInMemoryLimit(size, info.format)) {
         return std::unexpected("image is too large");
     }

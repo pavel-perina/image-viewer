@@ -55,12 +55,14 @@ enum class GrayMethod { Luma, Lightness };
 // are returned as they are. A stop request gives up between rows and returns an empty buffer.
 ImageBuffer toGray(const ImageBuffer& source, GrayMethod method, const std::stop_token& stop = {});
 
-// The pixels turned and mirrored the way an orientation shows them. Normal returns the same buffer.
+// The pixels turned and mirrored the way an orientation shows them, with alpha if they had it.
+// Normal returns the same buffer.
 ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation);
 
-// Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
-// and light content stay visible, and makes it opaque. Not for gray formats, which have none.
-void flattenAlpha(const ImageBuffer& image);
+// A picture with alpha as it looks on a mid gray background, where both dark and light
+// content stay visible: a copy, opaque and without alpha. A picture without alpha is returned
+// as it is.
+ImageBuffer flattened(const ImageBuffer& source);
 
 // The sample values that map to black and white on screen.
 struct DisplayRange {
@@ -80,6 +82,7 @@ DisplayRange autoRange(std::span<const ImageBuffer> samples);
 bool usesAutoRangeByDefault(PixelFormat format);
 
 // Converts for display. An 8-bit image without a transform is returned as is, without copying.
+// A picture with alpha is shown flattened, as transparency is not drawn yet.
 // A transform applies to RGB, but not to floats that were stretched: those are data rather than
 // colours, and their encoding may be linear, which 8 bits could not hold before converting.
 ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);

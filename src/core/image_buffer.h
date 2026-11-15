@@ -35,6 +35,13 @@ public:
     int width() const { return m_size.width; }
     int height() const { return m_size.height; }
     PixelFormat format() const { return m_format; }
+
+    // Whether the fourth channel says how much of each pixel shows. The colours are not
+    // multiplied by it, so that a picture read and written again is the same exactly. Without
+    // it the fourth channel means nothing, whatever it holds. Gray formats never have it.
+    bool hasAlpha() const { return m_alpha; }
+    // The same pixels, taken as having alpha or not.
+    ImageBuffer withAlpha(bool alpha) const;
     std::size_t stride() const { return m_stride; }
     std::byte* data() const { return m_pixels; }
     std::byte* row(int y) const { return m_pixels + static_cast<std::size_t>(y) * m_stride; }
@@ -45,6 +52,7 @@ private:
     Size m_size;
     std::size_t m_stride = 0;
     PixelFormat m_format = PixelFormat::Bgrx8;
+    bool m_alpha = false;
 };
 
 }  // namespace iv

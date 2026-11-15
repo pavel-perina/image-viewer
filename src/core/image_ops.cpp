@@ -234,9 +234,15 @@ void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size full
     }
 }
 
-void flattenAlpha(const ImageBuffer& image) {
+ImageBuffer flattened(const ImageBuffer& source) {
+    if (!source.hasAlpha()) {
+        return source;
+    }
+    const ImageBuffer image = ImageBuffer::create(source.size(), source.format());
     const int width = image.width();
+    const auto rowBytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(bytesPerPixel(source.format()));
     for (int y = 0; y < image.height(); ++y) {
+        std::memcpy(image.row(y), source.row(y), rowBytes);
         if (image.format() == PixelFormat::Bgrx8) {
             auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
             for (int x = 0; x < width; ++x, p += 4) {
@@ -271,6 +277,7 @@ void flattenAlpha(const ImageBuffer& image) {
             }
         }
     }
+    return image;
 }
 
 ImageBuffer shrink(const ImageBuffer& source, Size size) {
@@ -895,6 +902,9 @@ bool usesAutoRangeByDefault(PixelFormat format) {
 }
 
 ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+    if (source.hasAlpha()) {
+        return toDisplay(flattened(source), range, transform);
+    }
     if (source.format() == PixelFormat::Gray8) {
         // Spread to the screen's layout, through the range, and then as 8-bit pixels are.
         const auto lut = makeLut(range, 256);
@@ -970,6 +980,9 @@ ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const Color
 }
 
 ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+    if (source.hasAlpha()) {
+        return toDisplayWide(flattened(source), range, transform);
+    }
     const PixelFormat format = source.format();
     if (format == PixelFormat::Bgrx8 || format == PixelFormat::Gray8) {
         return toDisplay(source, range, transform);  // nothing to keep beyond 8 bits
@@ -1033,7 +1046,7 @@ ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation)
             std::memcpy(target.row(static_cast<int>(outY)) + static_cast<std::size_t>(outX) * pixelBytes, in, pixelBytes);
         }
     }
-    return target;
+    return target.withAlpha(source.hasAlpha());
 }
 
 }  // namespace iv

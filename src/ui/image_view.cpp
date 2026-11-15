@@ -586,6 +586,8 @@ struct ImageView::Impl {
                 loaded.preview.emplace_back(TileKey{coarsest, col, row}, *tile);
             }
         }
+        // The range is of what is shown, which for now is the picture flattened.
+        std::ranges::transform(tiles, tiles.begin(), flattened);
         loaded.autoRange = autoRange(tiles);
         displayTransform(info, ColorSettings::target());  // cached, so showing the page does not wait for it
         return loaded;
@@ -1388,7 +1390,7 @@ void ImageView::prepareDraw() {
         }
         ImageBuffer base;
         try {
-            base = applyOrientation(*pixels, orientation);
+            base = applyOrientation(flattened(*pixels), orientation);  // until drawing keeps alpha
         } catch (const std::bad_alloc&) {
             return;
         }

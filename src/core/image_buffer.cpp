@@ -26,6 +26,13 @@ ImageBuffer ImageBuffer::create(Size size, PixelFormat format) {
     return buffer;
 }
 
+ImageBuffer ImageBuffer::withAlpha(bool alpha) const {
+    assert(!alpha || m_format == PixelFormat::Bgrx8 || m_format == PixelFormat::Rgba16 || m_format == PixelFormat::Rgba32F);
+    ImageBuffer result = *this;
+    result.m_alpha = alpha;
+    return result;
+}
+
 ImageBuffer ImageBuffer::view(int x, int y, int width, int height) const {
     assert(x >= 0 && y >= 0 && x + width <= m_size.width && y + height <= m_size.height);
     ImageBuffer result = *this;

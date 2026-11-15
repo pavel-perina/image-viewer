@@ -114,7 +114,8 @@ struct Document::Upright {
                 if (!decoded) {
                     return decoded;
                 }
-                pixels = applyOrientation(*decoded, base->subimages()[static_cast<std::size_t>(subimage)].orientation);
+                // Flattened until the edits keep alpha.
+                pixels = applyOrientation(flattened(*decoded), base->subimages()[static_cast<std::size_t>(subimage)].orientation);
             } catch (const std::bad_alloc&) {
                 return std::unexpected("not enough memory to edit the image");
             }
@@ -199,6 +200,7 @@ std::shared_ptr<ImageSource> Document::source() const {
     SubimageInfo info = m_base->subimages()[static_cast<std::size_t>(m_subimage)];
     const Size edited = size();
     // The pixels are upright now, and the metadata says so, as the file written from it will.
+    info.alpha = false;  // flattened when decoded, for now
     info.orientation = Orientation::Normal;
     info.exif.orientation = Orientation::Normal;
     resetExifForPixels(info.rawExif, edited.width, edited.height);

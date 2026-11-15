@@ -1,4 +1,5 @@
 #include "core/histogram.h"
+#include "core/image_ops.h"
 
 #include <algorithm>
 #include <cmath>
@@ -178,7 +179,7 @@ Result<Histogram> computeHistogram(ImageSource& source, int subimage, const std:
         for (int col = 0; col < cols; ++col) {
             auto tile = source.readTile({subimage, levelIndex, col, row}, stop);
             if (tile) {
-                tiles.push_back(std::move(*tile));
+                tiles.push_back(flattened(*tile));  // counted as shown, until transparency is
             } else if (tile.error() == "cancelled") {
                 return std::unexpected(tile.error());
             }

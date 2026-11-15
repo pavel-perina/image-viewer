@@ -58,7 +58,8 @@ Result<PixelProbe> probePixel(ImageSource& source, int subimage, int x, int y, c
     if (!tile) {
         return std::unexpected(tile.error());
     }
-    const ImageBuffer pixel = tile->view(x - col * level.tileSize.width, y - row * level.tileSize.height, 1, 1);
+    // Flattened, to read what is shown, until transparency is.
+    const ImageBuffer pixel = flattened(tile->view(x - col * level.tileSize.width, y - row * level.tileSize.height, 1, 1));
 
     PixelProbe probe;
     probe.format = pixel.format();
