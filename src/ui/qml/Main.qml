@@ -532,10 +532,10 @@ ApplicationWindow {
             ToolButton { action: previousPageAction; visible: window.activeView.pageCount > 1 }
             ToolButton { action: nextPageAction; visible: window.activeView.pageCount > 1 }
             ToolSeparator { visible: window.activeView.pageCount > 1 }
-            ToolButton { action: zoomInAction }
-            ToolButton { action: zoomOutAction }
-            ToolButton { action: fitAction }
-            ToolButton { action: actualSizeAction }
+            IconButton { objectName: "zoomInButton"; action: zoomInAction; iconName: "zoom-in" }
+            IconButton { objectName: "zoomOutButton"; action: zoomOutAction; iconName: "zoom-out" }
+            IconButton { objectName: "fitButton"; action: fitAction; iconName: "zoom-fit-best" }
+            IconButton { objectName: "actualSizeButton"; action: actualSizeAction; iconName: "zoom-original" }
             // Auto Contrast and its lock, as one split button.
             Row {
                 visible: window.activeView.contrastAdjustable
@@ -546,7 +546,7 @@ ApplicationWindow {
                     tip: "Keep Auto Contrast for the next images"
                 }
             }
-            ToolButton { action: infoAction; visible: window.viewing }
+            IconButton { objectName: "infoButton"; action: infoAction; iconName: "dialog-information"; visible: window.viewing }
             ToolSeparator { visible: window.viewing }
             ToolButton { action: cropAction; visible: window.viewing }
             ToolButton { action: straightenAction; visible: window.viewing }
@@ -566,6 +566,8 @@ ApplicationWindow {
             // so the action is not checkable and the menu shows no box for it.
             ToolButton { action: probeAction; text: "Probe"; visible: window.viewing; checked: window.probing }
             Item { Layout.fillWidth: true }
+            // The bar is hidden at full screen, so this only enters it; Esc or F11 leaves.
+            IconButton { objectName: "fullScreenButton"; action: fullScreenAction; iconName: "view-fullscreen" }
         }
     }
 

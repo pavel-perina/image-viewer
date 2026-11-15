@@ -94,6 +94,7 @@ QtObject {
     readonly property int controlRadius: 4  // their corners
     readonly property int controlPadding: 12  // between a control's edge and its text
     readonly property int menuMarkWidth: 18  // the column of a menu for a check box or an icon
+    readonly property int toolIconSize: 24  // an icon on the tool bar, as drawn in assets/icons
 
     function withAlpha(color, alpha) { return Qt.rgba(color.r, color.g, color.b, alpha) }
 }

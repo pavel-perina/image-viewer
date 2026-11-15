@@ -54,6 +54,8 @@ qt_add_library(iv_ui STATIC
     subfolder_list.h
     theme_palette.cpp
     theme_palette.h
+    themed_icon.cpp
+    themed_icon.h
     thumbnail_provider.cpp
     thumbnail_provider.h
     thumbnail_store.cpp
@@ -87,6 +89,7 @@ qt_add_qml_module(iv_ui
         qml/FileChooser.qml
         qml/FileListView.qml
         qml/FolderTree.qml
+        qml/IconButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
         qml/JpegMenu.qml
@@ -121,6 +124,40 @@ qt_add_resources(iv_ui "fonts"
     FILES ${CMAKE_SOURCE_DIR}/assets/fonts/InterVariable.ttf
 )
 
+# The icons, at qrc:/icons/<name>.svg for ThemedIcon. They are named by meaning, following the
+# freedesktop icon naming spec where it has a name, while the files keep the names they are
+# exported under.
+set(iv_icons
+    "24x24_zoom_in.svg=zoom-in"
+    "24x24_zoom_out.svg=zoom-out"
+    "24x24_zoom_fit.svg=zoom-fit-best"
+    "24x24_zoom_reset.svg=zoom-original"
+    "24x24_info.svg=dialog-information"
+    "24x24_fullscreen.svg=view-fullscreen"
+    "24x24_refresh.svg=view-refresh"
+    "24x24_directory_back.svg=go-previous"
+    "24x24_directory_forward.svg=go-next"
+    "24x24_directory_up.svg=go-up"
+    "24x24_favorites.svg=non-starred"
+    "24x24_favorites_alt.svg=starred"
+    "24x24_search.svg=edit-find"
+    "24x24_sort.svg=view-sort"
+    "24x24_position.svg=position"
+)
+set(iv_icon_files)
+foreach(entry IN LISTS iv_icons)
+    string(REPLACE "=" ";" parts "${entry}")
+    list(GET parts 0 file)
+    list(GET parts 1 name)
+    set(path ${CMAKE_SOURCE_DIR}/assets/icons/${file})
+    set_source_files_properties(${path} PROPERTIES QT_RESOURCE_ALIAS ${name}.svg)
+    list(APPEND iv_icon_files ${path})
+endforeach()
+qt_add_resources(iv_ui "icons"
+    PREFIX "/icons"
+    FILES ${iv_icon_files}
+)
+
 # The shaders live in assets/shaders; BASE keeps them at qrc:/shaders/.
 qt_add_shaders(iv_ui "iv_shaders"
     PREFIX "/"
@@ -146,5 +183,5 @@ target_include_directories(iv_ui
 
 target_link_libraries(iv_ui
     PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
-    PRIVATE iv_core
+    PRIVATE iv_core Qt6::Svg
 )

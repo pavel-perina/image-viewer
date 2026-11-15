@@ -520,6 +520,9 @@ TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     QVariantList rows = star->property("menuRows").toList();
     QMetaObject::invokeMethod(star, "choose", Q_ARG(QVariant, rows.first()));
     EXPECT_TRUE(star->property("lit").toBool());
+    QQuickItem* starIcon = findNamed(star, QStringLiteral("icon"));
+    ASSERT_NE(starIcon, nullptr);
+    EXPECT_EQ(starIcon->property("name").toString(), QStringLiteral("starred")) << "a favourite has a filled star";
     QMetaObject::invokeMethod(star, "activated");
     texts = rowTexts(star->property("menuRows").toList());
     EXPECT_TRUE(texts.value(0).startsWith(QStringLiteral("Remove ")));
@@ -534,6 +537,22 @@ TEST(PathBar, BackArrowOffersHistoryAndTheStarOffersFolders) {
     EXPECT_EQ(f.context.directory(), inner);
     EXPECT_FALSE(star->property("lit").toBool());
     QSettings().remove(QStringLiteral("Folders"));
+}
+
+// Why: the path bar's buttons have no words, so a missing icon leaves an empty button. Input:
+// the browser page; every button must find its icon in the resources.
+TEST(PathBar, EveryButtonShowsItsIcon) {
+    BrowserPageFixture f;
+    QQuickItem* bar = f.view.rootObject()->property("pathBar").value<QQuickItem*>();
+    ASSERT_NE(bar, nullptr);
+    for (const QString name : {QStringLiteral("backButton"), QStringLiteral("forwardButton"), QStringLiteral("upButton"),
+                               QStringLiteral("refreshButton"), QStringLiteral("folderButton")}) {
+        QQuickItem* button = findNamed(bar, name);
+        ASSERT_NE(button, nullptr) << name.toStdString();
+        QQuickItem* icon = findNamed(button, QStringLiteral("icon"));
+        ASSERT_NE(icon, nullptr) << name.toStdString();
+        EXPECT_TRUE(icon->property("valid").toBool()) << name.toStdString();
+    }
 }
 
 TEST(PathBar, TheStarListsPlacesThatFoldAway) {

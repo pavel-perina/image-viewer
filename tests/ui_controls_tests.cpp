@@ -7,8 +7,11 @@
 
 #include "ui_test_support.h"
 
+#include <QDir>
 #include <QFontInfo>
 #include <QFontMetricsF>
+
+#include "ui/themed_icon.h"
 
 namespace {
 
@@ -377,5 +380,56 @@ TEST(Controls, EveryDigitIsAsWideAsTheOthers) {
     const double zero = metrics.horizontalAdvance(QStringLiteral("0000000000"));
     for (const QString digits : {QStringLiteral("1111111111"), QStringLiteral("4444444444"), QStringLiteral("7777777777")}) {
         EXPECT_DOUBLE_EQ(metrics.horizontalAdvance(digits), zero) << digits.toStdString();
+    }
+}
+
+// Why: icons follow the palette, so the drawings carry placeholder colours (white for the ink,
+// pure green for the accent; assets/icons/README.md) that must become the theme's however the
+// editor wrote them, while a colour drawn on purpose stays. Input: a made-up SVG with each
+// spelling of each placeholder and one red; the truth is the README's rule.
+TEST(Icons, PlaceholdersTakeTheThemesColoursAndOtherColoursStay) {
+    const QByteArray svg = R"svg(<svg><path style="fill:white;stroke:rgb(0,255,0);"/>)svg"
+                           R"svg(<path fill="#FFFFFF" stroke="#00ff00"/><path style="fill:rgb(255, 255, 255)"/>)svg"
+                           R"svg(<path style="fill:lime"/><path style="fill:#ff0000;stroke:whitesmoke"/></svg>)svg";
+    const QString result = QString::fromUtf8(iv::recolorIcon(svg, QColor(0x12, 0x34, 0x56), QColor(0xab, 0xcd, 0xef)));
+    EXPECT_EQ(result.count(QStringLiteral("#123456")), 3) << result.toStdString();
+    EXPECT_EQ(result.count(QStringLiteral("#abcdef")), 3) << result.toStdString();
+    EXPECT_TRUE(result.contains(QStringLiteral("fill:#ff0000"))) << result.toStdString();
+    EXPECT_TRUE(result.contains(QStringLiteral("stroke:whitesmoke"))) << result.toStdString();
+}
+
+// Why: an icon exported with a colour that is not a placeholder, or one that does not load,
+// would show the wrong colour or nothing on some palette. Input: every icon in the resources,
+// drawn in a red ink and a blue accent; no solid pixel may be left white or green, and each
+// icon must draw something. The zoom icon has both parts, so it shows both colours.
+TEST(Icons, EveryIconDrawsInTheThemesColours) {
+    const QColor ink(200, 40, 30);
+    const QColor accent(30, 80, 210);
+    const QStringList names = QDir(QStringLiteral(":/icons")).entryList({QStringLiteral("*.svg")});
+    EXPECT_GE(names.size(), 12);
+    for (QString name : names) {
+        name.chop(4);
+        const QImage image = iv::renderIcon(name, QSize(24, 24), ink, accent);
+        ASSERT_FALSE(image.isNull()) << name.toStdString();
+        int drawn = 0, inInk = 0, inAccent = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                const QColor pixel = image.pixelColor(x, y);
+                if (pixel.alpha() < 255) {
+                    drawn += pixel.alpha() > 0;
+                    continue;
+                }
+                ++drawn;
+                EXPECT_NE(pixel, QColor(Qt::white)) << name.toStdString() << " at " << x << "," << y;
+                EXPECT_NE(pixel, QColor(0, 255, 0)) << name.toStdString() << " at " << x << "," << y;
+                inInk += distance(pixel, ink) < 4;
+                inAccent += distance(pixel, accent) < 4;
+            }
+        }
+        EXPECT_GT(drawn, 10) << name.toStdString();
+        if (name == u"zoom-in") {
+            EXPECT_GT(inInk, 0);
+            EXPECT_GT(inAccent, 0);
+        }
     }
 }

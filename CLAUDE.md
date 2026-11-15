@@ -42,7 +42,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
-* **Look:** `theme_palette` (the palette's choices and colours, for `Theme`).
+* **Look:** `theme_palette` (the palette's choices and colours, for `Theme`), `themed_icon`
+  (an icon from `assets/icons` in the theme's colours).
 * **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
   from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
   `shape_painter` (draws annotation shapes, for the screen and for burning in).
@@ -53,7 +54,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **QML pages:** `Main.qml` (window, menus, dialogs), `BrowserPage.qml`, `ViewerPage.qml`,
   `FileActions.qml` (what the file menus do), `FileChooser.qml`.
 * **QML shared controls:** `AppDialog` (a dialog inside the window), `DialogWindow` (a large
-  dialog in a window of its own), `AppMenu`, `AppMenuItem`, `BarButton`, `AppScrollBar`,
+  dialog in a window of its own), `AppMenu`, `AppMenuItem`, `BarButton`, `IconButton` (a tool bar button showing an icon), `AppScrollBar`,
   `MessageBox`, `NumberRow` (a label with a number to set), `DecimalSpinBox`, `ListFrame` (what
   a list stands on: base colour and a frame), `PaneHeader` (a pane's caption, which may collapse
   it), `SearchCombo` (a combo box with

@@ -152,6 +152,34 @@ TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
     EXPECT_EQ(f.warnings, QStringList());
 }
 
+// Why: the zoom buttons show icons instead of words, so their names and keys must still be
+// found, in the tip. Input: the whole window; the truth is the actions' names and shortcuts.
+TEST(Main, ZoomButtonsShowIconsAndNameThemselvesInTheirTips) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    const QList<std::pair<QString, QString>> buttons = {
+        {QStringLiteral("zoomInButton"), QStringLiteral("Zoom In (+)")},
+        {QStringLiteral("zoomOutButton"), QStringLiteral("Zoom Out (-)")},
+        {QStringLiteral("fitButton"), QStringLiteral("Fit (F)")},
+        {QStringLiteral("actualSizeButton"), QStringLiteral("1:1 (1)")},
+        {QStringLiteral("fullScreenButton"), QStringLiteral("Full Screen (F11)")},
+    };
+    for (const auto& [name, tip] : buttons) {
+        QObject* button = f.find(name);
+        ASSERT_NE(button, nullptr) << name.toStdString();
+        EXPECT_EQ(button->property("tip").toString(), tip);
+        auto* icon = button->property("contentItem").value<QQuickItem*>();
+        ASSERT_NE(icon, nullptr) << name.toStdString();
+        EXPECT_TRUE(icon->property("valid").toBool()) << name.toStdString();
+    }
+    EXPECT_EQ(f.warnings, QStringList());
+
+    // Set IV_TOOLBAR_PNG to a file name to have the window saved, to look at the icons.
+    if (const QString file = qEnvironmentVariable("IV_TOOLBAR_PNG"); !file.isEmpty()) {
+        f.window->grabWindow().save(file);
+    }
+}
+
 TEST(Main, EditingThePathTurnsOffShortcutsForKeysATextFieldLeaves) {
     MainFixture f(0);
     ASSERT_NE(f.window, nullptr);

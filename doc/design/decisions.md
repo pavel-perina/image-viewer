@@ -248,6 +248,7 @@ change nothing useful. The first press of a double click does this too, for that
 * Exiv2 is GPL and ruled out. Candidates for metadata are a permissive EXIF reader, or
   external ExifTool for full metadata.
 * Qt Charts and Qt Graphs are not available under LGPL, so the histogram is drawn by us.
+* Qt Svg (LGPL) draws the icons. It is one of Qt's essential modules, installed with it.
 * The project itself will be MIT or BSD-2. Link Qt dynamically to keep LGPL simple.
 * Thumbnails will be stored as compressed blobs, so they do not need zstd.
 
@@ -1165,4 +1166,18 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   editing of the path, as in the browser.
 * Its title bar is the system's. On Windows a dialog has no icon there and no taskbar button; on
   Linux the window decoration decides, and some show the program's icon on dialogs too.
+
+## Icons take the theme's colours
+
+* The icons are SVG drawings (`assets/icons`) in two placeholder colours, white for the ink and
+  pure green for the accent, which `ThemedIcon` replaces with the theme's before drawing. Qt's
+  own icon tinting paints a whole icon in one colour, which would lose the accent.
+* `ThemedIcon` is an item that draws the SVG itself, not an image provider, so that it works in
+  every engine without being registered, and draws sharp at any scale of the screen.
+* On the tool bar, `IconButton` shows the icon in place of the text. The text and the shortcut
+  become the tip and still name the button for accessibility.
+* Zoom in, zoom out, fit, 1:1, the info panel and full screen have icons. Buttons for which no
+  icon is drawn yet (the tools, Before/After) keep their words. The path bar's buttons
+  (back, forward, up, refresh, the star) show icons too, at 24 pixels as drawn, in flat buttons
+  the height of a control: drawn at 16 they were too small to read.
 
