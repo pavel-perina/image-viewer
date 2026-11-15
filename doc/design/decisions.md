@@ -1039,6 +1039,10 @@ Left out for now:
   keeps only the EXIF chunk and the XMP text chunk. libtiff reads unknown tags as anonymous
   fields and can list them (`TIFFGetTagListCount`), so TIFF needs no parser of its own.
 
+## What the thumbnail grid shows (planned, not built)
+* Folders in the grid too, each drawn with a few thumbnails of the images inside it.
+* Options to show more than images: video files, raw files, and all files.
+
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
   rather than the image being edited.
