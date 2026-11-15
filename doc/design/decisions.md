@@ -1110,10 +1110,10 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 
 ## The controls have a style of their own
 
-* Buttons, check boxes, combo boxes, spin boxes, sliders and menus are drawn by a Qt Quick
-  Controls style of the program's own, `ImageViewerStyle` in `src/ui/controls`, which takes
-  every other control from Fusion. Pages keep writing `Button` and the like, so a control can be
-  redone without touching them, and one at a time.
+* Buttons, check boxes, combo boxes, spin boxes, sliders, menus and tool bars are drawn by a
+  Qt Quick Controls style of the program's own, `ImageViewerStyle` in `src/ui/controls`, which
+  takes every other control from Fusion. Pages keep writing `Button` and the like, so a control
+  can be redone without touching them, and one at a time.
 * The fallback is declared `QtQuick.Controls.Fusion/auto`, and the style's own version is 6.0
   for it: `auto` asks Fusion for the importing module's version, and Fusion has no 1.0. A
   plain import without a version is not taken as a fallback at all, and every control not
@@ -1138,6 +1138,13 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   between panes of a `SplitView` is the same across as down, of the window's colour, with a
   line only under the mouse: Fusion's was a bright line, thicker one way than the other where a
   frame stood beside it.
+* Tool bar buttons are flat, the icon alone, until the mouse is over one (a light layer), it is
+  pressed (a stronger one) or it is on (a tint and edge of the accent). Fusion's showed nothing
+  under the mouse, and drew pressed and on as the same grey box, so a toggle such as Auto
+  Contrast looked stuck mid-click. Groups are parted by a one-pixel line in `mid`, like the one
+  between a spin box's number and its arrows; Fusion's was all but invisible. The tool bars
+  are flat in the window's colour, parted from the menu bar and the page by a line in `dark`:
+  Fusion's light line under the menu bar stood out on a dark window.
 * A menu line of an exclusive group (Sort By) has a round mark with a dot, as a radio button
   does; a box with a tick says each line can be turned on alone. Disabled, a mark keeps its
   edge whether it is on or not. A tool (the probe) is not an option and has no mark: its action

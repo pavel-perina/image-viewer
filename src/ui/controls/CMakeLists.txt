@@ -23,6 +23,9 @@ qt_add_qml_module(iv_style
         SpinBox.qml
         SplitView.qml
         TextField.qml
+        ToolBar.qml
+        ToolButton.qml
+        ToolSeparator.qml
 )
 
 target_link_libraries(iv_style PUBLIC Qt6::Quick Qt6::QuickControls2)

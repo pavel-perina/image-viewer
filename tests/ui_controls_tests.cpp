@@ -272,8 +272,8 @@ TEST(Controls, ASliderIsFilledUpToItsHandle) {
 
 // Why: what the style does not redo is to come from Fusion, which suits a dense desktop
 // program, and not from Basic, made for touch: Basic's tree rows are 50 pixels high and its
-// tool buttons and list rows 40. It once fell to Basic unnoticed, as the fallback was declared
-// in a way Qt does not take. Input: a tool button and a list row, neither of them redone. The
+// tab buttons and list rows 40. It once fell to Basic unnoticed, as the fallback was declared
+// in a way Qt does not take. Input: a tab button and a list row, neither of them redone. The
 // truth is Fusion's own sizes, well below Basic's.
 TEST(Controls, WhatTheStyleDoesNotRedoComesFromFusion) {
     QQmlEngine engine;
@@ -284,7 +284,7 @@ TEST(Controls, WhatTheStyleDoesNotRedoComesFromFusion) {
         Item {
             property alias tool: tool
             property alias row: row
-            ToolButton { id: tool; text: "Fit" }
+            TabButton { id: tool; text: "Fit" }
             ItemDelegate { id: row; text: "Home" }
         }
     )", QUrl());
@@ -433,3 +433,106 @@ TEST(Icons, EveryIconDrawsInTheThemesColours) {
     }
 }
 
+// A tool bar with the menu bar above it and buttons in each state, for the tests of the tool
+// bar's own controls. Hover is turned on for the one under the mouse, as the offscreen platform
+// turns hover effects off.
+constexpr const char* toolBarQml = R"(
+import QtQuick
+import QtQuick.Controls
+import ImageViewer
+ApplicationWindow {
+    width: 400; height: 120; visible: true
+    color: Theme.window
+    property alias bar: bar
+    property alias rest: rest
+    property alias hovered: hovered
+    property alias pressed: pressed
+    property alias on: on
+    property alias separator: separator
+    menuBar: MenuBar { Menu { title: "File" } }
+    header: ToolBar {
+        id: bar
+        Row {
+            IconButton { id: rest; iconName: "zoom-in"; text: "Zoom In" }
+            IconButton { id: hovered; hoverEnabled: true; iconName: "zoom-out"; text: "Zoom Out" }
+            IconButton { id: pressed; iconName: "zoom-fit-best"; text: "Fit"; down: true }
+            IconButton { id: on; iconName: "auto-contrast"; text: "Auto Contrast"; checkable: true; checked: true }
+            ToolSeparator { id: separator }
+        }
+    }
+}
+)";
+
+struct ToolBarPage {
+    QQmlEngine engine;
+    std::unique_ptr<QObject> root;
+    QQuickWindow* window = nullptr;
+    QObject* theme = nullptr;
+
+    ToolBarPage() {
+        QQmlComponent component(&engine);
+        component.setData(toolBarQml, QUrl());
+        EXPECT_TRUE(component.isReady()) << component.errorString().toStdString();
+        root.reset(component.create());
+        window = qobject_cast<QQuickWindow*>(root.get());
+        EXPECT_TRUE(waitUntil([&] { return window && window->isExposed(); }));
+        theme = engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    }
+    QQuickItem* item(const char* name) const { return root->property(name).value<QQuickItem*>(); }
+    QColor colour(const char* role) const { return theme->property(role).value<QColor>(); }
+    QColor pixelAt(QQuickItem* in, QPointF at) const {
+        return window->grabWindow().pixelColor(in->mapToScene(at).toPoint());
+    }
+    // A button's background, above its icon, clear of the rounded corners.
+    QColor backgroundOf(const char* name) const {
+        QQuickItem* button = item(name);
+        return pixelAt(button, QPointF(button->width() / 2, 2));
+    }
+};
+
+// Why: tool bar buttons are flat, the icon alone, so that a bar of them is quiet; the mouse
+// over one, pressing it and it being on each show, and on must read apart from pressed (a
+// toggle such as Auto Contrast would otherwise look stuck mid-click). Input: one button in each
+// state. The truth: at rest the bar's own colour; hovered and pressed lighter, pressed the
+// more; on nearer the accent than at rest, and unlike pressed.
+TEST(Controls, ToolButtonsAreFlatUntilHoveredPressedOrOn) {
+    ToolBarPage page;
+    QQuickItem* hovered = page.item("hovered");
+    QTest::mouseMove(page.window, hovered->mapToScene(QPointF(hovered->width() / 2, hovered->height() / 2)).toPoint());
+    ASSERT_TRUE(waitUntil([&] { return hovered->property("hovered").toBool(); }));
+    const QColor window = page.colour("window");
+    const QColor accent = page.colour("accent");
+    const QColor rest = page.backgroundOf("rest");
+    const QColor hover = page.backgroundOf("hovered");
+    const QColor pressed = page.backgroundOf("pressed");
+    const QColor on = page.backgroundOf("on");
+    EXPECT_LT(distance(rest, window), 3) << rest.name().toStdString();
+    EXPECT_GT(hover.lightnessF(), rest.lightnessF()) << hover.name().toStdString();
+    EXPECT_GT(pressed.lightnessF(), hover.lightnessF()) << pressed.name().toStdString();
+    EXPECT_LT(distance(on, accent), distance(rest, accent)) << on.name().toStdString();
+    EXPECT_GT(distance(on, pressed), 10) << on.name().toStdString() << " " << pressed.name().toStdString();
+}
+
+// Why: groups of tool bar buttons are parted by a line that shows, as thin as the one between
+// a spin box's number and its arrows; Fusion's was all but invisible. Input: a separator in the
+// bar. The truth: one pixel of Theme.mid at its middle, the bar's colour beside it.
+TEST(Controls, AToolSeparatorIsAThinLineThatShows) {
+    ToolBarPage page;
+    QQuickItem* separator = page.item("separator");
+    const double middle = separator->height() / 2;
+    const double line = std::floor(separator->width() / 2);
+    EXPECT_LT(distance(page.pixelAt(separator, QPointF(line, middle)), page.colour("mid")), 3);
+    EXPECT_LT(distance(page.pixelAt(separator, QPointF(line - 2, middle)), page.colour("window")), 3);
+    EXPECT_LT(distance(page.pixelAt(separator, QPointF(line + 2, middle)), page.colour("window")), 3);
+}
+
+// Why: the line between the menu bar and the tool bar is to part them without standing out:
+// Fusion's light line drew the eye on a dark window. Input: the bar at the top of a window,
+// under its menu bar. The truth: the bar's top row is Theme.dark, darker than the window.
+TEST(Controls, TheToolBarIsPartedFromTheMenuByADarkLine) {
+    ToolBarPage page;
+    QQuickItem* bar = page.item("bar");
+    const QColor top = page.pixelAt(bar, QPointF(bar->width() / 2, 0));
+    EXPECT_LT(distance(top, page.colour("dark")), 3) << top.name().toStdString();
+    EXPECT_LT(top.lightnessF(), page.colour("window").lightnessF());
+}
