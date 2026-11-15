@@ -228,16 +228,18 @@ DialogWindow {
                 context: browse
                 recordVisits: false
             }
-            ToolButton {
+            IconButton {
                 objectName: "briefButton"
                 text: "Brief"
+                iconName: "view-list-brief"
                 checkable: true
                 checked: !fileList.details
                 onClicked: fileList.details = false
             }
-            ToolButton {
+            IconButton {
                 objectName: "detailsButton"
                 text: "Details"
+                iconName: "view-list-details"
                 checkable: true
                 checked: fileList.details
                 onClicked: fileList.details = true

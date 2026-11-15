@@ -1185,8 +1185,11 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   every engine without being registered, and draws sharp at any scale of the screen.
 * On the tool bar, `IconButton` shows the icon in place of the text. The text and the shortcut
   become the tip and still name the button for accessibility.
-* Zoom in, zoom out, fit, 1:1, the info panel and full screen have icons. Buttons for which no
-  icon is drawn yet (the tools, Before/After) keep their words. The path bar's buttons
-  (back, forward, up, refresh, the star) show icons too, at 24 pixels as drawn, in flat buttons
-  the height of a control: drawn at 16 they were too small to read.
+* Every tool bar button has an icon: the mode (showing where it goes: the picture from the
+  browser, the thumbnails from the viewer), previous and next image and page, zoom, Auto
+  Contrast and its padlock, the info panel, the tools (Crop, Straighten, Annotate, Resize,
+  Adjust and the probe, in one group, as each cancels the one open), Before/After, Original
+  (whose tip says to hold it) and full screen. So do Brief and Details in the file chooser.
+  The path bar's buttons (back, forward, up, refresh, the star) show icons too, at 24 pixels
+  as drawn, in flat buttons the height of a control: drawn at 16 they were too small to read.
 

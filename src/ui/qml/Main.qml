@@ -524,13 +524,24 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
-            ToolButton { action: modeAction }
+            // Shows where it goes: the picture from the browser, the thumbnails from the viewer.
+            IconButton { objectName: "modeButton"; action: modeAction; iconName: window.viewing ? "view-browser" : "view-image" }
             ToolSeparator {}
-            ToolButton { action: previousAction }
-            ToolButton { action: nextAction }
+            IconButton { objectName: "previousButton"; action: previousAction; iconName: "image-previous" }
+            IconButton { objectName: "nextButton"; action: nextAction; iconName: "image-next" }
             ToolSeparator {}
-            ToolButton { action: previousPageAction; visible: window.activeView.pageCount > 1 }
-            ToolButton { action: nextPageAction; visible: window.activeView.pageCount > 1 }
+            IconButton {
+                objectName: "previousPageButton"
+                action: previousPageAction
+                iconName: "page-previous"
+                visible: window.activeView.pageCount > 1
+            }
+            IconButton {
+                objectName: "nextPageButton"
+                action: nextPageAction
+                iconName: "page-next"
+                visible: window.activeView.pageCount > 1
+            }
             ToolSeparator { visible: window.activeView.pageCount > 1 }
             IconButton { objectName: "zoomInButton"; action: zoomInAction; iconName: "zoom-in" }
             IconButton { objectName: "zoomOutButton"; action: zoomOutAction; iconName: "zoom-out" }
@@ -539,7 +550,7 @@ ApplicationWindow {
             // Auto Contrast and its lock, as one split button.
             Row {
                 visible: window.activeView.contrastAdjustable
-                ToolButton { objectName: "autoContrastButton"; action: autoContrastAction }
+                IconButton { objectName: "autoContrastButton"; action: autoContrastAction; iconName: "auto-contrast" }
                 LockButton {
                     objectName: "keepAutoContrastButton"
                     action: keepAutoContrastAction
@@ -548,23 +559,32 @@ ApplicationWindow {
             }
             IconButton { objectName: "infoButton"; action: infoAction; iconName: "dialog-information"; visible: window.viewing }
             ToolSeparator { visible: window.viewing }
-            ToolButton { action: cropAction; visible: window.viewing }
-            ToolButton { action: straightenAction; visible: window.viewing }
-            ToolButton { action: adjustAction; text: "Adjust"; visible: window.viewing }
+            IconButton { objectName: "cropButton"; action: cropAction; iconName: "transform-crop"; visible: window.viewing }
+            IconButton { objectName: "straightenButton"; action: straightenAction; iconName: "straighten"; visible: window.viewing }
+            IconButton { objectName: "annotateButton"; action: annotateAction; iconName: "annotate"; visible: window.viewing }
+            IconButton { objectName: "resizeButton"; action: resizeAction; iconName: "image-resize"; visible: window.viewing }
+            IconButton { objectName: "adjustButton"; action: adjustAction; iconName: "adjust-colours"; visible: window.viewing }
+            // Down while probing, as the probe is a tool at work; a tool is no option to tick,
+            // so the action is not checkable and the menu shows no box for it.
+            IconButton {
+                objectName: "probeButton"
+                action: probeAction
+                iconName: "color-picker"
+                visible: window.viewing
+                checked: window.probing
+            }
             ToolSeparator { visible: window.viewing }
-            ToolButton { action: beforeAfterAction; text: "Before/After"; visible: window.viewing }
+            IconButton { objectName: "beforeAfterButton"; action: beforeAfterAction; iconName: "before-after"; visible: window.viewing }
             // Shows the original while held down.
-            ToolButton {
+            IconButton {
                 id: originalButton
                 objectName: "originalButton"
-                text: "Original"
+                text: "Original (hold)"
+                iconName: "show-original"
                 visible: window.viewing
                 enabled: viewerPage.canCompareEdit || viewerPage.comparing === "edit"
                 focusPolicy: Qt.NoFocus
             }
-            // Down while probing, as the probe is a tool at work; a tool is no option to tick,
-            // so the action is not checkable and the menu shows no box for it.
-            ToolButton { action: probeAction; text: "Probe"; visible: window.viewing; checked: window.probing }
             Item { Layout.fillWidth: true }
             // The bar is hidden at full screen, so this only enters it; Esc or F11 leaves.
             IconButton { objectName: "fullScreenButton"; action: fullScreenAction; iconName: "view-fullscreen" }

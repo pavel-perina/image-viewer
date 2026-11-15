@@ -152,22 +152,39 @@ TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
     EXPECT_EQ(f.warnings, QStringList());
 }
 
-// Why: the zoom buttons show icons instead of words, so their names and keys must still be
-// found, in the tip. Input: the whole window; the truth is the actions' names and shortcuts.
-TEST(Main, ZoomButtonsShowIconsAndNameThemselvesInTheirTips) {
+// Why: the tool bar's buttons show icons instead of words, so their names and keys must still
+// be found, in the tip, and an icon name that is not in the resources would leave a blank
+// button. Input: the whole window; the truth is the actions' names and shortcuts, with the
+// mnemonic and a menu's "..." left out.
+TEST(Main, ToolBarButtonsShowIconsAndNameThemselvesInTheirTips) {
     MainFixture f(1);
     ASSERT_NE(f.window, nullptr);
     const QList<std::pair<QString, QString>> buttons = {
+        {QStringLiteral("modeButton"), QStringLiteral("View")},
+        {QStringLiteral("previousButton"), QStringLiteral("Previous")},
+        {QStringLiteral("nextButton"), QStringLiteral("Next")},
+        {QStringLiteral("previousPageButton"), QStringLiteral("Prev Page")},
+        {QStringLiteral("nextPageButton"), QStringLiteral("Next Page")},
         {QStringLiteral("zoomInButton"), QStringLiteral("Zoom In (+)")},
         {QStringLiteral("zoomOutButton"), QStringLiteral("Zoom Out (-)")},
         {QStringLiteral("fitButton"), QStringLiteral("Fit (F)")},
         {QStringLiteral("actualSizeButton"), QStringLiteral("1:1 (1)")},
+        {QStringLiteral("autoContrastButton"), QStringLiteral("Auto Contrast")},
+        {QStringLiteral("keepAutoContrastButton"), QStringLiteral("Keep Auto Contrast for the next images")},
+        {QStringLiteral("cropButton"), QStringLiteral("Crop (X)")},
+        {QStringLiteral("straightenButton"), QStringLiteral("Straighten (S)")},
+        {QStringLiteral("annotateButton"), QStringLiteral("Annotate (D)")},
+        {QStringLiteral("resizeButton"), QStringLiteral("Resize (Ctrl+R)")},
+        {QStringLiteral("adjustButton"), QStringLiteral("Adjust Colours (A)")},
+        {QStringLiteral("beforeAfterButton"), QStringLiteral("Before and After (B)")},
+        {QStringLiteral("originalButton"), QStringLiteral("Original (hold)")},
+        {QStringLiteral("probeButton"), QStringLiteral("Probe Colours (P)")},
         {QStringLiteral("fullScreenButton"), QStringLiteral("Full Screen (F11)")},
     };
     for (const auto& [name, tip] : buttons) {
         QObject* button = f.find(name);
         ASSERT_NE(button, nullptr) << name.toStdString();
-        EXPECT_EQ(button->property("tip").toString(), tip);
+        EXPECT_EQ(button->property("tip").toString(), tip) << name.toStdString();
         auto* icon = button->property("contentItem").value<QQuickItem*>();
         ASSERT_NE(icon, nullptr) << name.toStdString();
         EXPECT_TRUE(icon->property("valid").toBool()) << name.toStdString();
@@ -739,6 +756,21 @@ TEST(FileChooser, IsADialogWindowOfItsOwnOverItsWindow) {
 // Why: a chooser made larger stays so; opening it at its first size each time would undo it.
 // Input: the chooser opened, resized, closed and opened again. The truth is its size then,
 // which is kept in the settings (of the test's own home).
+// Why: Brief and Details are icons, so their names are in the tips, and an icon missing from
+// the resources would leave them blank. Input: the chooser; the truth is the buttons' names.
+TEST(FileChooser, TheViewButtonsShowIconsAndNameThemselves) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.start(QString());
+    for (const auto& [name, tip] : {std::pair{"briefButton", "Brief"}, std::pair{"detailsButton", "Details"}}) {
+        auto* button = f.chooser->findChild<QQuickItem*>(QString::fromLatin1(name));
+        ASSERT_NE(button, nullptr) << name;
+        EXPECT_EQ(button->property("tip").toString(), QString::fromLatin1(tip));
+        auto* icon = button->property("contentItem").value<QQuickItem*>();
+        ASSERT_NE(icon, nullptr) << name;
+        EXPECT_TRUE(icon->property("valid").toBool()) << name;
+    }
+}
+
 TEST(FileChooser, KeepsTheSizeItWasGiven) {
     ChooserFixture f(QStringLiteral("save"));
     f.start(QStringLiteral("a.jpg"));
@@ -1155,12 +1187,9 @@ TEST(Main, EnterAppliesAndEscLeavesWhicheverToolIsAtWork) {
 TEST(Main, TheProbeIsAToolAndNotAnOptionToTick) {
     MainFixture f(1);
     ASSERT_NE(f.window, nullptr);
-    QObject* action = nullptr;
-    for (QQuickItem* item : f.window->findChildren<QQuickItem*>()) {
-        if (item->inherits("QQuickToolButton") && item->property("text").toString() == QStringLiteral("Probe")) {
-            action = item->property("action").value<QObject*>();
-        }
-    }
+    QObject* button = f.find(QStringLiteral("probeButton"));
+    ASSERT_NE(button, nullptr);
+    QObject* action = button->property("action").value<QObject*>();
     ASSERT_NE(action, nullptr);
     EXPECT_FALSE(action->property("checkable").toBool());
 }

@@ -9,8 +9,9 @@ ToolButton {
     id: button
 
     property string iconName  // as listed in src/ui/CMakeLists.txt, such as "zoom-in"
-    readonly property string tip: {
-        const name = text.replace("&", "")
+    // Set it to say more than the name.
+    property string tip: {
+        const name = text.replace("&", "").replace(/\.\.\.$/, "")
         const keys = action ? KeyNames.text(action.shortcut) : ""
         return keys !== "" ? name + " (" + keys + ")" : name
     }
