@@ -91,11 +91,12 @@ change nothing useful. The first press of a double click does this too, for that
   auto contrast, since gray images are often measurements that use a small part of it. 16-bit
   images keep the full range by default because stretching a
   photograph would falsify its exposure, so one that uses a small part of the range looks
-  dark until auto contrast is turned on. Thumbnails follow the same default. The choice is
-  per image and does not carry over to the next one, unless it is kept with the padlock beside
-  the button (Keep Auto Contrast, remembered between sessions): then every image with more than
-  8 bits has it. Turning Auto Contrast off also stops keeping it, as the next image would
-  otherwise have it again. 8-bit images never do: they are shown as they are.
+  dark until auto contrast is turned on. Thumbnails follow the same default. Auto Contrast is
+  one toggle that stays as it is set, remembered between sessions: turned on, every image
+  with more than 8 bits has it, and turned off, none has it but those that default to it. The
+  button is lit while the image shown has it. A padlock beside it once kept it for the next
+  images, but it read as a tool of its own. 8-bit images never have it: they are shown as
+  they are.
 
 ## Histogram and details
 * A histogram measures the file's values, not what is on screen, with 256 or 65536 bins,
@@ -1194,8 +1195,8 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   become the tip and still name the button for accessibility.
 * Every tool bar button has an icon: the mode (showing where it goes: the picture from the
   browser, the thumbnails from the viewer), previous and next image and page, zoom, Auto
-  Contrast and its padlock, the info panel, the tools (Crop, Straighten, Annotate, Resize,
-  Adjust and the probe, in one group, as each cancels the one open), Before/After, Original
+  Contrast, the info panel, the tools (Crop, Straighten, Annotate, Resize, Adjust and the
+  probe, in one group, as each cancels the one open), Before/After, Original
   (whose tip says to hold it) and full screen. So do Brief and Details in the file chooser.
   The path bar's buttons (back, forward, up, refresh, the star) show icons too, at 24 pixels
   as drawn, in flat buttons the height of a control: drawn at 16 they were too small to read.

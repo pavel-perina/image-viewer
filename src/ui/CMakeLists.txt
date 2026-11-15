@@ -95,7 +95,6 @@ qt_add_qml_module(iv_ui
         qml/JpegMenu.qml
         qml/LevelsControl.qml
         qml/ListFrame.qml
-        qml/LockButton.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/MessageBox.qml
@@ -150,8 +149,6 @@ set(iv_icons
     "tabler/file-arrow-left.svg=page-previous"
     "tabler/file-arrow-right.svg=page-next"
     "tabler/contrast.svg=auto-contrast"
-    "tabler/lock.svg=locked"
-    "tabler/lock-open.svg=unlocked"
     "tabler/crop.svg=transform-crop"
     "tabler/perspective.svg=straighten"
     "tabler/pencil.svg=annotate"

@@ -334,18 +334,11 @@ ApplicationWindow {
         checkable: true
         enabled: window.activeView.contrastAdjustable
         checked: window.activeView.autoContrast
+        // For this image and the next ones, until turned off: kept between sessions.
         onTriggered: {
             window.activeView.autoContrast = checked
-            if (!checked)
-                ViewSettings.keepAutoContrast = false  // or the next image would have it again
+            ViewSettings.keepAutoContrast = checked
         }
-    }
-    Action {
-        id: keepAutoContrastAction
-        text: "&Keep Auto Contrast"
-        checkable: true
-        checked: ViewSettings.keepAutoContrast
-        onTriggered: ViewSettings.keepAutoContrast = checked
     }
     Action {
         id: colorManagedAction
@@ -491,7 +484,6 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
-            AppMenuItem { action: keepAutoContrastAction }
             AppMenuItem { action: sharpResamplingAction }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }
@@ -547,15 +539,11 @@ ApplicationWindow {
             IconButton { objectName: "zoomOutButton"; action: zoomOutAction; iconName: "zoom-out" }
             IconButton { objectName: "fitButton"; action: fitAction; iconName: "zoom-fit-best" }
             IconButton { objectName: "actualSizeButton"; action: actualSizeAction; iconName: "zoom-original" }
-            // Auto Contrast and its lock, as one split button.
-            Row {
+            IconButton {
+                objectName: "autoContrastButton"
+                action: autoContrastAction
+                iconName: "auto-contrast"
                 visible: window.activeView.contrastAdjustable
-                IconButton { objectName: "autoContrastButton"; action: autoContrastAction; iconName: "auto-contrast" }
-                LockButton {
-                    objectName: "keepAutoContrastButton"
-                    action: keepAutoContrastAction
-                    tip: "Keep Auto Contrast for the next images"
-                }
             }
             IconButton { objectName: "infoButton"; action: infoAction; iconName: "dialog-information"; visible: window.viewing }
             ToolSeparator { visible: window.viewing }

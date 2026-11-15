@@ -170,7 +170,6 @@ TEST(Main, ToolBarButtonsShowIconsAndNameThemselvesInTheirTips) {
         {QStringLiteral("fitButton"), QStringLiteral("Fit (F)")},
         {QStringLiteral("actualSizeButton"), QStringLiteral("1:1 (1)")},
         {QStringLiteral("autoContrastButton"), QStringLiteral("Auto Contrast")},
-        {QStringLiteral("keepAutoContrastButton"), QStringLiteral("Keep Auto Contrast for the next images")},
         {QStringLiteral("cropButton"), QStringLiteral("Crop (X)")},
         {QStringLiteral("straightenButton"), QStringLiteral("Straighten (S)")},
         {QStringLiteral("annotateButton"), QStringLiteral("Annotate (D)")},
@@ -1053,7 +1052,12 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
 }
 
-TEST(Main, TheLockKeepsAutoContrastAndTurningItOffReleasesTheLock) {
+// Why: Auto Contrast is one toggle that stays as it is set: turned on, the next images have it
+// too, and turned off, they do not, with no second button to keep it. The button is lit
+// while the image shown has it. Input: two dim 16-bit gray images, which load without it,
+// stepped between. The truth is the view's auto contrast, the button's state and the setting
+// that is kept between sessions.
+TEST(Main, AutoContrastStaysAsItIsSetForTheNextImages) {
     MainFixture f([](const QTemporaryDir& dir) {
         TiffImage gray;
         gray.width = 100;
@@ -1068,22 +1072,28 @@ TEST(Main, TheLockKeepsAutoContrastAndTurningItOffReleasesTheLock) {
     auto* view = f.window->property("activeView").value<ImageView*>();
     ASSERT_NE(view, nullptr);
     ASSERT_TRUE(waitUntil([&] { return view->contrastAdjustable(); }));
-    QObject* lock = f.find(QStringLiteral("keepAutoContrastButton"));
     QObject* button = f.find(QStringLiteral("autoContrastButton"));
-    ASSERT_NE(lock, nullptr);
     ASSERT_NE(button, nullptr);
+    EXPECT_EQ(f.find(QStringLiteral("keepAutoContrastButton")), nullptr) << "no second button";
     ASSERT_FALSE(view->autoContrast());
+    EXPECT_FALSE(button->property("checked").toBool());
 
-    QMetaObject::invokeMethod(lock, "click");
-    EXPECT_TRUE(lock->property("checked").toBool());
+    QMetaObject::invokeMethod(button, "click");
     EXPECT_TRUE(view->autoContrast());
+    EXPECT_TRUE(button->property("checked").toBool());
+    EXPECT_TRUE(view->keepAutoContrast());
     QTest::keyClick(f.window, Qt::Key_Right);
     ASSERT_TRUE(waitUntil([&] { return view->source().endsWith(QStringLiteral("b.tif")) && view->contrastAdjustable(); }));
-    EXPECT_TRUE(view->autoContrast()) << "kept for the next image";
+    EXPECT_TRUE(view->autoContrast()) << "on for the next image";
+    EXPECT_TRUE(button->property("checked").toBool());
 
     QMetaObject::invokeMethod(button, "click");
     EXPECT_FALSE(view->autoContrast());
-    EXPECT_FALSE(lock->property("checked").toBool()) << "turned off, it is no longer kept";
+    EXPECT_FALSE(view->keepAutoContrast());
+    QTest::keyClick(f.window, Qt::Key_Left);
+    ASSERT_TRUE(waitUntil([&] { return view->source().endsWith(QStringLiteral("a.tif")) && view->contrastAdjustable(); }));
+    EXPECT_FALSE(view->autoContrast()) << "off for the next image";
+    EXPECT_FALSE(button->property("checked").toBool());
 }
 
 TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
