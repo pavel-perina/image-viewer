@@ -545,7 +545,7 @@ TEST(PathBar, EveryButtonShowsItsIcon) {
     BrowserPageFixture f;
     QQuickItem* bar = f.view.rootObject()->property("pathBar").value<QQuickItem*>();
     ASSERT_NE(bar, nullptr);
-    for (const QString name : {QStringLiteral("backButton"), QStringLiteral("forwardButton"), QStringLiteral("upButton"),
+    for (const QString& name : {QStringLiteral("backButton"), QStringLiteral("forwardButton"), QStringLiteral("upButton"),
                                QStringLiteral("refreshButton"), QStringLiteral("folderButton")}) {
         QQuickItem* button = findNamed(bar, name);
         ASSERT_NE(button, nullptr) << name.toStdString();

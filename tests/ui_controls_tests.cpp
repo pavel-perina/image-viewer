@@ -378,7 +378,7 @@ TEST(Controls, EveryDigitIsAsWideAsTheOthers) {
     Gallery g;
     const QFontMetricsF metrics(g.item("apply")->property("font").value<QFont>());
     const double zero = metrics.horizontalAdvance(QStringLiteral("0000000000"));
-    for (const QString digits : {QStringLiteral("1111111111"), QStringLiteral("4444444444"), QStringLiteral("7777777777")}) {
+    for (const QString& digits : {QStringLiteral("1111111111"), QStringLiteral("4444444444"), QStringLiteral("7777777777")}) {
         EXPECT_DOUBLE_EQ(metrics.horizontalAdvance(digits), zero) << digits.toStdString();
     }
 }
