@@ -60,8 +60,7 @@ Result<void> saveSubimage(ImageSource& source, int subimage, const std::filesyst
         if (stop.stop_requested()) {
             return std::unexpected("cancelled");
         }
-        // Flattened until the writers keep alpha.
-        return writeImage(path, applyOrientation(flattened(*pixels), info.orientation), metadata, options, replace);
+        return writeImage(path, applyOrientation(*pixels, info.orientation), metadata, options, replace);
     } catch (const std::bad_alloc&) {
         return std::unexpected("not enough memory to save the image");
     }

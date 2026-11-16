@@ -1242,10 +1242,10 @@ TEST(Alpha, OverviewsAreOfThePictureOnMidGray) {
 
 #ifdef IV_HAVE_PNG
 
-// Until transparency is drawn, written and edited, what does those sees the picture on mid
+// Until transparency is drawn and edited, what does those sees the picture on mid
 // gray, as before alpha was decoded. Each is checked on the transparent corner of the test
 // picture, which has to come out as gray 128 and not as the blue stored under it.
-TEST(Alpha, IsStillMidGrayInThumbnailsEditsHistogramsTheProbeAndSavedFiles) {
+TEST(Alpha, IsStillMidGrayInThumbnailsEditsHistogramsAndTheProbe) {
     PngOptions rgba;
     rgba.colorType = PNG_COLOR_TYPE_RGBA;
     const auto path = write("flat.png", encodePng(rgba));
@@ -1274,8 +1274,9 @@ TEST(Alpha, IsStillMidGrayInThumbnailsEditsHistogramsTheProbeAndSavedFiles) {
     ASSERT_TRUE(probe.has_value());
     EXPECT_EQ(probe->eightBit, (std::array<std::uint8_t, 3>{128, 128, 128}));
 
+    // An edited picture is saved from its flattened pixels, into a format with alpha too.
     const auto saved = testFolder() / "flat_saved.png";
-    ASSERT_TRUE(saveSubimage(*source, 0, saved, PngWriteOptions{}, {}, true).has_value());
+    ASSERT_TRUE(saveSubimage(*edited, 0, saved, PngWriteOptions{}, {}, true).has_value());
     const auto reopened = open(saved);
     ASSERT_TRUE(reopened);
     expectNoAlpha(*reopened);

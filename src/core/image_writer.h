@@ -70,8 +70,10 @@ struct WriteMetadata {
 // 16-bit and float images stay so in TIFF, 16-bit in PNG and JPEG XL, 10-bit in AVIF, and are
 // reduced to 8 bits for JPEG and WebP. Float values are taken as 0 to 1 where they must be
 // reduced. Images whose pixels are all gray are written as grayscale where the format allows,
-// with an RGB profile turned into a gray one like it where that can be done exactly. The unused
-// fourth channel is never written.
+// with an RGB profile turned into a gray one like it where that can be done exactly. Alpha is
+// written by PNG, WebP, AVIF and JPEG XL, with the colours as they are: lossless ones keep
+// them under full transparency too. JPEG and TIFF get the picture on mid gray. Without alpha
+// the fourth channel is never written.
 Result<std::vector<std::uint8_t>> encodeImage(const ImageBuffer& image, const WriteMetadata& metadata,
                                               const WriteOptions& options);
 
@@ -79,6 +81,9 @@ Result<std::vector<std::uint8_t>> encodeImage(const ImageBuffer& image, const Wr
 // replace set.
 Result<void> writeImage(const std::filesystem::path& path, const ImageBuffer& image, const WriteMetadata& metadata,
                         const WriteOptions& options, bool replace);
+
+// Whether the format these options choose keeps alpha when written.
+bool holdsAlpha(const WriteOptions& options);
 
 // Whether this build can write the format these options choose.
 bool canWrite(const WriteOptions& options);

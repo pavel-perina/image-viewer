@@ -43,7 +43,7 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * PNG, WebP, AVIF and JPEG XL cannot be entered at a tile or scaled while decoding, so they share
   a source that decodes the whole picture on first use and serves tiles as views. Large ones
   get overviews like any flat image. Each is optional at build time.
-* Alpha is decoded and kept for PNG, WebP, AVIF and JPEG XL, but not drawn, written or edited
+* Alpha is decoded, kept and written for PNG, WebP, AVIF and JPEG XL, but not drawn or edited
   yet: see "Transparency". TIFF still drops it.
 * AV1 and JPEG XL have no flag for lossless. AVIF storing RGB directly is treated as lossless.
   JPEG XL keeping the original colour space is called "likely lossless".
@@ -433,8 +433,8 @@ change nothing useful. The first press of a double click does this too, for that
   JPEG are left out, as almost nothing uses them.
 * Depth: each format keeps what it can. 16-bit stays 16-bit in PNG, TIFF and JPEG XL, becomes
   10-bit in AVIF, and 8-bit in JPEG and WebP. Float stays float in TIFF and JPEG XL and becomes
-  16-bit in PNG and AVIF, taking 0 to 1 as the range. The unused fourth channel is never written,
-  as alpha is not written yet (see "Transparency").
+  16-bit in PNG and AVIF, taking 0 to 1 as the range. Alpha is written where the format holds
+  it (see "Transparency"); without alpha the fourth channel is never written.
 * Images whose pixels are all gray, at any depth, are written as grayscale where the format has
   it (JPEG, PNG, TIFF, JPEG XL). An RGB profile then becomes a gray one made with lcms from its
   green curve and D50 white. For a matrix profile with one curve for all three channels, which
@@ -1249,15 +1249,22 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   shows alone, so edges stay right. Colours are multiplied only inside filters, in floating
   point, and for the screen. Files that store them multiplied (AVIF and JPEG XL may) are
   divided when read.
-* It is built in steps. Done: PNG, WebP, AVIF and JPEG XL decode alpha. Everything that reads
-  pixels still sees the picture on mid gray, as it looked before, by calling `flattened`: the
-  screen, the probe, the histogram, overviews, edits and saving. Each of those calls goes as
-  its step arrives. Thumbnails stay on mid gray for good, so their cache keeps opaque pictures.
-* Planned: the writers keep alpha (PNG, WebP, AVIF, JPEG XL; lossless WebP keeping the colour
-  under transparent pixels); resizing, straightening and overviews filter with the colours
-  multiplied, and transparent pixels do not count in the histogram or Auto Contrast; the view
-  draws transparency over a light or dark checkerboard or one colour, as chosen, and the
-  probe shows alpha.
+* It is built in steps. Done: PNG, WebP, AVIF and JPEG XL decode alpha and write it, so an
+  unedited picture saved or converted keeps its transparency. Lossless WebP and JPEG XL are
+  told to keep the colours under full transparency, which they otherwise replace with what
+  compresses best: the picture would look the same, but would not be the same numbers. AVIF
+  writes alpha without loss at any quality, as it is small beside the colours and its losses
+  show as fringes. Gray pixels with alpha are written as gray with alpha where the format
+  has that.
+* Everything else that reads pixels still sees the picture on mid gray, as it looked before,
+  by calling `flattened`: the screen, the probe, the histogram, overviews, edits, and writing
+  to JPEG and TIFF. So an edited picture is saved without its transparency for now. Each of
+  those calls goes as its step arrives. Thumbnails stay on mid gray for good, so their cache
+  keeps opaque pictures.
+* Planned: resizing, straightening and overviews filter with the colours multiplied, and
+  transparent pixels do not count in the histogram or Auto Contrast; the view draws
+  transparency over a light or dark checkerboard or one colour, as chosen, and the probe
+  shows alpha.
 * Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A
   batch cannot ask for each file, so it will say so once and count the files it filled. Until
   then every format is written from the picture on mid gray, without a warning.

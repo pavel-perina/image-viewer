@@ -383,6 +383,48 @@ TEST(Editing, CropsOutsideTheImageOrOfAllOfItAreIgnored) {
     EXPECT_EQ(f.view->status(), ImageView::Status::Ready);
 }
 
+// Why: Save As in the viewer must keep the transparency of a picture that was not edited, and
+// an edited one would lose it for now, so what the view hands over matters. Input: a made-up
+// PNG, half transparent red, saved as lossless WebP the way the Save As dialog does it, once
+// untouched and once cropped and undone. The truth is the WebP read back: the same colour and
+// alpha as the PNG.
+TEST(SaveAs, AnUneditedTransparentPictureKeepsItsTransparency) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("clear.png"));
+    QImage image(32, 24, QImage::Format_ARGB32);
+    image.fill(qRgba(200, 40, 20, 128));
+    ASSERT_TRUE(image.save(path));
+    ViewFixture f;
+    ASSERT_TRUE(f.load(path));
+    BrowseContext context;
+    if (context.saveFormat(QStringLiteral("a.webp")).isEmpty()) {
+        GTEST_SKIP() << "this build writes no WebP";
+    }
+    const auto saveAndRead = [&](const QString& name) {
+        QSignalSpy edited(&context, &BrowseContext::filesEdited);
+        const QString target = dir.filePath(name);
+        context.saveAs(path, 0, target, {{QStringLiteral("lossless"), true}}, f.view->editedImage());
+        EXPECT_TRUE(waitUntil([&] { return edited.count() == 1; }));
+        // Read with the program's reader, as Qt may have none for WebP: blue, green, red, alpha.
+        const auto opened = iv::openImageSource(QFileInfo(target).filesystemFilePath());
+        const auto tile = opened ? (*opened)->readTile({0, 0, 0, 0}, {}) : std::unexpected(opened.error());
+        if (!tile || !tile->hasAlpha()) {
+            ADD_FAILURE() << (tile ? "the saved picture has no alpha" : tile.error());
+            return QRgb(0);
+        }
+        const auto* p = reinterpret_cast<const std::uint8_t*>(tile->row(5)) + 5 * 4;
+        return qRgba(p[2], p[1], p[0], p[3]);
+    };
+    EXPECT_FALSE(f.view->editedImage().isValid());
+    EXPECT_EQ(saveAndRead(QStringLiteral("untouched.webp")), qRgba(200, 40, 20, 128));
+
+    f.view->crop(QRect(4, 4, 20, 10));
+    ASSERT_TRUE(settled(f.view));
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(saveAndRead(QStringLiteral("undone.webp")), qRgba(200, 40, 20, 128));
+}
+
 TEST(Editing, SaveAsWritesTheEditedImageAndMarksItSaved) {
     QTemporaryDir dir;
     const QString path = writeTurnedJpeg(dir);

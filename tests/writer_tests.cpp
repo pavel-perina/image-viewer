@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -11,6 +12,7 @@
 #include "core/image_source.h"
 #include "core/exif.h"
 #include "core/image_writer.h"
+#include "core/save_image.h"
 #include "test_exif.h"
 
 namespace iv {
@@ -386,6 +388,193 @@ TEST_F(Writer, DeepImagesKeepTheirDepthWhereTheFormatCan) {
     const ReadBack reduced = roundTrip(rgb16, JpegWriteOptions{.quality = 100, .chroma = ChromaSubsampling::Full});
     EXPECT_EQ(reduced.pixels.format(), PixelFormat::Bgrx8);
     EXPECT_LE(difference(rgb16, reduced.pixels).largest, 3);
+}
+
+// A picture with alpha for the tests below: the colours of `smooth`, with alpha falling from
+// opaque on the left to fully transparent in the last columns, where the colours stay, so a
+// writer that drops what cannot be seen is caught.
+ImageBuffer makeTransparent(PixelFormat format) {
+    const ImageBuffer image = makeImage({64, 48}, format, smooth);
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const double alpha = std::max(0.0, 1.0 - x / 56.0);
+            switch (format) {
+            case PixelFormat::Bgrx8:
+                reinterpret_cast<std::uint8_t*>(image.row(y))[x * 4 + 3] = static_cast<std::uint8_t>(std::lround(alpha * 255));
+                break;
+            case PixelFormat::Rgba16:
+                reinterpret_cast<std::uint16_t*>(image.row(y))[x * 4 + 3] = static_cast<std::uint16_t>(std::lround(alpha * 65535));
+                break;
+            default:
+                reinterpret_cast<float*>(image.row(y))[x * 4 + 3] = static_cast<float>(alpha);
+                break;
+            }
+        }
+    }
+    return image.withAlpha(true);
+}
+
+// Alpha in 8-bit steps, as sampleAt gives the colours.
+double alphaAt(const ImageBuffer& image, int x, int y) {
+    switch (image.format()) {
+    case PixelFormat::Bgrx8:   return reinterpret_cast<const std::uint8_t*>(image.row(y))[x * 4 + 3];
+    case PixelFormat::Rgba16:  return reinterpret_cast<const std::uint16_t*>(image.row(y))[x * 4 + 3] / 257.0;
+    case PixelFormat::Rgba32F: return reinterpret_cast<const float*>(image.row(y))[x * 4 + 3] * 255.0;
+    default:                   return 255;
+    }
+}
+
+double largestAlphaDifference(const ImageBuffer& a, const ImageBuffer& b) {
+    double largest = 0;
+    for (int y = 0; y < a.height(); ++y) {
+        for (int x = 0; x < a.width(); ++x) {
+            largest = std::max(largest, std::abs(alphaAt(a, x, y) - alphaAt(b, x, y)));
+        }
+    }
+    return largest;
+}
+
+// Why: converting between lossless formats must not change a transparent picture at all.
+// Input: a made-up picture with every degree of alpha, at 8 and 16 bits. It is written and
+// read back with the program's own readers; the truth is the picture itself, every sample of
+// every pixel, the colours under full transparency included.
+TEST_F(Writer, LosslessFormatsGiveBackATransparentPictureExactly) {
+    // A format this build lacks is passed over below, so say which ones it must not lack.
+#ifdef IV_HAVE_PNG
+    ASSERT_TRUE(canWrite(PngWriteOptions{}));
+#endif
+#ifdef IV_HAVE_WEBP
+    ASSERT_TRUE(canWrite(WebpWriteOptions{}));
+#endif
+#ifdef IV_HAVE_JXL
+    ASSERT_TRUE(canWrite(JxlWriteOptions{}));
+#endif
+    for (const PixelFormat format : {PixelFormat::Bgrx8, PixelFormat::Rgba16}) {
+        const ImageBuffer image = makeTransparent(format);
+        for (const WriteOptions& options : {WriteOptions{PngWriteOptions{}}, WriteOptions{WebpWriteOptions{.lossless = true}},
+                                            WriteOptions{JxlWriteOptions{.lossless = true}}}) {
+            if (!canWrite(options) || (format == PixelFormat::Rgba16 && std::holds_alternative<WebpWriteOptions>(options))) {
+                continue;  // WebP holds 8 bits
+            }
+            SCOPED_TRACE(std::string(extensionFor(options)) + (format == PixelFormat::Bgrx8 ? ", 8 bits" : ", 16 bits"));
+            EXPECT_TRUE(holdsAlpha(options));
+            const ReadBack back = roundTrip(image, options);
+            ASSERT_FALSE(back.pixels.isNull());
+            EXPECT_TRUE(back.info.alpha);
+            ASSERT_TRUE(back.pixels.hasAlpha());
+            ASSERT_EQ(back.pixels.format(), format);
+            const auto rowBytes = static_cast<std::size_t>(image.width()) * static_cast<std::size_t>(bytesPerPixel(format));
+            for (int y = 0; y < image.height(); ++y) {
+                ASSERT_EQ(std::memcmp(image.row(y), back.pixels.row(y), rowBytes), 0) << "row " << y;
+            }
+        }
+    }
+}
+
+// Lossy formats keep alpha too. Alpha itself comes back as it was, or nearly; the colours are
+// compared where the picture is opaque enough to show them (the left half), within what the
+// same formats lose on an opaque picture.
+TEST_F(Writer, LossyFormatsKeepAlpha) {
+#ifdef IV_HAVE_AVIF
+    ASSERT_TRUE(canWrite(AvifWriteOptions{}));
+#endif
+    const ImageBuffer image = makeTransparent(PixelFormat::Bgrx8);
+    struct Lossy {
+        WriteOptions options;
+        double alpha;
+        double colour;
+    };
+    const Lossy cases[] = {
+        {WebpWriteOptions{.quality = 95}, 0, 24},
+        {AvifWriteOptions{.quality = 95, .chroma = ChromaSubsampling::Full}, 0, 12},
+        {JxlWriteOptions{.distance = 0.5F}, 3, 24},
+    };
+    for (const Lossy& c : cases) {
+        if (!canWrite(c.options)) {
+            continue;
+        }
+        SCOPED_TRACE(std::string(extensionFor(c.options)));
+        const ReadBack back = roundTrip(image, c.options);
+        ASSERT_FALSE(back.pixels.isNull());
+        EXPECT_TRUE(back.info.alpha);
+        ASSERT_TRUE(back.pixels.hasAlpha());
+        EXPECT_LE(largestAlphaDifference(image, back.pixels), c.alpha);
+        const int half = image.width() / 2;
+        EXPECT_LE(difference(image.view(0, 0, half, image.height()), back.pixels.view(0, 0, half, image.height())).largest, c.colour);
+    }
+}
+
+// JPEG has no alpha, and TIFF's is not written yet: they get the picture as it looks on mid
+// gray, so the fully transparent right edge comes back gray 128, and the file has no alpha.
+TEST_F(Writer, FormatsWithoutAlphaGetThePictureOnMidGray) {
+    const ImageBuffer image = makeTransparent(PixelFormat::Bgrx8);
+    for (const WriteOptions& options : {WriteOptions{JpegWriteOptions{.quality = 100, .chroma = ChromaSubsampling::Full}},
+                                        WriteOptions{TiffWriteOptions{}}}) {
+        SCOPED_TRACE(std::string(extensionFor(options)));
+        EXPECT_FALSE(holdsAlpha(options));
+        const ReadBack back = roundTrip(image, options);
+        ASSERT_FALSE(back.pixels.isNull());
+        EXPECT_FALSE(back.info.alpha);
+        EXPECT_FALSE(back.pixels.hasAlpha());
+        for (int c = 0; c < 3; ++c) {
+            EXPECT_NEAR(sampleAt(back.pixels, 62, 24, c), 128, 2);
+        }
+    }
+}
+
+// Gray pixels with alpha are written as gray with alpha where the format has that, which PNG
+// and JPEG XL do, and come back with their alpha, exactly. The file says what it holds.
+TEST_F(Writer, GrayPixelsWithAlphaAreWrittenAsGrayWithAlpha) {
+    ImageBuffer image = makeImage({64, 48}, PixelFormat::Bgrx8, [](int x, int, int) { return x / 63.0; });
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            reinterpret_cast<std::uint8_t*>(image.row(y))[x * 4 + 3] = static_cast<std::uint8_t>(y * 5);
+        }
+    }
+    image = image.withAlpha(true);
+    for (const WriteOptions& options : {WriteOptions{PngWriteOptions{}}, WriteOptions{JxlWriteOptions{.lossless = true}}}) {
+        if (!canWrite(options)) {
+            continue;
+        }
+        SCOPED_TRACE(std::string(extensionFor(options)));
+        const ReadBack back = roundTrip(image, options);
+        ASSERT_FALSE(back.pixels.isNull());
+        EXPECT_EQ(back.info.stored.colorModel, "Grayscale + alpha");
+        ASSERT_TRUE(back.pixels.hasAlpha());
+        ASSERT_EQ(back.pixels.format(), PixelFormat::Bgrx8);
+        for (int y = 0; y < image.height(); ++y) {
+            ASSERT_EQ(std::memcmp(image.row(y), back.pixels.row(y), static_cast<std::size_t>(image.width()) * 4), 0) << "row " << y;
+        }
+    }
+}
+
+// The case this was built for: a transparent PNG saved as lossless WebP, the way Save As and a
+// conversion do it, through saveSubimage. The WebP decodes to the very pixels the PNG does.
+// The PNG has a colour profile, which sends the WebP through the code that adds metadata, and
+// the profile has to arrive too.
+TEST_F(Writer, ATransparentPngSavedAsLosslessWebpIsTheSamePicture) {
+    if (!canWrite(PngWriteOptions{}) || !canWrite(WebpWriteOptions{})) {
+        GTEST_SKIP();
+    }
+    const ImageBuffer image = makeTransparent(PixelFormat::Bgrx8);
+    const fs::path png = m_folder / "from.png";
+    WriteMetadata metadata;
+    metadata.iccProfile = rgbProfile();
+    ASSERT_TRUE(writeImage(png, image, metadata, PngWriteOptions{}, true));
+    const auto source = openImageSource(png);
+    ASSERT_TRUE(source) << source.error();
+    const fs::path webp = m_folder / "to.webp";
+    const auto saved = saveSubimage(**source, 0, webp, WebpWriteOptions{.lossless = true}, {}, true);
+    ASSERT_TRUE(saved) << saved.error();
+    const auto converted = openImageSource(webp);
+    ASSERT_TRUE(converted) << converted.error();
+    EXPECT_EQ((*converted)->subimages()[0].iccProfile, metadata.iccProfile);
+    const auto tile = (*converted)->readTile({0, 0, 0, 0}, {});
+    ASSERT_TRUE(tile) << tile.error();
+    ASSERT_TRUE(tile->hasAlpha());
+    for (int y = 0; y < image.height(); ++y) {
+        ASSERT_EQ(std::memcmp(image.row(y), tile->row(y), static_cast<std::size_t>(image.width()) * 4), 0) << "row " << y;
+    }
 }
 
 TEST_F(Writer, JpegFollowsItsOptions) {
