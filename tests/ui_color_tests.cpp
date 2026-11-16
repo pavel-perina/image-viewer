@@ -93,3 +93,85 @@ TEST(ColorRamp, DrawsItsColoursAndHatchesWhatLiesOutside) {
     EXPECT_FALSE(redLeft);
     EXPECT_TRUE(redRight);
 }
+
+// Why: the chooser's sliders and boxes set the colour, and each track follows it. Input: a
+// chooser started on #808080; the red slider moved to 255; then chroma set to the most. The
+// truth: the red box shows 128, then the colour is #ff8080 and the green track starts at
+// red 255; at the most chroma the note that sRGB cannot show it appears.
+TEST(ColorChooser, ItsSlidersSetTheColourAndTheTracksFollow) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import ImageViewer
+        Window {
+            width: 500; height: 500; visible: true
+            property alias chooser: chooser
+            ColorChooser { id: chooser; anchors.fill: parent; colour: "#808080" }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* chooser = root->property("chooser").value<QQuickItem*>();
+    QQuickItem* redBox = findNamed(chooser, QStringLiteral("chooserRed"));
+    QQuickItem* redSlider = findNamed(chooser, QStringLiteral("chooserRedSlider"));
+    QQuickItem* chromaSlider = findNamed(chooser, QStringLiteral("chooserChromaSlider"));
+    QQuickItem* outside = findNamed(chooser, QStringLiteral("chooserOutside"));
+    ASSERT_TRUE(redBox && redSlider && chromaSlider && outside);
+    EXPECT_EQ(redBox->property("realValue").toDouble(), 128);
+
+    redSlider->setProperty("value", 255);
+    QMetaObject::invokeMethod(redSlider, "moved");
+    EXPECT_EQ(chooser->property("colour").value<QColor>(), QColor(QStringLiteral("#ff8080")));
+    auto* green = findNamed(chooser, QStringLiteral("chooserGreenSlider"));
+    const QVariantList stops = green->property("background").value<QQuickItem*>()->property("stops").toList();
+    ASSERT_FALSE(stops.isEmpty());
+    EXPECT_EQ(stops.first().toMap().value(QStringLiteral("colour")).value<QColor>(), QColor(255, 0, 128));
+    EXPECT_EQ(outside->property("opacity").toDouble(), 0);
+
+    chromaSlider->setProperty("value", chromaSlider->property("to"));
+    QMetaObject::invokeMethod(chromaSlider, "moved");
+    EXPECT_EQ(outside->property("opacity").toDouble(), 1);
+}
+
+// Why: a colour field opens the chooser from its swatch, and the colour chosen there is
+// handed to its owner, while Cancel changes nothing. Input: a field on #102030 whose owner
+// takes what is picked; a click on the swatch; hex 00ff00 typed in the chooser, then OK. The
+// truth: the chooser opens on #102030; after OK the field and its owner show #00ff00.
+TEST(ColorChooser, AColourFieldOpensItFromItsSwatch) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 600; visible: true
+            property color kept: "#102030"
+            property alias field: field
+            ColorField { id: field; x: 20; y: 20; width: 160; colour: kept; onPicked: (c) => kept = c }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* window = qobject_cast<QQuickWindow*>(root.get());
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(window));
+    auto* field = root->property("field").value<QQuickItem*>();
+    QQuickItem* swatch = findNamed(field, QStringLiteral("colourFieldSwatch"));
+    ASSERT_NE(swatch, nullptr);
+    QTest::mouseClick(window, Qt::LeftButton, {}, swatch->mapToScene(QPointF(swatch->width() / 2, swatch->height() / 2)).toPoint());
+    QObject* dialog = nullptr;
+    ASSERT_TRUE(waitUntil([&] {
+        dialog = root->findChild<QObject*>(QStringLiteral("colorChooserDialog"));
+        return dialog && dialog->property("opened").toBool();
+    }));
+    auto* content = dialog->property("contentItem").value<QQuickItem*>();
+    QQuickItem* hex = findNamed(content, QStringLiteral("chooserHex"));
+    ASSERT_NE(hex, nullptr);
+    EXPECT_EQ(hex->property("text").toString(), QStringLiteral("#102030"));
+    hex->setProperty("text", QStringLiteral("00ff00"));
+    QMetaObject::invokeMethod(hex, "editingFinished");
+    QMetaObject::invokeMethod(dialog, "accept");
+    EXPECT_EQ(root->property("kept").value<QColor>(), QColor(0, 255, 0));
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("#00ff00"));
+}

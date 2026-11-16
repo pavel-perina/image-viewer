@@ -63,36 +63,20 @@ ToolPanel {
     }
 
     Label { text: "Colour"; color: Theme.textMuted; visible: panel.hasColour }
-    Flow {
+    ColorSwatches {
         Layout.fillWidth: true
-        spacing: 4
         visible: panel.hasColour
-        Repeater {
-            model: Theme.annotationColours
-            Rectangle {
-                id: swatch
-                required property color modelData
-                readonly property bool current: Qt.colorEqual(panel.overlay.colour, modelData)
-                objectName: "annotateColour"
-                width: 26
-                height: 26
-                color: modelData
-                border.width: current ? 2 : 1
-                border.color: current ? Theme.accent : Theme.swatchFrame
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: panel.overlay.colour = swatch.modelData
-                }
-            }
-        }
+        swatchName: "annotateColour"
+        current: panel.overlay.colour
+        onPicked: (colour) => panel.overlay.colour = colour
     }
-    TextField {
+    ColorField {
         objectName: "annotateColourHex"
         Layout.fillWidth: true
         visible: panel.hasColour
-        text: panel.overlay.colour.toString()
-        onEditingFinished: {
-            panel.overlay.colour = text
+        colour: panel.overlay.colour
+        onPicked: (colour) => {
+            panel.overlay.colour = colour
             panel.doneEditing()
         }
     }

@@ -1042,7 +1042,7 @@ Left out for now:
 * Folders in the grid too, each drawn with a few thumbnails of the images inside it.
 * Options to show more than images: video files, raw files, and all files.
 
-## Image strip builder (planned, not built)
+## Image strip builder
 
 Several pictures side by side in one, for a web page or a manual: a contact sheet of one row
 or one column.
@@ -1123,7 +1123,7 @@ a shared component, before a second copy; the dialog, its list and saving.
   suffix, a counter or the date and time. Perhaps kept as recipes.
 * It can only offer the processing the program has.
 
-## Colour chooser (being built)
+## Colour chooser
 
 * One chooser, `ColorChooser`, an item any panel or dialog can hold, and `ColorChooserDialog`
   around it where there is no room. Annotations use it, and the frame panel will.
@@ -1144,7 +1144,9 @@ a shared component, before a second copy; the dialog, its list and saving.
   be clutter on every colour; a double click stays for selecting the text, as in any field.
 * The slider with its colour track is a QML component of its own, `GradientSlider`, which
   draws the colours C++ gives it, so other panels can use it too. The annotation swatches stay,
-  as presets.
+  as presets: `ColorSwatches`, shared by the chooser and the annotation panel, whose hex field
+  is now a `ColorField`. The chooser shows the colour before and after, and says when sRGB
+  cannot show what the sliders ask, keeping its room so the dialog does not change height.
 
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files

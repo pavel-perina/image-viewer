@@ -85,7 +85,10 @@ qt_add_qml_module(iv_ui
         qml/AppMenu.qml
         qml/AppMenuItem.qml
         qml/AppScrollBar.qml
+        qml/ColorChooser.qml
+        qml/ColorChooserDialog.qml
         qml/ColorField.qml
+        qml/ColorSwatches.qml
         qml/BarButton.qml
         qml/BrowserPage.qml
         qml/Caret.qml
@@ -100,6 +103,7 @@ qt_add_qml_module(iv_ui
         qml/FileListView.qml
         qml/FolderTree.qml
         qml/FrameDialog.qml
+        qml/GradientSlider.qml
         qml/IconButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
