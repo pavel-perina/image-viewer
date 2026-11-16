@@ -1118,6 +1118,24 @@ a shared component, before a second copy; the dialog, its list and saving.
   suffix, a counter or the date and time. Perhaps kept as recipes.
 * It can only offer the processing the program has.
 
+## Colour chooser (being built)
+
+* One chooser, `ColorChooser`, an item any panel or dialog can hold, and `ColorChooserDialog`
+  around it where there is no room. Annotations use it, and the frame panel will.
+* Sliders for R, G and B and for Oklch lightness, chroma and hue, all linked, each with a
+  number box beside it, and a hex field. No two-dimensional fields: instead each slider's
+  track is drawn anew as the colour changes, showing what moving that slider alone would
+  give (`channelRamp`, `core/color_choice.h`). That shows most of what a field would, in far
+  less room.
+* Oklch, as its steps look even and lightness, chroma and hue are how people adjust a colour.
+  Colours sRGB cannot show are hatched on the tracks; set there, chroma is reduced until it
+  fits, keeping lightness and hue, as the palette does (`fromOklch`). Chroma goes to 0.37,
+  a little past the most sRGB has.
+* A gray keeps the hue last set, so that its hue slider does not jump to 0.
+* The slider with its colour track is a QML component of its own, `GradientSlider`, which
+  draws the colours C++ gives it, so other panels can use it too. The annotation swatches stay,
+  as presets.
+
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
   rather than the image being edited.
