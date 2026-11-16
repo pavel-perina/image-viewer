@@ -383,12 +383,11 @@ TEST(Editing, CropsOutsideTheImageOrOfAllOfItAreIgnored) {
     EXPECT_EQ(f.view->status(), ImageView::Status::Ready);
 }
 
-// Why: Save As in the viewer must keep the transparency of a picture that was not edited, and
-// an edited one would lose it for now, so what the view hands over matters. Input: a made-up
-// PNG, half transparent red, saved as lossless WebP the way the Save As dialog does it, once
-// untouched and once cropped and undone. The truth is the WebP read back: the same colour and
-// alpha as the PNG.
-TEST(SaveAs, AnUneditedTransparentPictureKeepsItsTransparency) {
+// Why: Save As in the viewer must keep the transparency of a picture, edited or not, and what
+// the view hands over differs between the two. Input: a made-up PNG, half transparent red,
+// saved as lossless WebP the way the Save As dialog does it: untouched, cropped and undone,
+// and cropped. The truth is the WebP read back: the same colour and alpha as the PNG.
+TEST(SaveAs, ATransparentPictureKeepsItsTransparencyEditedOrNot) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("clear.png"));
     QImage image(32, 24, QImage::Format_ARGB32);
@@ -423,6 +422,11 @@ TEST(SaveAs, AnUneditedTransparentPictureKeepsItsTransparency) {
     f.view->undo();
     ASSERT_TRUE(settled(f.view));
     EXPECT_EQ(saveAndRead(QStringLiteral("undone.webp")), qRgba(200, 40, 20, 128));
+
+    f.view->crop(QRect(4, 4, 20, 10));
+    ASSERT_TRUE(settled(f.view));
+    ASSERT_TRUE(f.view->editedImage().isValid());
+    EXPECT_EQ(saveAndRead(QStringLiteral("cropped.webp")), qRgba(200, 40, 20, 128));
 }
 
 TEST(Editing, SaveAsWritesTheEditedImageAndMarksItSaved) {

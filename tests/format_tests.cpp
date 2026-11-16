@@ -1389,10 +1389,10 @@ TEST(Alpha, OverviewsKeepItAndDoNotMixInTheColourUnderTransparency) {
 
 #ifdef IV_HAVE_PNG
 
-// Until transparency is drawn and edited, what does those sees the picture on mid
+// Until transparency is drawn, what reads pixels for showing them sees the picture on mid
 // gray, as before alpha was decoded. Each is checked on the transparent corner of the test
 // picture, which has to come out as gray 128 and not as the blue stored under it.
-TEST(Alpha, IsStillMidGrayInThumbnailsEditsHistogramsAndTheProbe) {
+TEST(Alpha, IsStillMidGrayInThumbnailsHistogramsAndTheProbe) {
     PngOptions rgba;
     rgba.colorType = PNG_COLOR_TYPE_RGBA;
     const auto path = write("flat.png", encodePng(rgba));
@@ -1406,12 +1406,6 @@ TEST(Alpha, IsStillMidGrayInThumbnailsEditsHistogramsAndTheProbe) {
 
     const auto source = open(path);
     ASSERT_TRUE(source);
-    const Document document(source, 0);
-    const auto edited = document.source();
-    EXPECT_FALSE(edited->subimages()[0].alpha);
-    expectNear(shown(*edited, kWidth - 8, kHeight - 8), {128, 128, 128}, 0);
-    EXPECT_FALSE(edited->readTile({0, 0, 0, 0}, {})->hasAlpha());
-
     const auto histogram = computeHistogram(*source, 0, {});
     ASSERT_TRUE(histogram.has_value());
     // Blue 200 is the right half's opaque part only: a quarter of the picture.
@@ -1420,14 +1414,66 @@ TEST(Alpha, IsStillMidGrayInThumbnailsEditsHistogramsAndTheProbe) {
     const auto probe = probePixel(*source, 0, kWidth - 8, kHeight - 8, {});
     ASSERT_TRUE(probe.has_value());
     EXPECT_EQ(probe->eightBit, (std::array<std::uint8_t, 3>{128, 128, 128}));
+}
 
-    // An edited picture is saved from its flattened pixels, into a format with alpha too.
-    const auto saved = testFolder() / "flat_saved.png";
-    ASSERT_TRUE(saveSubimage(*edited, 0, saved, PngWriteOptions{}, {}, true).has_value());
-    const auto reopened = open(saved);
+// Alpha of an edited picture at a pixel, from 0 to 255.
+int editedAlpha(const ImageBuffer& pixels, int x, int y) {
+    return reinterpret_cast<const std::uint8_t*>(pixels.row(y))[x * 4 + 3];
+}
+
+// Why: an edited transparent picture must keep its transparency, so that it is saved with it.
+// Input: the test picture (its bottom right transparent below four half transparent rows),
+// with each edit alone, and then with several, saved as PNG and as JPEG. The truth: every
+// edit leaves pixels with alpha, the transparent corner stays transparent, the PNG has alpha
+// and its transparent corner, and the JPEG, which has none, gets mid gray.
+TEST(Alpha, EditsKeepItAndAnEditedPictureIsSavedWithIt) {
+    PngOptions rgba;
+    rgba.colorType = PNG_COLOR_TYPE_RGBA;
+    const auto source = open(write("edit.png", encodePng(rgba)));
+    ASSERT_TRUE(source);
+
+    ColorEdit adjust;
+    adjust.chroma = 0.5;
+    const std::pair<const char*, Edit> edits[] = {
+        {"crop", CropEdit{{kWidth / 4, kHeight / 4, kWidth * 3 / 4, kHeight * 3 / 4}}},
+        {"resize", ResizeEdit{{kWidth / 2, kHeight / 2}}},
+        {"straighten", TiltEdit{{.roll = 0.02}, 50, true}},
+        {"grayscale", GrayEdit{}},
+        {"adjust", adjust},
+    };
+    for (const auto& [name, edit] : edits) {
+        SCOPED_TRACE(name);
+        Document document(source, 0);
+        document.apply(edit);
+        const auto edited = document.source();
+        EXPECT_TRUE(edited->subimages()[0].alpha);
+        const auto pixels = readLevel(*edited, 0, 0, {});
+        ASSERT_TRUE(pixels.has_value()) << pixels.error();
+        ASSERT_TRUE(pixels->hasAlpha());
+        EXPECT_EQ(editedAlpha(*pixels, pixels->width() - 3, pixels->height() - 3), 0);
+        EXPECT_EQ(editedAlpha(*pixels, 2, 2), 255);
+    }
+
+    Document document(source, 0);
+    document.apply(CropEdit{{kWidth / 2, 0, kWidth / 2, kHeight}});
+    document.apply(ResizeEdit{{kWidth / 4, kHeight / 2}});
+    document.apply(adjust);
+    const auto edited = document.source();
+
+    const auto png = testFolder() / "edited.png";
+    ASSERT_TRUE(saveSubimage(*edited, 0, png, PngWriteOptions{}, {}, true).has_value());
+    const auto reopened = open(png);
     ASSERT_TRUE(reopened);
-    expectNoAlpha(*reopened);
-    expectNear(shown(*reopened, kWidth - 8, kHeight - 8), {128, 128, 128}, 0);
+    EXPECT_TRUE(reopened->subimages()[0].alpha);
+    EXPECT_EQ(decoded(*reopened, kWidth / 4 - 2, kHeight / 2 - 2)[3], 0);
+    EXPECT_EQ(decoded(*reopened, 2, 2)[3], 255);
+
+    const auto jpeg = testFolder() / "edited.jpg";
+    ASSERT_TRUE(saveSubimage(*edited, 0, jpeg, JpegWriteOptions{.quality = 100}, {}, true).has_value());
+    const auto flat = open(jpeg);
+    ASSERT_TRUE(flat);
+    expectNoAlpha(*flat);
+    expectNear(shown(*flat, kWidth / 4 - 3, kHeight / 2 - 3), {128, 128, 128}, 3);
 }
 
 #endif  // IV_HAVE_PNG

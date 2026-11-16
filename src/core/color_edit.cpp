@@ -482,7 +482,7 @@ ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const s
     const bool clip = format != PixelFormat::Rgba32F && format != PixelFormat::Gray32F;
     const bool oklab = gray ? !edit.lightness.isIdentity() : edit.usesOklab();
     const ColorCube* cube = gray ? nullptr : edit.cube.get();
-    const ImageBuffer target = ImageBuffer::create(source.size(), format);
+    const ImageBuffer target = ImageBuffer::create(source.size(), format).withAlpha(source.hasAlpha());  // alpha is copied as it is
     const int width = source.width();
     std::atomic<bool> stopped = false;
     inBands(source.height(), width, [&](int firstRow, int endRow) {

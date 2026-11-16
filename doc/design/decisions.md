@@ -1257,13 +1257,13 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   show as fringes. Gray pixels with alpha are written as gray with alpha where the format
   has that.
 * Everything else that reads pixels still sees the picture on mid gray, as it looked before,
-  by calling `flattened`: the screen, the probe, the histogram, edits, and writing
-  to JPEG and TIFF. So an edited picture is saved without its transparency for now. Each of
-  those calls goes as its step arrives. Thumbnails stay on mid gray for good, so their cache
+  by calling `flattened`: the screen, the probe, the histogram, and writing to JPEG and TIFF.
+  Edits keep alpha, so an edited picture is saved with its transparency. Each of those calls
+  goes as its step arrives. Thumbnails stay on mid gray for good, so their cache
   keeps opaque pictures.
 * Resizing keeps alpha, and mixes pixels with their colours multiplied by it, so the colour
-  stored under transparency does not show at edges. Nothing reaches it with alpha yet, as
-  edits still flatten first. Overviews are made the same way and keep alpha; the 8-bit
+  stored under transparency does not show at edges.
+  Overviews are made the same way and keep alpha; the 8-bit
   halving then leaves its fast integer path for the general one.
   Straightening's resampling keeps alpha the same way.
 * Annotations drawn on a picture with alpha keep it. What is drawn fills in what was
@@ -1275,7 +1275,7 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   annotations. Adjust and Grayscale leave it as it is. Straightening keeps it, and with its
   cropping turned off it will make it: the whole turned picture is kept and the empty corners
   are transparent. The histogram and Auto Contrast go on counting the picture as shown.
-* Planned: the edits above stop flattening;
+* Planned: straightening without its crop, making transparent corners;
   the view draws transparency over a light or dark checkerboard or one colour, as chosen, and
   the probe shows alpha.
 * Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A

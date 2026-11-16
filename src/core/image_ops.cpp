@@ -884,7 +884,7 @@ ImageBuffer toGray(const ImageBuffer& source, GrayMethod method, const std::stop
     if (format == PixelFormat::Gray8 || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F) {
         return source;
     }
-    const ImageBuffer target = ImageBuffer::create(source.size(), format);
+    const ImageBuffer target = ImageBuffer::create(source.size(), format).withAlpha(source.hasAlpha());  // alpha is copied as it is
     std::atomic<bool> stopped = false;
     inBands(source.height(), source.width(), [&](int firstRow, int endRow) {
         for (int y = firstRow; y < endRow; ++y) {
