@@ -17,6 +17,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 | `doc/design` | `architecture.md` (goals), `decisions.md` (what was decided and why), `main-window.md`. |
 | `doc` | `building-windows.md`, `manual-checks.md`. |
 | `installer` | Inno Setup script and the PowerShell that stages it. |
+| `tools` | Scripts that make test images for the checks by hand. |
 
 ### Core, by area
 
@@ -41,7 +42,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 ### UI, by area
 
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
-  `edited_image`, `color_settings`, `color_lut`, `histogram_view`.
+  `edited_image`, `color_settings`, `color_lut`, `histogram_view`, `display_output` (the
+  window's bits per channel, 10 when asked for, and whether the last pass dithers).
 * **Look:** `theme_palette` (the palette's choices and colours, for `Theme`), `themed_icon`
   (an icon from `assets/icons` in the theme's colours).
 * **Settings:** `retired_settings` (removes, at start, the settings the program has dropped).

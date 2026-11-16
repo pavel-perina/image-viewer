@@ -72,6 +72,10 @@ Qt picks the backend through its RHI. To choose one, or to see which backend and
     QSG_RHI_BACKEND=vulkan build/src/app/imageviewer image.jpg
     QT_FORCE_STDERR_LOGGING=1 QSG_INFO=1 build/src/app/imageviewer image.jpg
 
+A window with 10 bits per channel, for smoother gradients, is asked for with `IV_OUTPUT_BITS=10`,
+which also switches to OpenGL; About shows what the driver gave. `IV_NO_DITHER=1` turns off the
+dithering of deep images, to compare (see `doc/manual-checks.md`).
+
 Logging to stderr also matters when output is redirected, since Qt may otherwise send messages,
 including QML errors, to the system journal.
 

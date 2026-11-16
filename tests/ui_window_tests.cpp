@@ -1,5 +1,6 @@
 #include "ui_test_support.h"
 #include "ui/app_info.h"
+#include "ui/display_output.h"
 #include "ui/retired_settings.h"
 #include "ui/theme_palette.h"
 
@@ -1341,4 +1342,52 @@ TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
     palette->setHue(willow);
     EXPECT_EQ(theme->property("window").value<QColor>(), before);
     EXPECT_EQ(f.warnings, QStringList());
+}
+
+// Why: the window's depth decides the dither step, and 10 bits are asked for by name only.
+// Input: surface formats as drivers report them and values of IV_OUTPUT_BITS. The truth is the
+// least of the three colour channels, and 8 where a format gives no sizes. About names the API,
+// to show whether OpenGL was taken.
+TEST(DisplayOutput, ReadsTheLeastColourChannelAndAsksOnlyForTen) {
+    QSurfaceFormat format;
+    EXPECT_EQ(iv::outputBits(format), 8) << "no sizes given";
+    format.setRedBufferSize(10);
+    format.setGreenBufferSize(10);
+    format.setBlueBufferSize(10);
+    EXPECT_EQ(iv::outputBits(format), 10);
+    format.setBlueBufferSize(8);
+    EXPECT_EQ(iv::outputBits(format), 8);
+
+    EXPECT_EQ(iv::requestedOutputBits("10"), 10);
+    EXPECT_EQ(iv::requestedOutputBits(" 10\n"), 10);
+    EXPECT_EQ(iv::requestedOutputBits(""), 8);
+    EXPECT_EQ(iv::requestedOutputBits("12"), 8) << "nothing Qt Quick could give";
+
+    EXPECT_EQ(iv::graphicsApiName(QSGRendererInterface::OpenGL), QStringLiteral("OpenGL"));
+    EXPECT_EQ(iv::graphicsApiName(QSGRendererInterface::Direct3D11), QStringLiteral("Direct3D 11"));
+}
+
+// Why: the last pass dithers by one step of the window's output, and IV_NO_DITHER=1 turns that
+// off to show whether 10 bits arrive. Input: the window offscreen, which has 8 bits, with and
+// without the variable. The truth is ViewSettings.ditherStep and the line in About.
+TEST(Main, DithersByOneStepOfTheOutputUnlessTurnedOff) {
+    const auto check = [](double step, const QString& about) {
+        MainFixture f(0);
+        ASSERT_NE(f.window, nullptr);
+        QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "ViewSettings");
+        ASSERT_NE(settings, nullptr);
+        EXPECT_EQ(settings->property("outputBits").toInt(), 8);
+        EXPECT_DOUBLE_EQ(settings->property("ditherStep").toDouble(), step);
+        QObject* dialog = f.find(QStringLiteral("aboutDialog"));
+        ASSERT_NE(dialog, nullptr);
+        QMetaObject::invokeMethod(dialog, "open");
+        ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+        const QString shown = f.find(QStringLiteral("aboutOutput"))->property("text").toString();
+        EXPECT_TRUE(shown.startsWith(QStringLiteral("Display output: ")) && shown.endsWith(about)) << shown.toStdString();
+        EXPECT_EQ(f.warnings, QStringList());
+    };
+    check(1.0 / 255, QStringLiteral("8 bits per channel, dithered"));
+    qputenv("IV_NO_DITHER", "1");
+    check(0, QStringLiteral("8 bits per channel, not dithered"));
+    qunsetenv("IV_NO_DITHER");
 }

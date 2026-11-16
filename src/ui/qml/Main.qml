@@ -167,6 +167,7 @@ ApplicationWindow {
 
     // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
+        DisplayOutput.watch(window)  // what the window shows, for the dither and About
         context.sortKey = browserSettings.sortKey
         context.sortDescending = browserSettings.sortDescending
         context.openPath(initialPath)
