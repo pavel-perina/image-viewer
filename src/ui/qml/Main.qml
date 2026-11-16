@@ -514,6 +514,10 @@ ApplicationWindow {
             AppMenuItem { action: editPathAction }
         }
         AppMenu {
+            title: "&Tools"
+            AppMenuItem { action: fileActions.stripAction }
+        }
+        AppMenu {
             title: "&Help"
             AppMenuItem { text: "&About"; onTriggered: aboutDialog.open() }
         }

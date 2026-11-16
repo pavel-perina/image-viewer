@@ -1051,16 +1051,17 @@ or one column.
   batch conversion will go too. The dialog lists them as
   thumbnails, smaller than the browser's, in a list that scrolls, and they are put in order by
   dragging. It is a dialog of its own (`DialogWindow`), as previews do not fit a side panel.
-* **Layout:** across or down. The pictures share one height (across) or one width (down),
+* **Layout:** horizontal or vertical. The pictures share one height (horizontal) or one width (vertical),
   typed by the user; the other side follows each picture's ratio. Optionally only reducing:
   a picture smaller than that keeps its size and is centred. A space between pictures, in
   pixels, and a margin around the whole.
 * **Shadow:** optional, 5 to 10 pixels: what the picture covers, moved and blurred with a
   separable Gaussian (`core/coverage.h`), black. It is worked out from the picture's
   rectangle, or its alpha where it has some, never by scanning for edges. One number, how
-  far it reaches: it is moved by half of it and blurred with a sigma of a sixth, so that it
-  reaches that far (the offset and three sigmas) and nothing comes out above or left of the
-  picture. `composeCanvas` (`core/canvas.h`) puts pictures and shadows on the canvas, for
+  far it reaches: it is moved by a third of it and blurred with a sigma of two ninths, so
+  that it reaches that far (the offset and three sigmas). A faint edge shows above and left
+  of the picture: moved by half and blurred by a sixth, which kept it all right and below,
+  looked too hard. It is 75% black under the picture; 60% looked too light once softer. `composeCanvas` (`core/canvas.h`) puts pictures and shadows on the canvas, for
   the frame tool too, through the same blending as annotations (`blendLayerInto`, in place,
   as a strip of fifty pictures would otherwise copy the canvas fifty times).
 * **Background:** white or transparent, nothing else, as that is what pages and manuals

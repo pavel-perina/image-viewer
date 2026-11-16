@@ -163,3 +163,45 @@ TEST(StripBuilder, IsSavedThroughSaveAsUnderANameFromTheTime) {
     EXPECT_TRUE(QRegularExpression(QStringLiteral("^\\d{4}-\\d\\d-\\d\\d_\\d{6}\\.webp$")).match(builder.suggestedName()).hasMatch())
         << builder.suggestedName().toStdString();
 }
+
+// Why: the strip is made from the pictures chosen in the browser, from the Tools menu, and
+// goes to Save As in the folder shown, named by the time. Input: a browser on three 64 x 64
+// pictures; first one chosen, then all. The truth: with one the action is off; with three the
+// dialog lists them and reads their size, 3 x 64 and two spaces of 8 (the options at first,
+// which only reduce, so the pictures keep their size); Save As opens the file chooser on a
+// name from the time, and the strip dialog closes.
+TEST(StripBuilder, TheDialogTakesTheChosenPicturesToSaveAs) {
+    MainFixture f(3);
+    ASSERT_NE(f.window, nullptr);
+    QObject* action = f.find(QStringLiteral("stripAction"));
+    QObject* dialog = f.find(QStringLiteral("stripDialog"));
+    QObject* chooser = f.find(QStringLiteral("saveDialog"));
+    ASSERT_NE(action, nullptr);
+    ASSERT_NE(dialog, nullptr);
+    ASSERT_NE(chooser, nullptr);
+    f.context->clickFile(0, false, false);
+    ASSERT_TRUE(waitUntil([&] { return f.context->selectedCount() == 1; }));
+    EXPECT_FALSE(action->property("enabled").toBool());
+    f.context->selectAll();
+    ASSERT_TRUE(waitUntil([&] { return action->property("enabled").toBool(); }));
+
+    QMetaObject::invokeMethod(action, "trigger");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    auto* content = qobject_cast<QQuickWindow*>(dialog)->contentItem();
+    QQuickItem* result = findNamed(content, QStringLiteral("stripResult"));
+    ASSERT_NE(result, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return result->property("text").toString().startsWith(QStringLiteral("3 pictures")); }))
+        << result->property("text").toString().toStdString();
+    EXPECT_EQ(result->property("text").toString(), QStringLiteral("3 pictures: 208 × 64 pixels"));
+    EXPECT_EQ(findNamed(content, QStringLiteral("stripGrid"))->property("count").toInt(), 3);
+
+    QQuickItem* save = findNamed(content, QStringLiteral("stripSave"));
+    ASSERT_NE(save, nullptr);
+    ASSERT_TRUE(save->property("enabled").toBool());
+    QMetaObject::invokeMethod(save, "clicked");
+    ASSERT_TRUE(waitUntil([&] { return chooser->property("opened").toBool(); }));
+    EXPECT_FALSE(dialog->property("opened").toBool());
+    const QString name = chooser->property("nameField").value<QQuickItem*>()->property("text").toString();
+    EXPECT_TRUE(QRegularExpression(QStringLiteral("^\\d{4}-\\d\\d-\\d\\d_\\d{6}\\.webp$")).match(name).hasMatch()) << name.toStdString();
+    QMetaObject::invokeMethod(chooser, "close");
+}

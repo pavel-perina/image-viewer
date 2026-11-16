@@ -61,10 +61,11 @@ TEST(Canvas, WithoutABackgroundTheRestIsTransparent) {
 }
 
 // Why: the shadow falls right of and below a picture and reaches as far as asked, which the
-// layout keeps room for, and no further; nor does it come out above or left. Input: a red
-// 20 x 20 picture at 10, 10 on a white 50 x 50 canvas, shadow 6. The truth: the picture is
-// unchanged; next to its right and bottom edges it is dark; left of and above it, and 2
-// pixels past the reach of 6, it stays white.
+// layout keeps room for, and no further; above and left only a faint edge of it shows. Input:
+// a red 20 x 20 picture at 10, 10 on a white 50 x 50 canvas, shadow 6 (offset 2, sigma 4/3).
+// The truth: the picture is unchanged; next to its right and bottom edges it is dark; just
+// left of and above it at most faint; 3 pixels away from those edges, and 2 pixels past the
+// reach of 6, it stays white.
 TEST(Canvas, AShadowFallsRightAndDownAsFarAsAsked) {
     const std::array<PlacedPicture, 1> pictures{PlacedPicture{filled({20, 20}, kRed), 10, 10}};
     CanvasLook look;
@@ -74,8 +75,10 @@ TEST(Canvas, AShadowFallsRightAndDownAsFarAsAsked) {
     EXPECT_LT(at(canvas, 31, 20).g, 200) << "right of the picture";
     EXPECT_LT(at(canvas, 20, 31).g, 200) << "below the picture";
     EXPECT_LT(at(canvas, 31, 31).g, 200) << "at the corner";
-    EXPECT_EQ(at(canvas, 9, 20), kWhite) << "left of the picture";
-    EXPECT_EQ(at(canvas, 20, 9), kWhite) << "above the picture";
+    EXPECT_GT(at(canvas, 9, 20).g, 240) << "just left of the picture, faint";
+    EXPECT_GT(at(canvas, 20, 9).g, 240) << "just above the picture, faint";
+    EXPECT_EQ(at(canvas, 7, 20), kWhite) << "left of the picture";
+    EXPECT_EQ(at(canvas, 20, 7), kWhite) << "above the picture";
     EXPECT_EQ(at(canvas, 37, 20), kWhite) << "past the reach";
     EXPECT_EQ(at(canvas, 20, 37), kWhite);
 }
@@ -100,8 +103,8 @@ TEST(Canvas, OnATransparentCanvasTheShadowIsInTheAlpha) {
 // should, and its half transparent pixels let the background through. Input: a 20 x 20
 // picture whose left half is fully transparent and right half red at half alpha, at 10, 10 on
 // white, shadow 6. The truth: no shadow below the transparent half; below the red half a
-// shadow; on its top row, which its own shadow, moved down, does not reach, the red half is
-// half way between red and white. Further down, its own shadow shows through it, as it should.
+// shadow; without a shadow, the red half is half way between red and white (with one, its
+// own shadow shows through it, as it should).
 TEST(Canvas, OnlyWhatAPictureCoversCastsAShadow) {
     ImageBuffer picture = filled({20, 20}, Rgba8{200, 30, 20, 128}, true);
     for (int y = 0; y < 20; ++y) {
@@ -115,7 +118,8 @@ TEST(Canvas, OnlyWhatAPictureCoversCastsAShadow) {
     const ImageBuffer canvas = composeCanvas({50, 50}, pictures, look);
     EXPECT_EQ(at(canvas, 12, 32), kWhite) << "below the transparent half";
     EXPECT_LT(at(canvas, 26, 32).g, 255) << "below the red half";
-    const Rgba8 half = at(canvas, 25, 10);
+    const ImageBuffer plain = composeCanvas({50, 50}, pictures, CanvasLook{});
+    const Rgba8 half = at(plain, 25, 15);
     EXPECT_NEAR(half.r, (200 + 255) / 2, 2);
     EXPECT_NEAR(half.g, (30 + 255) / 2, 2);
 }

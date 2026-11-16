@@ -64,8 +64,8 @@ ImageBuffer composeCanvas(Size size, std::span<const PlacedPicture> pictures, co
     }
     const DisplayRange range = fullRange(PixelFormat::Bgrx8);
     if (look.shadow > 0 && look.shadowStrength > 0) {
-        const double offset = look.shadow / 2.0;
-        const Coverage shade = blurred(shifted(coverageOf(size, pictures), offset, offset), look.shadow / 6.0);
+        const double offset = look.shadow / 3.0;
+        const Coverage shade = blurred(shifted(coverageOf(size, pictures), offset, offset), look.shadow * 2.0 / 9.0);
         // Black, so its colours multiplied by alpha are nought.
         const ImageBuffer layer = ImageBuffer::create(size, PixelFormat::Bgrx8);
         const double strength = std::clamp(look.shadowStrength, 0.0, 1.0);

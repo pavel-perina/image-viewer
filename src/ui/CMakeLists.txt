@@ -111,6 +111,7 @@ qt_add_qml_module(iv_ui
         qml/ResizeDialog.qml
         qml/SearchCombo.qml
         qml/StraightenPanel.qml
+        qml/StripBuilderDialog.qml
         qml/ResampledView.qml
         qml/SaveOptionsDialog.qml
         qml/Theme.qml
