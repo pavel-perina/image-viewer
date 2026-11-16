@@ -1183,6 +1183,70 @@ TEST(Alpha, ALevelPutTogetherFromTilesKeepsIt) {
     EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(level->row(7))[2999 * 4 + 3], 128);
 }
 
+// Why: resizing mixes neighbouring pixels, and a transparent pixel has a colour all the same,
+// which must not be mixed in: the edge of a red shape on transparent "green" would turn
+// brown. Input: the left half opaque red, the right half fully transparent green, reduced to
+// a quarter, at 8 and 16 bits. The truth: every pixel that shows at all is pure red, with no
+// green in it; alpha goes from opaque to none, and the picture still says it has alpha.
+TEST(Alpha, ResizingKeepsItAndDoesNotMixInTheColourUnderTransparency) {
+    for (const PixelFormat format : {PixelFormat::Bgrx8, PixelFormat::Rgba16}) {
+        SCOPED_TRACE(format == PixelFormat::Bgrx8 ? "8 bits" : "16 bits");
+        const bool deep = format == PixelFormat::Rgba16;
+        const int max = deep ? 65535 : 255;
+        const ImageBuffer image = ImageBuffer::create({64, 16}, format).withAlpha(true);
+        // Red, green and alpha of a pixel, whatever the order of the format's channels.
+        const auto at = [&](const ImageBuffer& buffer, int x, int y) -> std::array<int, 3> {
+            if (deep) {
+                const auto* p = reinterpret_cast<const std::uint16_t*>(buffer.row(y)) + x * 4;
+                return {p[0], p[1], p[3]};
+            }
+            const auto* p = reinterpret_cast<const std::uint8_t*>(buffer.row(y)) + x * 4;
+            return {p[2], p[1], p[3]};
+        };
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool left = x < 32;
+                if (deep) {
+                    auto* p = reinterpret_cast<std::uint16_t*>(image.row(y)) + x * 4;
+                    p[0] = left ? 65535 : 0, p[1] = left ? 0 : 65535, p[2] = 0, p[3] = left ? 65535 : 0;
+                } else {
+                    auto* p = reinterpret_cast<std::uint8_t*>(image.row(y)) + x * 4;
+                    p[0] = 0, p[1] = left ? 0 : 255, p[2] = left ? 255 : 0, p[3] = left ? 255 : 0;
+                }
+            }
+        }
+        const ImageBuffer small = resize(image, {16, 4});
+        ASSERT_FALSE(small.isNull());
+        EXPECT_TRUE(small.hasAlpha());
+        EXPECT_EQ(at(small, 0, 2)[2], max);
+        EXPECT_EQ(at(small, 15, 2)[2], 0);
+        for (int x = 0; x < 16; ++x) {
+            const int red = at(small, x, 2)[0];
+            const int green = at(small, x, 2)[1];
+            const int alpha = at(small, x, 2)[2];
+            if (alpha > max / 50) {
+                EXPECT_EQ(green, 0) << "column " << x;
+                EXPECT_NEAR(red, max, max / 100) << "column " << x;
+            }
+        }
+    }
+}
+
+// A picture without alpha is resized as before: its fourth channel is not a weight, whatever
+// it holds. Opaque red with zeros there stays red, where taking them for alpha would give black.
+TEST(Alpha, ResizingAPictureWithoutAlphaIgnoresTheFourthChannel) {
+    const ImageBuffer image = ImageBuffer::create({8, 8}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y)) + x * 4;
+            p[0] = 0, p[1] = 0, p[2] = 255, p[3] = 0;
+        }
+    }
+    const ImageBuffer small = resize(image, {4, 4});
+    EXPECT_FALSE(small.hasAlpha());
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(small.row(1))[1 * 4 + 2], 255);
+}
+
 // Turning a picture makes new pixels, which must have alpha as the old ones had: otherwise a
 // turned transparent picture would show the colours stored under its transparency. One
 // transparent blue pixel beside an opaque one, turned a quarter, is shown as gray above blue

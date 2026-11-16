@@ -578,9 +578,34 @@ void sharpenLines(float* data, int lines, int length, std::size_t pixelStep, std
     }
 }
 
+// Pixels with alpha are mixed with their colours multiplied by it, so that a pixel counts by
+// how much of it shows and the colour stored under transparency does not leak into edges.
+// These work on one decoded pixel of four channels, whose alpha goes up to alphaMax.
+template <typename Sample>
+constexpr float kAlphaMax = std::is_floating_point_v<Sample> ? 1.0F : static_cast<float>(std::numeric_limits<Sample>::max());
+
+inline void premultiply(float* pixel, float alphaMax) {
+    const float alpha = pixel[3] / alphaMax;
+    pixel[0] *= alpha;
+    pixel[1] *= alpha;
+    pixel[2] *= alpha;
+}
+
+// A kernel that overshoots can leave alpha a little outside its range, so it is brought back.
+// Where nothing shows there is no colour to recover, and it becomes black.
+inline void unpremultiply(float* pixel, float alphaMax) {
+    pixel[3] = std::clamp(pixel[3], 0.0F, alphaMax);
+    const float alpha = pixel[3] / alphaMax;
+    const float scale = alpha > 1e-6F ? 1.0F / alpha : 0.0F;
+    pixel[0] *= scale;
+    pixel[1] *= scale;
+    pixel[2] *= scale;
+}
+
 template <typename Sample, int Channels, typename Samples>
 ImageBuffer resizeTyped(const ImageBuffer& source, Size size, const std::stop_token& stop) {
-    const ImageBuffer target = ImageBuffer::create(size, source.format());
+    const ImageBuffer target = ImageBuffer::create(size, source.format()).withAlpha(source.hasAlpha());
+    const bool alpha = Channels == 4 && source.hasAlpha();
     const AxisFilter across = axisFilter(source.width(), size.width);
     const AxisFilter down = axisFilter(source.height(), size.height);
 
@@ -595,6 +620,11 @@ ImageBuffer resizeTyped(const ImageBuffer& source, Size size, const std::stop_to
         const auto* in = reinterpret_cast<const Sample*>(source.row(y));
         for (std::size_t i = 0; i < decoded.size(); ++i) {
             decoded[i] = Samples::decode(in[i], static_cast<int>(i % Channels));
+        }
+        if (alpha) {
+            for (std::size_t i = 0; i < decoded.size(); i += 4) {
+                premultiply(decoded.data() + i, kAlphaMax<Sample>);
+            }
         }
         float* out = reduced.data() + rowLength * static_cast<std::size_t>(y);
         for (const KernelSpan& span : across.spans) {
@@ -632,6 +662,11 @@ ImageBuffer resizeTyped(const ImageBuffer& source, Size size, const std::stop_to
         sharpenLines(result.data(), size.width, size.height, rowLength, Channels, Channels);
     }
 
+    if (alpha) {
+        for (std::size_t i = 0; i < result.size(); i += 4) {
+            unpremultiply(result.data() + i, kAlphaMax<Sample>);
+        }
+    }
     for (int y = 0; y < size.height; ++y) {
         auto* out = reinterpret_cast<Sample*>(target.row(y));
         const float* in = result.data() + rowLength * static_cast<std::size_t>(y);

@@ -1261,10 +1261,16 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   to JPEG and TIFF. So an edited picture is saved without its transparency for now. Each of
   those calls goes as its step arrives. Thumbnails stay on mid gray for good, so their cache
   keeps opaque pictures.
-* Planned: resizing, straightening and overviews filter with the colours multiplied, and
-  transparent pixels do not count in the histogram or Auto Contrast; the view draws
-  transparency over a light or dark checkerboard or one colour, as chosen, and the probe
-  shows alpha.
+* Resizing keeps alpha, and mixes pixels with their colours multiplied by it, so the colour
+  stored under transparency does not show at edges. Nothing reaches it with alpha yet, as
+  edits still flatten first.
+* Of the edits, only some need to keep alpha: crop (which costs nothing), resize and
+  annotations. Adjust and Grayscale leave it as it is. Straightening keeps it, and with its
+  cropping turned off it will make it: the whole turned picture is kept and the empty corners
+  are transparent. The histogram and Auto Contrast go on counting the picture as shown.
+* Planned: the edits above stop flattening; straightening and overviews filter like resizing;
+  the view draws transparency over a light or dark checkerboard or one colour, as chosen, and
+  the probe shows alpha.
 * Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A
   batch cannot ask for each file, so it will say so once and count the files it filled. Until
   then every format is written from the picture on mid gray, without a warning.

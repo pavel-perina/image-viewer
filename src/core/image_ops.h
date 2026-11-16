@@ -36,6 +36,8 @@ void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const Image
 // Any size to any size with Magic Kernel Sharp 2013, stretched along when reducing. 8-bit images
 // are filtered in linear light, assuming the sRGB curve, and other formats as they are. Works on
 // the whole image, so use it for what has to be right, not for what has to be drawn quickly.
+// A picture with alpha keeps it, and is filtered with its colours multiplied by alpha, so the
+// colour stored under transparency does not show at edges.
 // A stop request makes it give up between rows and return an empty buffer.
 ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& stop = {});
 
