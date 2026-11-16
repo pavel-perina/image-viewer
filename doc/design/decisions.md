@@ -1294,9 +1294,9 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   renderer and comparing included; the GPU path is only a faster way for some pictures. The
   cost is that a square is 8 pixels of the level shown, so past 100% the squares grow with
   the picture. The squares continue from tile to tile.
-* Planned: the probe shows alpha.
-* Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A
-  batch cannot ask for each file, so it will say so once and count the files it filled. Until
-  then every format is written from the picture on mid gray, without a warning.
+* Put off, perhaps for good, as the rest covers what transparency is wanted for: the probe
+  showing alpha (it shows the pixel on mid gray), and a warning when saving to a format
+  without alpha, such as JPEG, with a fill colour to choose. Saving to such a format puts
+  the picture on mid gray without a word, and so will a batch conversion.
 * TIFF is left as it is until a transparent TIFF is met. Its alpha stored multiplied could not
   be divided back exactly in 8 bits.
