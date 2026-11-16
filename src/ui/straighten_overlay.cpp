@@ -99,6 +99,13 @@ void StraightenOverlay::setKeepRatio(bool value) {
     }
 }
 
+void StraightenOverlay::setCrop(bool value) {
+    if (value != m_crop) {
+        m_crop = value;
+        tiltChange();
+    }
+}
+
 void StraightenOverlay::setShowResult(bool value) {
     if (value != m_showResult) {
         m_showResult = value;
@@ -261,7 +268,7 @@ void StraightenOverlay::paint(QPainter* painter) {
         // The straightened picture over the whole view, fitted, with a grid to judge it by.
         painter->fillRect(boundingRect(), style().surround());
         if (!m_previewValid) {
-            m_preview = view()->straightenPreview(m_tilt, m_focal35mm, m_keepRatio);
+            m_preview = view()->straightenPreview(m_tilt, m_focal35mm, m_keepRatio, m_crop);
             m_previewValid = true;
         }
         if (m_preview.isNull()) {
@@ -285,7 +292,7 @@ void StraightenOverlay::paint(QPainter* painter) {
 
     // What will be kept, unless nothing is to change.
     if (!m_tilt.isZero()) {
-        const auto kept = view()->straightenKept(m_tilt, m_focal35mm, m_keepRatio);
+        const auto kept = view()->straightenKept(m_tilt, m_focal35mm, m_keepRatio, m_crop);
         QPolygonF outline;
         for (const QPointF& p : kept) {
             outline << toItem({p.x(), p.y()});

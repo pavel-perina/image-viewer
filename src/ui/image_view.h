@@ -228,12 +228,14 @@ public:
     Q_INVOKABLE QVariantMap fitStraightLines(const QVariantList& lines, int mode, double focal35mm, bool robust) const;
     // From the camera data, or 0 when unknown.
     Q_INVOKABLE double focalLength35mm() const;
-    Q_INVOKABLE QSize straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) const;
-    Q_INVOKABLE void straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio);
+    Q_INVOKABLE QSize straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop = true) const;
+    // Without crop the whole turned picture is kept, with transparent corners. Nothing happens
+    // if the result would be too large to be saved.
+    Q_INVOKABLE void straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop = true);
     // The reduced copy straightened; null until it is ready.
-    QImage straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio) const;
+    QImage straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop = true) const;
     // The corners of what straightening keeps, in pixels of the image as shown.
-    std::array<QPointF, 4> straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio) const;
+    std::array<QPointF, 4> straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop = true) const;
 
 signals:
     void sourceChanged();

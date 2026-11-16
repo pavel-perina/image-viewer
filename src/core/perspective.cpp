@@ -1,6 +1,7 @@
 #include "core/perspective.h"
 
 #include <algorithm>
+#include <ranges>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -214,7 +215,7 @@ RectD largestRectangle(const std::array<PointD, 4>& quad, double ratio) {
     return area(refined) > area(best) ? refined : best;
 }
 
-TiltPlan planTilt(Size image, double focalPixels, Tilt tilt, bool keepRatio) {
+TiltPlan planTilt(Size image, double focalPixels, Tilt tilt, bool keepRatio, bool crop) {
     TiltPlan plan;
     plan.transform = tiltTransform(image, focalPixels, tilt);
     const double w = image.width;
@@ -226,10 +227,31 @@ TiltPlan planTilt(Size image, double focalPixels, Tilt tilt, bool keepRatio) {
     }
     const std::array<PointD, 4> quad{plan.transform.apply({0, 0}), plan.transform.apply({w, 0}),
                                      plan.transform.apply({w, h}), plan.transform.apply({0, h})};
-    RectD kept = largestRectangle(quad, keepRatio ? w / h : 0);
-    // Whole pixels, keeping the centre.
-    plan.size = {std::max(1, static_cast<int>(std::floor(kept.width + 1e-6))),
-                 std::max(1, static_cast<int>(std::floor(kept.height + 1e-6)))};
+    RectD kept;
+    if (crop) {
+        kept = largestRectangle(quad, keepRatio ? w / h : 0);
+    } else {
+        // A corner at or behind the horizon has no place on the picture plane; its projection
+        // lands on the far side, which a bounding box would take for a small picture.
+        const auto& m = plan.transform.m;
+        const std::array<PointD, 4> corners{PointD{0, 0}, PointD{w, 0}, PointD{w, h}, PointD{0, h}};
+        const double centreW = m[6] * w / 2 + m[7] * h / 2 + m[8];
+        for (const PointD& corner : corners) {
+            if ((m[6] * corner.x + m[7] * corner.y + m[8]) * centreW <= 0) {
+                plan.size = {0, 0};
+                return plan;
+            }
+        }
+        const auto [left, right] = std::ranges::minmax(quad | std::views::transform(&PointD::x));
+        const auto [top, bottom] = std::ranges::minmax(quad | std::views::transform(&PointD::y));
+        kept = {left, top, right - left, bottom - top};
+    }
+    // Whole pixels, keeping the centre: fewer when cropping, so nothing empty comes in, and
+    // more when not, so nothing of the picture is cut off.
+    const auto whole = [crop](double length) {
+        return std::max(1, static_cast<int>(crop ? std::floor(length + 1e-6) : std::ceil(length - 1e-6)));
+    };
+    plan.size = {whole(kept.width), whole(kept.height)};
     kept.x += (kept.width - plan.size.width) / 2;
     kept.y += (kept.height - plan.size.height) / 2;
     kept.width = plan.size.width;

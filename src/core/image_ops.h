@@ -46,11 +46,14 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
 
 // A picture of the given size whose pixel centres are taken from the source where a projective
 // transform of target pixel coordinates leads, row by row as 3 x 3, with a Catmull-Rom cubic.
-// 8-bit images are mixed in linear light. Points beyond the edge repeat it. A stop request gives
-// up between rows and returns an empty buffer.
+// 8-bit images are mixed in linear light. Points beyond the edge repeat it, or with
+// WarpEdge::Clear are transparent, which gives the result alpha; that needs a colour format, as
+// gray ones have no alpha. A stop request gives up between rows and returns an empty buffer.
 // A picture with alpha keeps it, mixed with its colours multiplied by alpha, as in resize.
+// What lies beyond the edge of the source: the edge repeated, or nothing, transparent.
+enum class WarpEdge { Repeat, Clear };
 ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size,
-                 const std::stop_token& stop = {});
+                 const std::stop_token& stop = {}, WarpEdge edge = WarpEdge::Repeat);
 
 // How colour becomes gray. Luma weighs the samples as stored by Rec. 601, as JPEG does for its
 // Y. Lightness keeps the lightness of Oklab and sets its chroma to zero, which follows how light

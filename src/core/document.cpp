@@ -25,7 +25,7 @@ struct Overloaded : Ts... {
 Size sizeAfter(Size before, const Edit& edit) {
     return std::visit(Overloaded{[](const CropEdit& crop) { return Size{crop.rect.width, crop.rect.height}; },
                                  [](const ResizeEdit& resize) { return resize.size; },
-                                 [&](const TiltEdit& tilt) { return planTilt(before, tilt.focalPixels, tilt.tilt, tilt.keepRatio).size; },
+                                 [&](const TiltEdit& tilt) { return planTilt(before, tilt.focalPixels, tilt.tilt, tilt.keepRatio, tilt.crop).size; },
                                  [&](const GrayEdit&) { return before; },
                                  [&](const ColorEdit&) { return before; },
                                  [&](const DrawEdit&) { return before; }},
@@ -83,11 +83,17 @@ ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::st
                                      if (tilt.tilt.isZero()) {
                                          return pixels;
                                      }
-                                     const TiltPlan plan = planTilt(pixels.size(), tilt.focalPixels, tilt.tilt, tilt.keepRatio);
+                                     const TiltPlan plan = planTilt(pixels.size(), tilt.focalPixels, tilt.tilt, tilt.keepRatio, tilt.crop);
                                      // From pixels of the result to those of the picture.
                                      const Homography toSource =
                                          plan.transform.inverse() *
                                          Homography{{1, 0, plan.kept.x, 0, 1, plan.kept.y, 0, 0, 1}};
+                                     if (plan.size.width < 1 || plan.size.height < 1) {
+                                         return pixels;  // no whole picture; the view refuses it
+                                     }
+                                     if (!tilt.crop) {
+                                         return warp(toColour(pixels), toSource.m, plan.size, stop, WarpEdge::Clear);
+                                     }
                                      return warp(pixels, toSource.m, plan.size, stop);
                                  },
                                  [&](const GrayEdit& gray) { return toGray(pixels, gray.method, stop); },
@@ -204,7 +210,13 @@ std::shared_ptr<ImageSource> Document::source() const {
     resetExifForPixels(info.rawExif, edited.width, edited.height);
     resetXmpOrientation(info.xmp);
     info.stored.storedLevels = 1;
-    const bool drawnInColour = std::ranges::any_of(this->edits(), [](const Edit& edit) {
+    // A straightening that keeps the empty corners makes them transparent.
+    const bool cornersClear = std::ranges::any_of(this->edits(), [](const Edit& edit) {
+        const auto* tilt = std::get_if<TiltEdit>(&edit);
+        return tilt && !tilt->crop && !tilt->tilt.isZero();
+    });
+    info.alpha = info.alpha || cornersClear;
+    const bool drawnInColour = cornersClear || std::ranges::any_of(this->edits(), [](const Edit& edit) {
         const auto* drawn = std::get_if<DrawEdit>(&edit);
         return drawn && drawn->colour;
     });

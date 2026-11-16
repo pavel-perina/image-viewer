@@ -952,6 +952,48 @@ TEST(Straighten, FindsTheEdgesFitsTheAnglesAndApplies) {
     EXPECT_EQ(f.view->imageWidth(), 400);
 }
 
+// Why: with cropping off, straightening keeps the whole turned picture, and the view must say
+// the larger size, preview it, apply it with transparent corners and refuse a result too large
+// to be saved. Input: a 400 x 300 JPEG turned 10 degrees with cropping off, then a perspective
+// that puts part of it beyond the horizon. The truth: the size is that of the turned picture's
+// bounding box (larger than 400 x 300), the applied picture has it, the edited image has alpha,
+// and the perspective has no size and changes nothing. A finite result too large to be saved
+// is refused by the same check of the size.
+TEST(Straighten, WithoutCroppingKeepsTheWholePictureWithClearCorners) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTiltedJpeg(dir)));
+    QSignalSpy ready(f.view, &ImageView::straightenReady);
+    f.view->prepareStraighten();
+    ASSERT_TRUE(waitUntil([&] { return ready.count() == 1; }));
+
+    const QSize size = f.view->straightenedSize(10, 0, 0, 0, true, false);
+    EXPECT_GT(size.width(), 400);
+    EXPECT_GT(size.height(), 300);
+    EXPECT_FALSE(f.view->straightenPreview({10, 0, 0}, 0, true, false).isNull());
+
+    f.view->straighten(10, 0, 0, 0, true, false);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), size.width());
+    EXPECT_EQ(f.view->imageHeight(), size.height());
+    const auto edited = f.view->editedImage().value<std::shared_ptr<iv::ImageSource>>();
+    ASSERT_TRUE(edited);
+    EXPECT_TRUE(edited->subimages()[0].alpha);
+    const auto tile = edited->readTile({0, 0, 0, 0}, {});
+    ASSERT_TRUE(tile.has_value());
+    EXPECT_TRUE(tile->hasAlpha());
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(tile->row(0))[3], 0) << "the top left corner is empty";
+
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    // So strong a perspective puts part of the picture beyond the horizon: no whole picture.
+    EXPECT_EQ(f.view->straightenedSize(0, 80, 0, 10, true, false), QSize(0, 0));
+    f.view->straighten(0, 80, 0, 10, true, false);
+    QCoreApplication::processEvents();
+    EXPECT_FALSE(f.view->modified()) << "it is refused";
+
+}
+
 TEST(Straighten, ALineDrawnOnTheImageSetsTheRotation) {
     QTemporaryDir dir;
     writeTiltedJpeg(dir);

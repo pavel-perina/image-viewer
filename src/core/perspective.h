@@ -39,14 +39,17 @@ double focalPixels(Size image, double focal35mm);
 // taken, centred on 0, 0, at the same scale as the original at its centre.
 Homography tiltTransform(Size image, double focalPixels, Tilt tilt);
 
-// What straightening a picture makes: its transform, and the part kept, the largest rectangle
-// with no empty corners, of the picture's own ratio or of any.
+// What straightening a picture makes: its transform, and the part kept. With crop, that is the
+// largest rectangle with no empty corners, of the picture's own ratio or of any; without, the
+// whole turned picture, the empty corners included, and keepRatio does not apply. A turn so
+// strong that part of the picture would lie beyond the horizon has no whole picture: its size
+// is then 0 x 0.
 struct TiltPlan {
     Homography transform;  // as tiltTransform
     RectD kept;            // in the transform's coordinates
     Size size;             // of the result, in whole pixels
 };
-TiltPlan planTilt(Size image, double focalPixels, Tilt tilt, bool keepRatio);
+TiltPlan planTilt(Size image, double focalPixels, Tilt tilt, bool keepRatio, bool crop = true);
 
 // The largest rectangle of a ratio, width to height, inside a convex quadrilateral given in
 // order around it. A ratio of 0 takes the largest of any ratio.

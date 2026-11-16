@@ -745,9 +745,14 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
 namespace {
 
 template <typename Sample, int Channels, typename Samples>
-ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m, Size size, const std::stop_token& stop) {
-    const ImageBuffer target = ImageBuffer::create(size, source.format()).withAlpha(source.hasAlpha());
-    const bool alpha = Channels == 4 && source.hasAlpha();
+ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m, Size size, const std::stop_token& stop,
+                      WarpEdge edge) {
+    // Clear edges count as transparent pixels, so the result has alpha, and a source without
+    // it counts as opaque.
+    const bool clear = Channels == 4 && edge == WarpEdge::Clear;
+    const bool sourceAlpha = Channels == 4 && source.hasAlpha();
+    const ImageBuffer target = ImageBuffer::create(size, source.format()).withAlpha(sourceAlpha || clear);
+    const bool alpha = sourceAlpha || clear;
     const int sw = source.width();
     const int sh = source.height();
     std::atomic<bool> stopped = false;
@@ -776,19 +781,34 @@ ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m,
                 const auto wx = weights(fx - x0);
                 const auto wy = weights(fy - y0);
                 std::array<int, 4> columns{};
+                std::array<bool, 4> columnInside{};
                 for (int k = 0; k < 4; ++k) {
-                    columns[static_cast<std::size_t>(k)] = std::clamp(static_cast<int>(x0) - 1 + k, 0, sw - 1);
+                    const int column = static_cast<int>(x0) - 1 + k;
+                    columns[static_cast<std::size_t>(k)] = std::clamp(column, 0, sw - 1);
+                    columnInside[static_cast<std::size_t>(k)] = column >= 0 && column < sw;
                 }
                 std::array<float, Channels> sum{};
                 for (int j = 0; j < 4; ++j) {
-                    const int row = std::clamp(static_cast<int>(y0) - 1 + j, 0, sh - 1);
+                    const int unclamped = static_cast<int>(y0) - 1 + j;
+                    if (clear && (unclamped < 0 || unclamped >= sh)) {
+                        continue;  // a row of nothing adds nothing
+                    }
+                    const int row = std::clamp(unclamped, 0, sh - 1);
                     const auto* in = reinterpret_cast<const Sample*>(source.row(row));
                     std::array<float, Channels> across{};
                     for (int k = 0; k < 4; ++k) {
+                        if (clear && !columnInside[static_cast<std::size_t>(k)]) {
+                            continue;
+                        }
                         const Sample* pixel = in + static_cast<std::size_t>(columns[static_cast<std::size_t>(k)]) * Channels;
                         std::array<float, Channels> decoded{};
                         for (int c = 0; c < Channels; ++c) {
                             decoded[static_cast<std::size_t>(c)] = Samples::decode(pixel[c], c);
+                        }
+                        if constexpr (Channels == 4) {
+                            if (!sourceAlpha) {
+                                decoded[3] = kAlphaMax<Sample>;
+                            }
                         }
                         if (alpha) {
                             premultiply(decoded.data(), kAlphaMax<Sample>);
@@ -816,14 +836,15 @@ ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m,
 
 }  // namespace
 
-ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size, const std::stop_token& stop) {
+ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size, const std::stop_token& stop,
+                 WarpEdge edge) {
     switch (source.format()) {
-    case PixelFormat::Bgrx8:   return warpTyped<std::uint8_t, 4, DisplaySamples>(source, targetToSource, size, stop);
-    case PixelFormat::Gray8:   return warpTyped<std::uint8_t, 1, DisplaySamples>(source, targetToSource, size, stop);
-    case PixelFormat::Gray16:  return warpTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop);
-    case PixelFormat::Rgba16:  return warpTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop);
-    case PixelFormat::Gray32F: return warpTyped<float, 1, PlainSamples<float>>(source, targetToSource, size, stop);
-    case PixelFormat::Rgba32F: return warpTyped<float, 4, PlainSamples<float>>(source, targetToSource, size, stop);
+    case PixelFormat::Bgrx8:   return warpTyped<std::uint8_t, 4, DisplaySamples>(source, targetToSource, size, stop, edge);
+    case PixelFormat::Gray8:   return warpTyped<std::uint8_t, 1, DisplaySamples>(source, targetToSource, size, stop, edge);
+    case PixelFormat::Gray16:  return warpTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop, edge);
+    case PixelFormat::Rgba16:  return warpTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(source, targetToSource, size, stop, edge);
+    case PixelFormat::Gray32F: return warpTyped<float, 1, PlainSamples<float>>(source, targetToSource, size, stop, edge);
+    case PixelFormat::Rgba32F: return warpTyped<float, 4, PlainSamples<float>>(source, targetToSource, size, stop, edge);
     }
     return {};
 }

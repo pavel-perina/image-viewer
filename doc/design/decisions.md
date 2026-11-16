@@ -1275,8 +1275,17 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   annotations. Adjust and Grayscale leave it as it is. Straightening keeps it, and with its
   cropping turned off it will make it: the whole turned picture is kept and the empty corners
   are transparent. The histogram and Auto Contrast go on counting the picture as shown.
-* Planned: straightening without its crop, making transparent corners;
-  the view draws transparency over a light or dark checkerboard or one colour, as chosen, and
+* Straightening can keep the whole turned picture instead of cropping it: the result is the
+  bounding box of the turned picture, rounded up so nothing is cut off, and the corners it
+  uncovers are transparent, with an edge as smooth as the rest. A picture without alpha gets
+  it, and a gray one becomes a colour one, as gray formats have no alpha. Keeping the ratio
+  does not apply then. It is a check box in the Straighten panel, "Crop the empty corners",
+  on unless turned off, and remembered.
+* A perspective strong enough to put part of the picture beyond the horizon has no whole
+  picture: its corners would project onto the far side, which a bounding box takes for a
+  small picture. The panel says so and Apply is off. A result too large to be saved is
+  refused like a resize to that size.
+* Planned: the view draws transparency over a light or dark checkerboard or one colour, as chosen, and
   the probe shows alpha.
 * Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A
   batch cannot ask for each file, so it will say so once and count the files it filled. Until

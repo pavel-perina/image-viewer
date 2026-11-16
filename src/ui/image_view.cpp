@@ -1638,43 +1638,50 @@ double ImageView::focalLength35mm() const {
     return d.fileSource->subimages()[static_cast<std::size_t>(d.filePage)].exif.focalLength35mm.value_or(0);
 }
 
-QSize ImageView::straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) const {
+QSize ImageView::straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop) const {
     const Impl& d = *m_impl;
-    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), {roll, pitch, yaw}, keepRatio).size;
+    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), {roll, pitch, yaw}, keepRatio, crop).size;
     return {size.width, size.height};
 }
 
-void ImageView::straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) {
+void ImageView::straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop) {
     Impl& d = *m_impl;
     const Tilt tilt{roll, pitch, yaw};
     if (!editable() || d.status != Status::Ready || tilt.isZero()) {
         return;
     }
+    // Without the crop, strong perspective can make the result much larger than the picture.
+    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio, crop).size;
+    const bool fits = d.edit ? d.edit->canResizeTo(size).has_value() : Document(d.fileSource, d.filePage).canResizeTo(size).has_value();
+    if (!fits) {
+        return;
+    }
     if (!d.edit) {
         d.edit.emplace(d.fileSource, d.filePage);
     }
-    d.edit->apply(TiltEdit{tilt, d.focalPixelsFor(focal35mm), keepRatio});
+    d.edit->apply(TiltEdit{tilt, d.focalPixelsFor(focal35mm), keepRatio, crop});
     d.showEdit();
 }
 
-QImage ImageView::straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio) const {
+QImage ImageView::straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop) const {
     const Impl& d = *m_impl;
     if (d.straightenBase.isNull()) {
         return {};
     }
     const ImageBuffer& base = d.straightenBase;
-    const TiltPlan plan = planTilt(base.size(), d.focalPixelsFor(focal35mm) * d.straightenBaseScale, tilt, keepRatio);
+    const TiltPlan plan = planTilt(base.size(), d.focalPixelsFor(focal35mm) * d.straightenBaseScale, tilt, keepRatio, crop);
     const Homography toSource = plan.transform.inverse() * Homography{{1, 0, plan.kept.x, 0, 1, plan.kept.y, 0, 0, 1}};
     try {
-        return toQImage(warp(base, toSource.m, plan.size));
+        // The corners left empty show as transparency is shown, on mid gray for now.
+        return toQImage(crop ? warp(base, toSource.m, plan.size) : flattened(warp(base, toSource.m, plan.size, {}, WarpEdge::Clear)));
     } catch (const std::bad_alloc&) {
         return {};
     }
 }
 
-std::array<QPointF, 4> ImageView::straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio) const {
+std::array<QPointF, 4> ImageView::straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop) const {
     const Impl& d = *m_impl;
-    const TiltPlan plan = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio);
+    const TiltPlan plan = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio, crop);
     const Homography back = plan.transform.inverse();
     const RectD k = plan.kept;
     std::array<QPointF, 4> corners;
