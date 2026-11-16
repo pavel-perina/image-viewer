@@ -65,6 +65,8 @@ add_library(iv_core STATIC
     shapes.cpp
     shapes.h
     save_image.h
+    strip_layout.cpp
+    strip_layout.h
     thumbnail.cpp
     thumbnail.h
     thumbnail_cache.cpp

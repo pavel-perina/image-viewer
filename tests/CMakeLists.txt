@@ -26,6 +26,7 @@ add_executable(iv_core_tests
     fuzzy_match_tests.cpp
     palette_tests.cpp
     font_families_tests.cpp
+    strip_layout_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp
