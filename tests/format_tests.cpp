@@ -1319,16 +1319,57 @@ TEST(Alpha, TurningKeepsItSoATurnedPictureIsShownTheSame) {
     EXPECT_EQ(std::max(top, bottom), 200);
 }
 
-// The view asks for 16-bit pixels for pictures deeper than 8 bits. They are flattened too:
-// transparent white, 65535, is shown as mid gray.
-TEST(Alpha, DeepPicturesAreShownOnMidGrayToo) {
+// The view asks for 16-bit pixels for pictures deeper than 8 bits. They go on the backdrop
+// too: transparent white, 65535, shows the default backdrop, gray 128 (32896 in 16 bits).
+TEST(Alpha, DeepPicturesAreShownOnTheBackdropToo) {
     const ImageBuffer deep = ImageBuffer::create({1, 1}, PixelFormat::Rgba16).withAlpha(true);
     const std::array<std::uint16_t, 4> pixel{65535, 65535, 65535, 0};
     std::memcpy(deep.row(0), pixel.data(), sizeof(pixel));
     const ImageBuffer wide = toDisplayWide(deep, fullRange(PixelFormat::Rgba16));
     ASSERT_EQ(wide.format(), PixelFormat::Rgba16);
-    EXPECT_NEAR(reinterpret_cast<const std::uint16_t*>(wide.row(0))[0], 32768, 1);
+    EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(wide.row(0))[0], 128 * 257);
     EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(wide.row(0))[3], 65535);
+}
+
+// Why: transparency is shown on squares of two colours, and a picture is drawn in tiles, so
+// the squares must continue from one tile to the next, and keep their colours however the
+// picture is stretched. Input: a fully transparent 16 x 1 picture at 8 bits, and one at 16
+// bits whose values use a small part of the range and are shown stretched, on 4-pixel squares
+// of black and white, starting at x = 2 as the second tile of a picture would. The truth:
+// pixels 0 and 1 finish the first square (black), 2 to 5 are white, 6 to 9 black; the same
+// with 16 bits however stretched; a half transparent white pixel is half way to the square.
+TEST(Alpha, ShownOnSquaresThatContinueAcrossTiles) {
+    Backdrop backdrop;
+    backdrop.first = {0, 0, 0, 255};
+    backdrop.second = {255, 255, 255, 255};
+    backdrop.size = 4;
+    backdrop.x = 2;
+    const ImageBuffer clear = ImageBuffer::create({16, 1}, PixelFormat::Bgrx8).withAlpha(true);
+    std::memset(clear.row(0), 0, 16 * 4);
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[3 * 4 + 0] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[3 * 4 + 1] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[3 * 4 + 2] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 0] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 1] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 2] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 3] = 128;  // half white over black
+    const ImageBuffer shownClear = toDisplay(clear, fullRange(PixelFormat::Bgrx8), nullptr, backdrop);
+    const auto grayAt = [&](int x) { return static_cast<int>(reinterpret_cast<const std::uint8_t*>(shownClear.row(0))[x * 4 + 1]); };
+    const std::array<int, 10> expected{0, 0, 255, 255, 255, 255, 128, 0, 0, 0};
+    for (int x = 0; x < 10; ++x) {
+        EXPECT_EQ(grayAt(x), expected[static_cast<std::size_t>(x)]) << "pixel " << x;
+    }
+    EXPECT_NE(shownClear.data(), clear.data()) << "the picture's own pixels are left alone";
+
+    const ImageBuffer deep = ImageBuffer::create({16, 1}, PixelFormat::Rgba16).withAlpha(true);
+    for (int x = 0; x < 16; ++x) {
+        auto* p = reinterpret_cast<std::uint16_t*>(deep.row(0)) + x * 4;
+        p[0] = p[1] = p[2] = 1000;
+        p[3] = 0;
+    }
+    const ImageBuffer shownDeep = toDisplay(deep, {0, 2000}, nullptr, backdrop);
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(shownDeep.row(0))[1], 0);
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(shownDeep.row(0))[2 * 4 + 1], 255);
 }
 
 // Why: a large picture is shown reduced through overviews, made from its tiles by halving and

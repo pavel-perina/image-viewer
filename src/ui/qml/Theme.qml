@@ -58,6 +58,13 @@ QtObject {
     // Over the image. The surround stays neutral gray, as a tint would shift how colours look,
     // and what is drawn on pictures stays light whatever the palette.
     readonly property color imageBackground: "#202020"
+    // What transparent parts of a picture are shown on, neutral like the surround: squares of
+    // two grays, dark or light, or one mid gray.
+    readonly property color checksDarkFirst: "#303030"
+    readonly property color checksDarkSecond: "#484848"
+    readonly property color checksLightFirst: "#c8c8c8"
+    readonly property color checksLightSecond: "#f0f0f0"
+    readonly property color transparencyPlain: "#808080"
     readonly property color panel: roles.panel      // tool panels and the info panel
     readonly property color bubble: roles.bubble     // short messages
     readonly property color badge: roles.badge

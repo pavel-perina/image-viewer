@@ -1246,3 +1246,34 @@ TEST(ImageView, WheelCanAskForAnotherImageAndCtrlZooms) {
     EXPECT_GT(f.view->zoom(), fitted);
     EXPECT_EQ(requests.count(), 0);
 }
+
+// Why: transparent parts of a picture are shown on squares of two colours, chosen in the View
+// menu, and changing them must show at once. Input: a fully transparent 400 x 400 PNG, shown at
+// 100% so a square of 8 picture pixels is 8 screen pixels, on black and white squares, then on
+// one mid gray. The truth: two neighbouring squares differ, one black and one white; with the
+// same colour twice, they are both that gray.
+TEST(ImageView, TransparencyIsShownOnTheChosenSquares) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("clear.png"));
+    QImage clear(400, 400, QImage::Format_ARGB32);
+    clear.fill(qRgba(200, 40, 20, 0));
+    ASSERT_TRUE(clear.save(path));
+    ViewFixture fixture;
+    fixture.view->setBackdropFirst(Qt::black);
+    fixture.view->setBackdropSecond(Qt::white);
+    ASSERT_TRUE(fixture.load(path));
+    QImage image = fixture.grab();
+    // Two squares side by side, sampled in their middles.
+    const QColor left = image.pixelColor(196, 196);
+    const QColor right = image.pixelColor(204, 196);
+    EXPECT_NE(left.red(), right.red());
+    EXPECT_EQ(std::min(left.red(), right.red()), 0);
+    EXPECT_EQ(std::max(left.red(), right.red()), 255);
+    EXPECT_EQ(left.green(), left.red()) << "no colour from under the transparency";
+
+    fixture.view->setBackdropFirst(QColor(128, 128, 128));
+    fixture.view->setBackdropSecond(QColor(128, 128, 128));
+    image = fixture.grab();
+    expectColor(image, 196, 196, QColor(128, 128, 128));
+    expectColor(image, 204, 196, QColor(128, 128, 128));
+}

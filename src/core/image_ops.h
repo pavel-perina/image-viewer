@@ -7,6 +7,7 @@
 
 #include "core/geometry.h"
 #include "core/image_buffer.h"
+#include "core/rgba.h"
 
 namespace iv {
 
@@ -90,14 +91,29 @@ DisplayRange autoRange(std::span<const ImageBuffer> samples);
 // Whether a format looks right only after stretching to its content by default.
 bool usesAutoRangeByDefault(PixelFormat format);
 
+// What transparency is shown on: squares of two colours, or one colour when both are the same,
+// in the colours of the screen. The squares are counted from x, y, where the picture's top
+// left corner lies in the pattern, so that tiles of one picture continue it.
+struct Backdrop {
+    Rgba8 first{128, 128, 128, 255};
+    Rgba8 second{128, 128, 128, 255};
+    int size = 8;  // of a square, in pixels of the picture shown
+    int x = 0;
+    int y = 0;
+    bool operator==(const Backdrop&) const = default;
+};
+
 // Converts for display. An 8-bit image without a transform is returned as is, without copying.
-// A picture with alpha is shown flattened, as transparency is not drawn yet.
+// A picture with alpha is converted as if opaque and then put on the backdrop, so the backdrop
+// keeps its colours whatever range the picture is stretched by.
 // A transform applies to RGB, but not to floats that were stretched: those are data rather than
 // colours, and their encoding may be linear, which 8 bits could not hold before converting.
-ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
+ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr,
+                      const Backdrop& backdrop = {});
 
 // The same in Rgba16, R, G, B and opaque alpha, for images with more than 8 bits, whose steps
 // 8 bits would lose when they are stretched or adjusted further. 8-bit images go to toDisplay.
-ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
+ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr,
+                          const Backdrop& backdrop = {});
 
 }  // namespace iv

@@ -1285,8 +1285,16 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   picture: its corners would project onto the far side, which a bounding box takes for a
   small picture. The panel says so and Apply is off. A result too large to be saved is
   refused like a resize to that size.
-* Planned: the view draws transparency over a light or dark checkerboard or one colour, as chosen, and
-  the probe shows alpha.
+* The view shows transparent parts on dark squares, light squares or plain mid gray, chosen
+  in View > Transparency and remembered; dark is the default, as the surround is dark. The
+  colours come from `Theme`, neutral like the surround. The picture is put on them on the
+  CPU, as tiles are made, after the conversion for the screen, so the backdrop keeps its
+  colours however a picture is stretched. Doing it there rather than drawing squares behind
+  textures with alpha keeps one path for everything that shows pictures, the software
+  renderer and comparing included; the GPU path is only a faster way for some pictures. The
+  cost is that a square is 8 pixels of the level shown, so past 100% the squares grow with
+  the picture. The squares continue from tile to tile.
+* Planned: the probe shows alpha.
 * Planned too: saving to a format without alpha, such as JPEG, warns and fills with white. A
   batch cannot ask for each file, so it will say so once and count the files it filled. Until
   then every format is written from the picture on mid gray, without a warning.

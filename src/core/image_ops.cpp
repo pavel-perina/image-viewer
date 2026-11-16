@@ -1016,9 +1016,56 @@ bool usesAutoRangeByDefault(PixelFormat format) {
     return format == PixelFormat::Gray32F || format == PixelFormat::Rgba32F;
 }
 
-ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+namespace {
+
+// How much of a pixel of the source shows, from 0 to 1.
+double alphaOf(const ImageBuffer& source, int x, int y) {
+    switch (source.format()) {
+    case PixelFormat::Bgrx8:   return reinterpret_cast<const std::uint8_t*>(source.row(y))[x * 4 + 3] / 255.0;
+    case PixelFormat::Rgba16:  return reinterpret_cast<const std::uint16_t*>(source.row(y))[x * 4 + 3] / 65535.0;
+    case PixelFormat::Rgba32F: return std::clamp(static_cast<double>(reinterpret_cast<const float*>(source.row(y))[x * 4 + 3]), 0.0, 1.0);
+    default:                   return 1.0;
+    }
+}
+
+// The opaque display pixels of a picture with alpha, put on the backdrop: a new buffer, as the
+// display pixels may be the source's own. Bgrx8 or Rgba16, as the display conversion gave.
+ImageBuffer onBackdrop(const ImageBuffer& display, const ImageBuffer& source, const Backdrop& backdrop) {
+    const ImageBuffer target = ImageBuffer::create(display.size(), display.format());
+    const bool wide = display.format() == PixelFormat::Rgba16;
+    const int size = std::max(backdrop.size, 1);
+    for (int y = 0; y < display.height(); ++y) {
+        const int row = (y + backdrop.y) / size;
+        for (int x = 0; x < display.width(); ++x) {
+            const Rgba8& under = ((x + backdrop.x) / size + row) % 2 == 0 ? backdrop.first : backdrop.second;
+            const double a = alphaOf(source, x, y);
+            if (wide) {
+                const auto* in = reinterpret_cast<const std::uint16_t*>(display.row(y)) + x * 4;
+                auto* out = reinterpret_cast<std::uint16_t*>(target.row(y)) + x * 4;
+                const std::array<double, 3> back{under.r * 257.0, under.g * 257.0, under.b * 257.0};
+                for (int c = 0; c < 3; ++c) {
+                    out[c] = static_cast<std::uint16_t>(in[c] * a + back[static_cast<std::size_t>(c)] * (1 - a) + 0.5);
+                }
+                out[3] = 65535;
+            } else {
+                const auto* in = reinterpret_cast<const std::uint8_t*>(display.row(y)) + x * 4;
+                auto* out = reinterpret_cast<std::uint8_t*>(target.row(y)) + x * 4;
+                const std::array<double, 3> back{static_cast<double>(under.b), static_cast<double>(under.g), static_cast<double>(under.r)};
+                for (int c = 0; c < 3; ++c) {
+                    out[c] = static_cast<std::uint8_t>(in[c] * a + back[static_cast<std::size_t>(c)] * (1 - a) + 0.5);
+                }
+                out[3] = 255;
+            }
+        }
+    }
+    return target;
+}
+
+}  // namespace
+
+ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform, const Backdrop& backdrop) {
     if (source.hasAlpha()) {
-        return toDisplay(flattened(source), range, transform);
+        return onBackdrop(toDisplay(source.withAlpha(false), range, transform), source, backdrop);
     }
     if (source.format() == PixelFormat::Gray8) {
         // Spread to the screen's layout, through the range, and then as 8-bit pixels are.
@@ -1094,9 +1141,9 @@ ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const Color
     return target;
 }
 
-ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform) {
+ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform, const Backdrop& backdrop) {
     if (source.hasAlpha()) {
-        return toDisplayWide(flattened(source), range, transform);
+        return onBackdrop(toDisplayWide(source.withAlpha(false), range, transform), source, backdrop);
     }
     const PixelFormat format = source.format();
     if (format == PixelFormat::Bgrx8 || format == PixelFormat::Gray8) {
