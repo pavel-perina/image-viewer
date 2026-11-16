@@ -1068,7 +1068,10 @@ or one column.
   pictures and the options before anything is decoded, as the long side often matters.
 * **Building:** each picture is decoded, turned upright, reduced with Magic Kernel Sharp
   (keeping alpha), converted to sRGB 8-bit, as the result is meant for the web or for print
-  in a manual, and placed on the canvas over its shadow. It runs on the work queue with
+  in a manual, and placed on the canvas over its shadow. `makeSrgbCopy`, beside
+  `makeThumbnail` and sharing its choice of level and its conversion to 8 bits, makes each
+  picture; unlike a thumbnail it keeps alpha, takes an exact size, may enlarge, and always
+  converts to sRGB, whether colour management is on for the screen or not. It runs on the work queue with
   progress, and can be cancelled, as 50 pictures of 40 megapixels take a while. The result
   must be small enough to be saved whole.
 * **Saving:** the result goes to Save As at once, named by the time, such as

@@ -831,6 +831,64 @@ TEST(Thumbnail, ReportsErrorsAndCancellation) {
     EXPECT_EQ(cancelled.error(), "cancelled");
 }
 
+// Why: a strip asks each picture for an exact size, upright, and a small picture may be
+// enlarged to match the others. Input: an 800 x 400 JPEG to be turned 90 degrees clockwise,
+// red on its stored left half, asked for at 100 x 200; a 40 x 20 one asked for at 80 x 40.
+// The truth: exactly the sizes asked; the stored left half on top, as for thumbnails.
+TEST(SrgbCopy, ComesUprightAtTheSizeAskedEnlargedIfNeeded) {
+    JpegOptions options;
+    options.width = 800;
+    options.height = 400;
+    options.orientation = 6;
+    options.pixel = [](int x, int) { return x < 400 ? Rgb{220, 30, 30} : Rgb{30, 30, 220}; };
+    const TempJpeg turned(options);
+    const auto copy = makeSrgbCopy(turned.path(), {100, 200}, {});
+    ASSERT_TRUE(copy.has_value()) << copy.error();
+    EXPECT_EQ(copy->size(), (Size{100, 200}));
+    EXPECT_FALSE(copy->hasAlpha());
+    expectPixel(*copy, 50, 20, {220, 30, 30});
+    expectPixel(*copy, 50, 180, {30, 30, 220});
+
+    JpegOptions small;
+    small.width = 40;
+    small.height = 20;
+    const TempJpeg smallFile(small);
+    const auto enlarged = makeSrgbCopy(smallFile.path(), {80, 40}, {});
+    ASSERT_TRUE(enlarged.has_value()) << enlarged.error();
+    EXPECT_EQ(enlarged->size(), (Size{80, 40}));
+}
+
+// Why: a strip is meant for the web or a manual, so its pictures are in sRGB whatever their
+// profile, whether colour management is on for the screen or not. Input: a JPEG of one colour
+// with an Adobe RGB profile, asked for at its own size. The truth: the decoded colour through
+// the program's own conversion to sRGB (tested in color_tests), which differs from the stored
+// values by far more than the JPEG's noise, so the test shows that a conversion happened.
+TEST(SrgbCopy, ConvertsColoursToSrgb) {
+    JpegOptions options;
+    options.iccProfile = adobeRgbProfile();
+    options.pixel = [](int, int) { return Rgb{60, 160, 90}; };
+    const TempJpeg file(options);
+    const auto source = openImageSource(file.path());
+    ASSERT_TRUE(source.has_value());
+    const auto stored = readLevel(**source, 0, 0, {});
+    ASSERT_TRUE(stored.has_value());
+    const auto transform = displayTransform((*source)->subimages()[0], ColorTarget{});
+    ASSERT_NE(transform, nullptr);
+    const ImageBuffer expected = transform->apply(*stored);
+
+    const auto copy = makeSrgbCopy(file.path(), {64, 64}, {});
+    ASSERT_TRUE(copy.has_value()) << copy.error();
+    const auto* got = reinterpret_cast<const std::uint8_t*>(copy->row(32)) + 32 * 4;
+    const auto* want = reinterpret_cast<const std::uint8_t*>(expected.row(32)) + 32 * 4;
+    const auto* before = reinterpret_cast<const std::uint8_t*>(stored->row(32)) + 32 * 4;
+    int changed = 0;
+    for (int c = 0; c < 3; ++c) {
+        EXPECT_EQ(got[c], want[c]) << "channel " << c;
+        changed = std::max(changed, std::abs(want[c] - before[c]));
+    }
+    EXPECT_GT(changed, 10) << "Adobe RGB and sRGB should differ for this colour";
+}
+
 TEST(ImageSource, DetectsFormatFromContentsNotExtension) {
     const auto dir = std::filesystem::temp_directory_path() / "iv_core_tests";
     std::filesystem::create_directories(dir);
