@@ -98,6 +98,11 @@ Rgba8 fromOklch(double lightness, double chroma, double hue, double alpha) {
             static_cast<std::uint8_t>(std::clamp(std::lround(alpha * 255), 0L, 255L))};
 }
 
+bool showsInSrgb(double lightness, double chroma, double hue) {
+    const double angle = hue * std::numbers::pi / 180;
+    return inGamut(oklabToLinear({lightness, chroma * std::cos(angle), chroma * std::sin(angle)}));
+}
+
 std::vector<PaletteRole> derivePalette(const PaletteChoices& choices) {
     std::vector<PaletteRole> palette;
     palette.reserve(rules.size());

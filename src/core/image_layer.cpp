@@ -221,16 +221,20 @@ bool hasColour(const ImageBuffer& layer) {
     return false;
 }
 
-ImageBuffer blendLayer(const ImageBuffer& image, const ImageBuffer& layer, int x, int y, LayerBlend blend, DisplayRange range) {
-    const ImageBuffer result = copyOf(image);
+void blendLayerInto(const ImageBuffer& image, const ImageBuffer& layer, int x, int y, LayerBlend blend, DisplayRange range) {
     switch (image.format()) {
     case PixelFormat::Bgrx8:
-    case PixelFormat::Gray8: blendTyped<std::uint8_t>(result, layer, x, y, blend, range); break;
+    case PixelFormat::Gray8: blendTyped<std::uint8_t>(image, layer, x, y, blend, range); break;
     case PixelFormat::Gray16:
-    case PixelFormat::Rgba16: blendTyped<std::uint16_t>(result, layer, x, y, blend, range); break;
+    case PixelFormat::Rgba16: blendTyped<std::uint16_t>(image, layer, x, y, blend, range); break;
     case PixelFormat::Gray32F:
-    case PixelFormat::Rgba32F: blendTyped<float>(result, layer, x, y, blend, range); break;
+    case PixelFormat::Rgba32F: blendTyped<float>(image, layer, x, y, blend, range); break;
     }
+}
+
+ImageBuffer blendLayer(const ImageBuffer& image, const ImageBuffer& layer, int x, int y, LayerBlend blend, DisplayRange range) {
+    const ImageBuffer result = copyOf(image);
+    blendLayerInto(result, layer, x, y, blend, range);
     return result;
 }
 

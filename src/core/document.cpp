@@ -28,7 +28,8 @@ Size sizeAfter(Size before, const Edit& edit) {
                                  [&](const TiltEdit& tilt) { return planTilt(before, tilt.focalPixels, tilt.tilt, tilt.keepRatio, tilt.crop).size; },
                                  [&](const GrayEdit&) { return before; },
                                  [&](const ColorEdit&) { return before; },
-                                 [&](const DrawEdit&) { return before; }},
+                                 [&](const DrawEdit&) { return before; },
+                                 [&](const FrameEdit& frame) { return framedSize(before, frame.look); }},
                       edit);
 }
 
@@ -98,7 +99,8 @@ ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::st
                                  },
                                  [&](const GrayEdit& gray) { return toGray(pixels, gray.method, stop); },
                                  [&](const ColorEdit& color) { return applyColor(pixels, color, stop); },
-                                 [&](const DrawEdit& drawn) { return draw(pixels, drawn); }},
+                                 [&](const DrawEdit& drawn) { return draw(pixels, drawn); },
+                                 [&](const FrameEdit& frame) { return framed(pixels, frame.look); }},
                       edit);
 }
 
@@ -210,16 +212,20 @@ std::shared_ptr<ImageSource> Document::source() const {
     resetExifForPixels(info.rawExif, edited.width, edited.height);
     resetXmpOrientation(info.xmp);
     info.stored.storedLevels = 1;
-    // A straightening that keeps the empty corners makes them transparent.
-    const bool cornersClear = std::ranges::any_of(this->edits(), [](const Edit& edit) {
-        const auto* tilt = std::get_if<TiltEdit>(&edit);
-        return tilt && !tilt->crop && !tilt->tilt.isZero();
-    });
-    info.alpha = info.alpha || cornersClear;
-    const bool drawnInColour = cornersClear || std::ranges::any_of(this->edits(), [](const Edit& edit) {
-        const auto* drawn = std::get_if<DrawEdit>(&edit);
-        return drawn && drawn->colour;
-    });
+    // A straightening that keeps the empty corners makes them transparent; a frame takes
+    // alpha away, unless its shadow is on transparency. In the order of the edits.
+    bool drawnInColour = false;
+    for (const Edit& edit : this->edits()) {
+        if (const auto* tilt = std::get_if<TiltEdit>(&edit); tilt && !tilt->crop && !tilt->tilt.isZero()) {
+            info.alpha = true;
+            drawnInColour = true;
+        } else if (const auto* frame = std::get_if<FrameEdit>(&edit)) {
+            info.alpha = framedWithAlpha(frame->look);
+            drawnInColour = drawnInColour || framedInColour(frame->look);
+        } else if (const auto* drawn = std::get_if<DrawEdit>(&edit); drawn && drawn->colour) {
+            drawnInColour = true;
+        }
+    }
     if (drawnInColour && isGray(info.format)) {
         info.format = colourFormat(info.format);
         info.stored.colorModel = "RGB";

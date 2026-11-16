@@ -37,4 +37,7 @@ double contrastRatio(Rgba8 a, Rgba8 b);
 // show at that lightness and hue is reduced until it can, so lightness and hue stay.
 Rgba8 fromOklch(double lightness, double chroma, double hue, double alpha = 1);
 
+// Whether sRGB can show that colour as it is, without reducing its chroma.
+bool showsInSrgb(double lightness, double chroma, double hue);
+
 }  // namespace iv

@@ -1042,6 +1042,105 @@ Left out for now:
 * Folders in the grid too, each drawn with a few thumbnails of the images inside it.
 * Options to show more than images: video files, raw files, and all files.
 
+## Image strip builder (planned, not built)
+
+Several pictures side by side in one, for a web page or a manual: a contact sheet of one row
+or one column.
+
+* **Input:** the selection in the browser, at most 50 pictures, from a new Tools menu, where
+  batch conversion will go too. The dialog lists them as
+  thumbnails, smaller than the browser's, in a list that scrolls, and they are put in order by
+  dragging. It is a dialog of its own (`DialogWindow`), as previews do not fit a side panel.
+* **Layout:** horizontal or vertical. The pictures share one height (horizontal) or one
+  width (vertical), typed by the user; the other side follows each picture's ratio. Or only
+  pictures larger than that are reduced, or none is resized: a picture that keeps its size
+  is centred in its row or column. A space between pictures, in pixels, and a margin around
+  the whole.
+* **Shadow:** optional, 5 to 10 pixels: what the picture covers, moved and blurred with a
+  separable Gaussian (`core/coverage.h`), black. It is worked out from the picture's
+  rectangle, or its alpha where it has some, never by scanning for edges. One number, how
+  far it reaches: it is moved by a third of it and blurred with a sigma of two ninths, so
+  that it reaches that far (the offset and three sigmas). A faint edge shows above and left
+  of the picture: moved by half and blurred by a sixth, which kept it all right and below,
+  looked too hard. It is 75% black under the picture; 60% looked too light once softer. `composeCanvas` (`core/canvas.h`) puts pictures and shadows on the canvas, for
+  the frame tool too, through the same blending as annotations (`blendLayerInto`, in place,
+  as a strip of fifty pictures would otherwise copy the canvas fifty times).
+* **Background:** white or transparent, nothing else, as that is what pages and manuals
+  need. On a transparent background the shadow is in the alpha.
+* **Size first:** the dialog shows the size of the result, worked out from the sizes of the
+  pictures and the options before anything is decoded, as the long side often matters.
+* **Building:** each picture is decoded, turned upright, reduced with Magic Kernel Sharp
+  (keeping alpha), converted to sRGB 8-bit, as the result is meant for the web or for print
+  in a manual, and placed on the canvas over its shadow. `makeSrgbCopy`, beside
+  `makeThumbnail` and sharing its choice of level and its conversion to 8 bits, makes each
+  picture; unlike a thumbnail it keeps alpha, takes an exact size, may enlarge, and always
+  converts to sRGB, whether colour management is on for the screen or not. It runs on the work queue with
+  progress, and can be cancelled, as 50 pictures of 40 megapixels take a while. The result
+  must be small enough to be saved whole.
+* **Saving:** the result goes to Save As at once, named by the time, such as
+  `2026-11-16_234516.webp`; it is not opened in the viewer first. `StripBuilder`
+  (`ui/strip_builder.h`) hands Save As the strip as an image source that is made only when
+  read, as an edited image is, so it is built in the save job, with its progress and Cancel.
+* **Not in the first version:** names under the pictures (fonts, and what to do when a name
+  is longer than its picture).
+* **In core, for a contact sheet later:** the layout and the filters are in core, without Qt,
+  so that a contact sheet (a grid of previews, such as one picture through several filters)
+  can be built on them. The layout can already wrap after a number of pictures, which makes
+  a grid; the first dialog offers one row or column.
+* **Parts to share** with the frame tool and batch processing that come later: the shadow
+  and background, and the reduction to sRGB 8-bit.
+
+Order of work, each a commit of its own: the layout, worked out in core without pixels; the
+shadow and putting pictures on the canvas, in core; the thumbnail of the browser's grid made
+a shared component, before a second copy; the dialog, its list and saving.
+
+## Frame and shadow
+
+* Up to three frames around the picture (outer, middle, inner), each a colour and a width in
+  pixels, 0 leaving it out, so that they can make a bevel; then the shadow of the strip
+  builder, on white or transparency. It is an edit in the viewer (`FrameEdit`, applied by
+  `framed` in `core/canvas.h`), not a tool of its own, so that it can be undone and chained
+  with others, such as resize, frame, save.
+* The picture keeps its format, as with every edit: the frames and shadow are made in 8 bits
+  by `composeCanvas` and blended on as annotations are, their colours values of the format's
+  full range. A gray picture becomes colour only for a coloured frame or a transparent shadow.
+* A picture with alpha is put on white first, as a frame stands for a print; the result has
+  alpha only from a shadow on transparency.
+* Room is kept for the whole shadow, its faint edge above and left included, so none of it is
+  cut off.
+* Edit > Frame... is a dialog, as Resize is: Outer, Middle and Inner, each a width (0 for
+  none) and a colour; Shadow; Background, white or transparent, offered only with a shadow;
+  and the size it gives. OK applies it as an edit, seen at once and undone as any other. At
+  first outer 1 px dark gray, middle 12 px white, inner 1 px gray, no shadow, then what was
+  used last. No preview inside the dialog, as the image shows it once applied.
+* A colour is a `ColorField`: hex typed, with a swatch of it. It is to get a caret that opens
+  the colour chooser once there is one, and to replace the annotation panel's hex field.
+
+## Batch processing (planned, not built)
+
+* A chain of steps for the selected pictures, such as resize, removing or adding metadata
+  (a position from a GPX track), then saving in a format, with names made of a prefix, a
+  suffix, a counter or the date and time. Perhaps kept as recipes.
+* It can only offer the processing the program has.
+
+## Colour chooser (being built)
+
+* One chooser, `ColorChooser`, an item any panel or dialog can hold, and `ColorChooserDialog`
+  around it where there is no room. Annotations use it, and the frame panel will.
+* Sliders for R, G and B and for Oklch lightness, chroma and hue, all linked, each with a
+  number box beside it, and a hex field. No two-dimensional fields: instead each slider's
+  track is drawn anew as the colour changes, showing what moving that slider alone would
+  give (`channelRamp`, `core/color_choice.h`). That shows most of what a field would, in far
+  less room.
+* Oklch, as its steps look even and lightness, chroma and hue are how people adjust a colour.
+  Colours sRGB cannot show are hatched on the tracks; set there, chroma is reduced until it
+  fits, keeping lightness and hue, as the palette does (`fromOklch`). Chroma goes to 0.37,
+  a little past the most sRGB has.
+* A gray keeps the hue last set, so that its hue slider does not jump to 0.
+* The slider with its colour track is a QML component of its own, `GradientSlider`, which
+  draws the colours C++ gives it, so other panels can use it too. The annotation swatches stay,
+  as presets.
+
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
   rather than the image being edited.

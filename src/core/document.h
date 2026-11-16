@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include "core/canvas.h"
 #include "core/color_edit.h"
 #include "core/crop.h"
 #include "core/image_layer.h"
@@ -67,7 +68,14 @@ struct DrawEdit {
     bool colour = false;
 };
 
-using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit, DrawEdit>;
+// Puts frames and a shadow around the picture, as framed() does: the picture grows, may become
+// colour, and loses its alpha unless the shadow is on transparency.
+struct FrameEdit {
+    FrameLook look;
+    bool operator==(const FrameEdit&) const = default;
+};
+
+using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit, DrawEdit, FrameEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.

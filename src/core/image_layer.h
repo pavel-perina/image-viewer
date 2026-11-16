@@ -32,6 +32,10 @@ enum class LayerBlend { Over, Multiply };
 // what was transparent, and a marker on a transparent part shows its own colour.
 ImageBuffer blendLayer(const ImageBuffer& image, const ImageBuffer& layer, int x, int y, LayerBlend blend, DisplayRange range);
 
+// The same, into the picture's own pixels, for putting many layers on one canvas without a
+// copy each time. The picture must not share its pixels with another.
+void blendLayerInto(const ImageBuffer& image, const ImageBuffer& layer, int x, int y, LayerBlend blend, DisplayRange range);
+
 // A copy of the picture with a rectangle coarsened into blocks of one colour each, the
 // average of what was there, counted from the rectangle's corner. The part of the rectangle
 // outside the picture is ignored. With alpha, colours are weighed by it and alpha is averaged.

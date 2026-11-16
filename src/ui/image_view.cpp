@@ -598,7 +598,7 @@ struct ImageView::Impl {
             }
         }
         // The range is of what is shown, which for now is the picture flattened.
-        std::ranges::transform(tiles, tiles.begin(), flattened);
+        std::ranges::transform(tiles, tiles.begin(), [](const ImageBuffer& tile) { return flattened(tile); });
         loaded.autoRange = autoRange(tiles);
         displayTransform(info, ColorSettings::target());  // cached, so showing the page does not wait for it
         return loaded;
@@ -1376,6 +1376,53 @@ QString ImageView::resizeProblem(int width, int height) const {
         return reason + QLatin1Char('.');
     }
     return {};
+}
+
+namespace {
+
+FrameLook frameLookFrom(const QVariantMap& map) {
+    FrameLook look;
+    const QVariantList frames = map.value(QStringLiteral("frames")).toList();
+    for (qsizetype i = 0; i < std::min<qsizetype>(frames.size(), 3); ++i) {
+        const QVariantMap frame = frames[i].toMap();
+        const QColor colour = frame.value(QStringLiteral("colour")).value<QColor>().toRgb();
+        look.frames[static_cast<std::size_t>(i)] = {
+            std::max(0, frame.value(QStringLiteral("width")).toInt()),
+            {static_cast<std::uint8_t>(colour.red()), static_cast<std::uint8_t>(colour.green()), static_cast<std::uint8_t>(colour.blue()), 255}};
+    }
+    look.shadow = std::max(0, map.value(QStringLiteral("shadow")).toInt());
+    look.transparent = map.value(QStringLiteral("transparent")).toBool();
+    return look;
+}
+
+}  // namespace
+
+QSize ImageView::framedSize(const QVariantMap& look) const {
+    if (m_impl->status != Status::Ready) {
+        return {};
+    }
+    const Size size = iv::framedSize({imageWidth(), imageHeight()}, frameLookFrom(look));
+    return {size.width, size.height};
+}
+
+QString ImageView::frameProblem(const QVariantMap& look) const {
+    const QSize size = framedSize(look);
+    if (size.isValid() && size == QSize(imageWidth(), imageHeight())) {
+        return QStringLiteral("Give a frame a width, or the shadow a size.");
+    }
+    return resizeProblem(size.width(), size.height());
+}
+
+void ImageView::frameImage(const QVariantMap& look) {
+    Impl& d = *m_impl;
+    if (!frameProblem(look).isEmpty()) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    d.edit->apply(FrameEdit{frameLookFrom(look)});
+    d.showEdit();
 }
 
 void ImageView::resizeImage(int width, int height, bool fill) {

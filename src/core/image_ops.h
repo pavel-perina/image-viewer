@@ -71,8 +71,8 @@ ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation)
 
 // A picture with alpha as it looks on a mid gray background, where both dark and light
 // content stay visible: a copy, opaque and without alpha. A picture without alpha is returned
-// as it is.
-ImageBuffer flattened(const ImageBuffer& source);
+// as it is. Level is the gray, from 0 for black to 1 for white of the format's full range.
+ImageBuffer flattened(const ImageBuffer& source, double level = 0.5);
 
 // The sample values that map to black and white on screen.
 struct DisplayRange {

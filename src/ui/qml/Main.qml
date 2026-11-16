@@ -131,6 +131,11 @@ ApplicationWindow {
         view: viewerPage.view
     }
 
+    FrameDialog {
+        id: frameDialog
+        view: viewerPage.view
+    }
+
     MessageBox {
         id: unsavedDialog
         objectName: "unsavedDialog"
@@ -295,6 +300,13 @@ ApplicationWindow {
         enabled: window.canEdit && !window.toolActive
         onTriggered: window.startTool(() => resizeDialog.open())
     }
+    Action {
+        id: frameAction
+        objectName: "frameAction"
+        text: "&Frame..."
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => frameDialog.open())
+    }
     // Gray by the weights JPEG uses for Y, or by the lightness of Oklab with no chroma.
     Action {
         id: grayLumaAction
@@ -434,6 +446,7 @@ ApplicationWindow {
             AppMenuItem { action: straightenAction }
             AppMenuItem { action: annotateAction }
             AppMenuItem { action: resizeAction }
+            AppMenuItem { action: frameAction }
             AppMenu {
                 title: "&Grayscale"
                 enabled: window.canEdit && !window.toolActive
@@ -512,6 +525,10 @@ ApplicationWindow {
             AppMenuItem { action: upAction }
             MenuSeparator {}
             AppMenuItem { action: editPathAction }
+        }
+        AppMenu {
+            title: "&Tools"
+            AppMenuItem { action: fileActions.stripAction }
         }
         AppMenu {
             title: "&Help"

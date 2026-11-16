@@ -55,6 +55,7 @@ Item {
     readonly property alias flipVerticalAction: flipVerticalAction
     readonly property alias applyOrientationAction: applyOrientationAction
     readonly property alias convertToJxlAction: convertToJxlAction
+    readonly property alias stripAction: stripAction
     readonly property alias askBeforeEditingAction: askBeforeEditingAction
     readonly property alias trimEdgesAction: trimEdgesAction
     readonly property alias saveAction: saveAction
@@ -205,6 +206,15 @@ Item {
         saveDialog.page = page
         saveDialog.edited = editView ? editView.editedImage() : undefined
         saveDialog.start(path.substring(0, slash) || "/", context.saveFormat(path) ? name : base + ".png")
+    }
+
+    // The strip from the strip dialog, through the file chooser and the format's options, in
+    // the folder shown, under a name from the time.
+    function saveStrip(strip, name) {
+        saveDialog.source = name
+        saveDialog.page = 0
+        saveDialog.edited = strip
+        saveDialog.start(context.directory || "/", name)
     }
 
     function chooseSaveOptions(source, page, target, edited) {
@@ -406,6 +416,14 @@ Item {
     }
 
     Action {
+        id: stripAction
+        objectName: "stripAction"
+        text: "Image &Strip..."
+        enabled: root.idle && root.context.selectedPaths.length >= 2
+        onTriggered: stripDialog.start(root.context.selectedPaths)
+    }
+
+    Action {
         id: saveAction
         text: "&Save"
         shortcut: StandardKey.Save
@@ -542,6 +560,12 @@ Item {
             root.saveEditedAsNew(path)
         }
         onRejected: root.saveCancelled()
+    }
+
+    StripBuilderDialog {
+        id: stripDialog
+        objectName: "stripDialog"
+        onSaveRequested: (strip, name) => root.saveStrip(strip, name)
     }
 
     SaveOptionsDialog {

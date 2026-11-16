@@ -191,61 +191,20 @@ SplitView {
                 }
             }
 
-            delegate: Item {
+            delegate: ThumbnailCell {
                 id: cell
 
                 required property int index
-                required property string name
-                required property string thumbnail
-                required property bool selected
+                required name
+                required thumbnail
+                required selected
 
                 width: grid.cellWidth
                 height: grid.cellHeight
-
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    // Paler while the keys are elsewhere, as they then do not act on it.
-                    color: !cell.selected ? "transparent" : grid.activeFocus ? palette.highlight : Theme.withAlpha(palette.highlight, 0.5)
-                    // The current image is shown large, and can be outside the selection.
-                    border.width: cell.index === page.context.currentIndex ? 2 : 0
-                    border.color: palette.highlightedText
-                }
-
-                Item {
-                    id: thumbnailArea
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    anchors.bottomMargin: 28
-
-                    // Made at the size it is shown, one pixel for one, so nothing filters it
-                    // again. Centring rounds to whole pixels, which keeps that exact.
-                    Image {
-                        id: thumbnailImage
-                        objectName: "thumbnailImage"
-                        anchors.centerIn: parent
-                        asynchronous: true
-                        // From the cell, as the area has no size yet when this starts loading.
-                        sourceSize: Qt.size(grid.cellWidth - 16, grid.cellWidth - 16)
-                        source: cell.thumbnail
-                    }
-                }
-
-                Label {
-                    anchors.centerIn: thumbnailArea
-                    visible: thumbnailImage.status === Image.Error
-                    text: "Cannot read"
-                }
-
-                Label {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 6
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideMiddle
-                    text: cell.name
-                }
+                // Paler while the keys are elsewhere, as they then do not act on it.
+                keysHere: grid.activeFocus
+                // The current image is shown large, and can be outside the selection.
+                current: cell.index === page.context.currentIndex
 
                 TapHandler {
                     id: cellTap
@@ -290,7 +249,7 @@ SplitView {
                             FileClipboard.dragFiles(paths, image)
                             page.draggingFiles = false
                         }
-                        if (!thumbnailImage.grabToImage((result) => start(result.image), Qt.size(64, 64)))
+                        if (!cell.thumbnailImage.grabToImage((result) => start(result.image), Qt.size(64, 64)))
                             start(null)
                     }
                 }

@@ -26,6 +26,9 @@ add_executable(iv_core_tests
     fuzzy_match_tests.cpp
     palette_tests.cpp
     font_families_tests.cpp
+    strip_layout_tests.cpp
+    canvas_tests.cpp
+    color_choice_tests.cpp
     test_exif.cpp
     test_exif.h
     test_jpeg.cpp
@@ -75,6 +78,7 @@ add_executable(iv_ui_tests
     ui_edit_tests.cpp
     ui_file_tests.cpp
     ui_window_tests.cpp
+    ui_strip_tests.cpp
 )
 target_link_libraries(iv_ui_tests PRIVATE iv_ui iv_uiplugin iv_style iv_styleplugin Qt6::QuickControls2 iv_core JPEG::JPEG TIFF::TIFF GTest::gtest Qt6::Gui Qt6::Quick Qt6::Test)
 # Every UI test file includes the same Qt Quick and GoogleTest headers, which take most of the time.

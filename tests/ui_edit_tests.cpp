@@ -1366,3 +1366,66 @@ TEST(ToolPanel, StandsAtTheRightEdgeWhenRevealed) {
     EXPECT_GT(place.top(), 20) << "the heading comes first";
     EXPECT_LT(place.bottom(), 100) << "rows keep to the top";
 }
+
+// Why: Edit > Frame puts frames around the image as an edit, with a colour typed in hex, says
+// the size it gives, refuses a frame of nothing, and can be undone. Input: a 40 x 20 JPEG and
+// the dialog at its first settings (frames of 1, 12 and 1), the outer colour typed as ff0000;
+// then a look with no frames and no shadow. The truth: "framed 68 x 48"; after OK the image is
+// 68 x 48, red at its edge and white 2 pixels in; a look of nothing gives a problem; undo
+// brings back 40 x 20.
+TEST(Editing, TheFrameDialogFramesTheImage) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("small.jpg"));
+    JpegOptions options;
+    options.width = 40;
+    options.height = 20;
+    writeJpeg(path, options);
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import ImageViewer
+        Window {
+            width: 600; height: 500; visible: true
+            property alias view: image
+            property alias dialog: dialog
+            ImageView { id: image; anchors.fill: parent }
+            FrameDialog { id: dialog; view: image }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* image = root->property("view").value<ImageView*>();
+    auto* dialog = root->property("dialog").value<QObject*>();
+    image->setSource(path);
+    ASSERT_TRUE(settled(image));
+
+    QMetaObject::invokeMethod(dialog, "open");
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    auto* content = dialog->property("contentItem").value<QQuickItem*>();
+    QQuickItem* result = findNamed(content, QStringLiteral("frameResult"));
+    QQuickItem* outerColour = findNamed(content, QStringLiteral("frameOuterColour"));
+    ASSERT_NE(result, nullptr);
+    ASSERT_NE(outerColour, nullptr);
+    EXPECT_TRUE(result->property("text").toString().endsWith(QStringLiteral("framed 68 × 48 pixels")))
+        << result->property("text").toString().toStdString();
+    outerColour->setProperty("text", QStringLiteral("ff0000"));
+    QMetaObject::invokeMethod(outerColour, "editingFinished");
+    EXPECT_EQ(outerColour->property("colour").value<QColor>(), QColor(255, 0, 0));
+
+    QMetaObject::invokeMethod(dialog, "accept");
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 68; }));
+    EXPECT_EQ(image->imageHeight(), 48);
+    const auto edited = image->editedImage().value<std::shared_ptr<iv::ImageSource>>();
+    ASSERT_TRUE(edited);
+    const auto pixels = iv::readLevel(*edited, 0, 0, {});
+    ASSERT_TRUE(pixels.has_value());
+    const auto* edge = reinterpret_cast<const std::uint8_t*>(pixels->row(24));
+    EXPECT_EQ(qRgb(edge[2], edge[1], edge[0]), qRgb(255, 0, 0));
+    EXPECT_EQ(qRgb(edge[2 * 4 + 2], edge[2 * 4 + 1], edge[2 * 4]), qRgb(255, 255, 255));
+
+    const QVariantMap nothing{{QStringLiteral("frames"), QVariantList{}}, {QStringLiteral("shadow"), 0}};
+    EXPECT_FALSE(image->frameProblem(nothing).isEmpty());
+    image->undo();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 40; }));
+}

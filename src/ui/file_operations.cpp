@@ -285,9 +285,11 @@ FileJobResult convertJpegFilesToJxl(const QStringList& paths, bool trashOriginal
     return result;
 }
 
+QString timeStampName(const QDateTime& now) { return now.toString(QStringLiteral("yyyy-MM-dd_HHmmss")); }
+
 FileJobResult saveNewImage(const QImage& image, const QString& folder, const QDateTime& now) {
     FileJobResult result;
-    const QString stamp = now.toString(QStringLiteral("yyyy-MM-dd_HHmmss"));
+    const QString stamp = timeStampName(now);
     const QString suffix = QLatin1Char('.') + QLatin1StringView(kPasteFormat);
 
     QByteArray bytes;

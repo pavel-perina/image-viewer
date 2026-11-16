@@ -51,6 +51,8 @@ qt_add_library(iv_ui STATIC
     retired_settings.h
     shape_painter.cpp
     shape_painter.h
+    strip_builder.cpp
+    strip_builder.h
     image_view.cpp
     image_view.h
     subfolder_list.cpp
@@ -79,6 +81,7 @@ qt_add_qml_module(iv_ui
         qml/AppMenu.qml
         qml/AppMenuItem.qml
         qml/AppScrollBar.qml
+        qml/ColorField.qml
         qml/BarButton.qml
         qml/BrowserPage.qml
         qml/Caret.qml
@@ -92,6 +95,7 @@ qt_add_qml_module(iv_ui
         qml/FileChooser.qml
         qml/FileListView.qml
         qml/FolderTree.qml
+        qml/FrameDialog.qml
         qml/IconButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
@@ -109,9 +113,11 @@ qt_add_qml_module(iv_ui
         qml/ResizeDialog.qml
         qml/SearchCombo.qml
         qml/StraightenPanel.qml
+        qml/StripBuilderDialog.qml
         qml/ResampledView.qml
         qml/SaveOptionsDialog.qml
         qml/Theme.qml
+        qml/ThumbnailCell.qml
         qml/Screens.qml
         qml/ToolPanel.qml
         qml/ViewSettings.qml

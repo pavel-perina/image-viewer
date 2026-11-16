@@ -435,6 +435,30 @@ TEST(Png, PaletteWithAndWithoutTransparency) {
 
 // Alpha is decoded as the file has it, and shown on mid gray for now. PNG is lossless and
 // keeps the colour of transparent pixels, so that is compared too.
+// Why: a strip with a transparent background, or a cut-out logo in it, needs each picture's
+// alpha, while thumbnails flatten it. Input: the test picture as 8-bit and 16-bit RGBA PNG,
+// asked for at its own size. The truth: pixelAt, in 8 bits: opaque red-ish on the left, the
+// half transparent rows at alpha 128 with their own colour, and the transparent corner at 0.
+TEST(Alpha, AnSrgbCopyKeepsAlphaAtEitherDepth) {
+    for (const int depth : {8, 16}) {
+        SCOPED_TRACE(depth);
+        PngOptions rgba;
+        rgba.colorType = PNG_COLOR_TYPE_RGBA;
+        rgba.depth = depth;
+        const auto copy = makeSrgbCopy(write("srgb_copy" + std::to_string(depth) + ".png", encodePng(rgba)), {kWidth, kHeight}, {});
+        ASSERT_TRUE(copy) << copy.error();
+        ASSERT_EQ(copy->format(), PixelFormat::Bgrx8);
+        EXPECT_TRUE(copy->hasAlpha());
+        const auto pixel = [&](int x, int y) {
+            const auto* p = reinterpret_cast<const std::uint8_t*>(copy->row(y)) + x * 4;
+            return std::array<int, 4>{p[2], p[1], p[0], p[3]};
+        };
+        EXPECT_EQ(pixel(8, 8), (std::array<int, 4>{200, 40, 20, 255}));
+        EXPECT_EQ(pixel(kWidth - 8, kHeight / 2 + 1), (std::array<int, 4>{20, 40, 200, 128}));
+        EXPECT_EQ(pixel(kWidth - 8, kHeight - 8)[3], 0);
+    }
+}
+
 TEST(Png, AlphaIsKeptAtBothDepthsAndForGrayAndShownOnMidGray) {
     PngOptions rgba;
     rgba.colorType = PNG_COLOR_TYPE_RGBA;
