@@ -51,6 +51,8 @@ qt_add_library(iv_ui STATIC
     retired_settings.h
     shape_painter.cpp
     shape_painter.h
+    strip_builder.cpp
+    strip_builder.h
     image_view.cpp
     image_view.h
     subfolder_list.cpp

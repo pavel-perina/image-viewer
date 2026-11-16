@@ -83,6 +83,9 @@ QString saveFormatFor(const QString& path);
 FileJobResult saveImageAs(const QString& source, int page, const QString& target, const QVariantMap& options,
                           std::stop_token stop, std::shared_ptr<ImageSource> edited = nullptr);
 
+// A name for a new file from the time it is made, such as 2026-12-24_125959, without extension.
+QString timeStampName(const QDateTime& now);
+
 // Saves as a new file named after the time, such as 2026-12-24_125959.png, adding _1 and so on
 // if that name is taken.
 FileJobResult saveNewImage(const QImage& image, const QString& folder, const QDateTime& now);

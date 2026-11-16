@@ -1047,7 +1047,8 @@ Left out for now:
 Several pictures side by side in one, for a web page or a manual: a contact sheet of one row
 or one column.
 
-* **Input:** the selection in the browser, at most 50 pictures. The dialog lists them as
+* **Input:** the selection in the browser, at most 50 pictures, from a new Tools menu, where
+  batch conversion will go too. The dialog lists them as
   thumbnails, smaller than the browser's, in a list that scrolls, and they are put in order by
   dragging. It is a dialog of its own (`DialogWindow`), as previews do not fit a side panel.
 * **Layout:** across or down. The pictures share one height (across) or one width (down),
@@ -1062,8 +1063,8 @@ or one column.
   picture. `composeCanvas` (`core/canvas.h`) puts pictures and shadows on the canvas, for
   the frame tool too, through the same blending as annotations (`blendLayerInto`, in place,
   as a strip of fifty pictures would otherwise copy the canvas fifty times).
-* **Background:** transparent, or a colour (white by default); the two exclude each other.
-  On a transparent background the shadow is in the alpha.
+* **Background:** white or transparent, nothing else, as that is what pages and manuals
+  need. On a transparent background the shadow is in the alpha.
 * **Size first:** the dialog shows the size of the result, worked out from the sizes of the
   pictures and the options before anything is decoded, as the long side often matters.
 * **Building:** each picture is decoded, turned upright, reduced with Magic Kernel Sharp
@@ -1075,8 +1076,9 @@ or one column.
   progress, and can be cancelled, as 50 pictures of 40 megapixels take a while. The result
   must be small enough to be saved whole.
 * **Saving:** the result goes to Save As at once, named by the time, such as
-  `2026-11-16_234516.webp`; it is not opened in the viewer first. Save As already takes an
-  image that has no file, as it does for edited ones.
+  `2026-11-16_234516.webp`; it is not opened in the viewer first. `StripBuilder`
+  (`ui/strip_builder.h`) hands Save As the strip as an image source that is made only when
+  read, as an edited image is, so it is built in the save job, with its progress and Cancel.
 * **Not in the first version:** names under the pictures (fonts, and what to do when a name
   is longer than its picture).
 * **In core, for a contact sheet later:** the layout and the filters are in core, without Qt,
