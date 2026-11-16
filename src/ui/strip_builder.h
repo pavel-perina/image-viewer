@@ -22,7 +22,8 @@ class StripBuilder : public QAbstractListModel {
     Q_PROPERTY(bool down READ down WRITE setDown NOTIFY optionsChanged)  // a column, not a row
     // The height across, the width down, that every picture is brought to.
     Q_PROPERTY(int extent READ extent WRITE setExtent NOTIFY optionsChanged)
-    Q_PROPERTY(bool onlyReduce READ onlyReduce WRITE setOnlyReduce NOTIFY optionsChanged)
+    // 0 to bring every picture to the extent, 1 only those larger, 2 none, as StripResize.
+    Q_PROPERTY(int resize READ resize WRITE setResize NOTIFY optionsChanged)
     Q_PROPERTY(int spacing READ spacing WRITE setSpacing NOTIFY optionsChanged)
     Q_PROPERTY(int margin READ margin WRITE setMargin NOTIFY optionsChanged)
     Q_PROPERTY(int shadow READ shadow WRITE setShadow NOTIFY optionsChanged)
@@ -52,8 +53,8 @@ public:
     void setDown(bool down);
     int extent() const;
     void setExtent(int extent);
-    bool onlyReduce() const;
-    void setOnlyReduce(bool only);
+    int resize() const;
+    void setResize(int resize);
     int spacing() const;
     void setSpacing(int spacing);
     int margin() const;

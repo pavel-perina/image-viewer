@@ -1051,10 +1051,11 @@ or one column.
   batch conversion will go too. The dialog lists them as
   thumbnails, smaller than the browser's, in a list that scrolls, and they are put in order by
   dragging. It is a dialog of its own (`DialogWindow`), as previews do not fit a side panel.
-* **Layout:** horizontal or vertical. The pictures share one height (horizontal) or one width (vertical),
-  typed by the user; the other side follows each picture's ratio. Optionally only reducing:
-  a picture smaller than that keeps its size and is centred. A space between pictures, in
-  pixels, and a margin around the whole.
+* **Layout:** horizontal or vertical. The pictures share one height (horizontal) or one
+  width (vertical), typed by the user; the other side follows each picture's ratio. Or only
+  pictures larger than that are reduced, or none is resized: a picture that keeps its size
+  is centred in its row or column. A space between pictures, in pixels, and a margin around
+  the whole.
 * **Shadow:** optional, 5 to 10 pixels: what the picture covers, moved and blurred with a
   separable Gaussian (`core/coverage.h`), black. It is worked out from the picture's
   rectangle, or its alpha where it has some, never by scanning for edges. One number, how

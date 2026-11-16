@@ -29,7 +29,7 @@ DialogWindow {
         id: builder
         down: kept.down
         extent: kept.extent
-        onlyReduce: kept.onlyReduce
+        resize: kept.resize
         spacing: kept.spacing
         margin: kept.margin
         shadow: kept.shadow
@@ -42,7 +42,7 @@ DialogWindow {
         category: "Strip"
         property bool down: false
         property int extent: 200
-        property bool onlyReduce: true
+        property int resize: 1  // only smaller
         property int spacing: 8
         property int margin: 0
         property int shadow: 0
@@ -155,6 +155,7 @@ DialogWindow {
             NumberRow {
                 label: kept.down ? "Width of every picture" : "Height of every picture"
                 boxName: "stripExtent"
+                enabled: kept.resize !== 2
                 Layout.fillWidth: true
                 from: 1
                 to: 20000
@@ -169,12 +170,15 @@ DialogWindow {
                 value: kept.spacing
                 onModified: (value) => kept.spacing = value
             }
-            CheckBox {
-                objectName: "stripOnlyReduce"
+            RowLayout {
                 Layout.fillWidth: true
-                text: "Only make pictures smaller"
-                checked: kept.onlyReduce
-                onToggled: kept.onlyReduce = checked
+                Label { text: "Resize"; Layout.fillWidth: true }
+                ComboBox {
+                    objectName: "stripResize"
+                    model: ["To this size", "Only smaller", "Keep sizes"]
+                    currentIndex: kept.resize
+                    onActivated: (index) => kept.resize = index
+                }
             }
             NumberRow {
                 label: "Margin"

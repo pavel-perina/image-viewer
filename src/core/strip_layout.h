@@ -14,13 +14,16 @@ namespace iv {
 
 enum class StripDirection { Across, Down };
 
+// How pictures are brought to the extent: always, only when larger, or not at all.
+enum class StripResize { Always, OnlyReduce, Never };
+
 struct StripOptions {
     StripDirection direction = StripDirection::Across;
     // The height every picture is brought to across, or the width down. The other side follows
     // each picture's ratio.
     int extent = 200;
-    // A picture already smaller keeps its size, centred in its row or column.
-    bool onlyReduce = false;
+    // A picture that is not resized keeps its size, centred in its row or column.
+    StripResize resize = StripResize::Always;
     int spacing = 0;  // between pictures, and between rows or columns
     int margin = 0;   // around the whole
     // How far a shadow reaches beyond the right and bottom of a picture, kept free for it.

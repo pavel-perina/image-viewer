@@ -58,7 +58,7 @@ TEST(StripLayout, OnlyReducingKeepsASmallPictureCentred) {
     const std::array<Size, 2> pictures{Size{400, 400}, Size{60, 40}};
     StripOptions options;
     options.extent = 100;
-    options.onlyReduce = true;
+    options.resize = StripResize::OnlyReduce;
     const StripLayout layout = layoutStrip(pictures, options);
     expectRect(layout.pictures[0], {0, 0, 100, 100}, 0);
     expectRect(layout.pictures[1], {100, 30, 60, 40}, 1);
@@ -107,4 +107,18 @@ TEST(StripLayout, OddInputGivesASaneSize) {
     options.extent = 10;
     const StripLayout layout = layoutStrip(nothing, options);
     expectRect(layout.pictures[0], {3, 3, 10, 10}, 0);
+}
+
+// Why: pictures may be wanted at their own sizes, as they are, side by side. Input: 400 x 400
+// and 60 x 40 across, with an extent of 100 that is to be ignored. The truth: both keep their
+// sizes; the row is as tall as the taller, and the smaller is centred, (400 - 40) / 2 = 180 down.
+TEST(StripLayout, KeepingSizesLeavesEveryPictureAsItIs) {
+    const std::array<Size, 2> pictures{Size{400, 400}, Size{60, 40}};
+    StripOptions options;
+    options.extent = 100;
+    options.resize = StripResize::Never;
+    const StripLayout layout = layoutStrip(pictures, options);
+    expectRect(layout.pictures[0], {0, 0, 400, 400}, 0);
+    expectRect(layout.pictures[1], {400, 180, 60, 40}, 1);
+    EXPECT_EQ(layout.canvas, (Size{460, 400}));
 }

@@ -20,7 +20,7 @@ Placed placedSize(Size picture, const StripOptions& options) {
     const int along = std::max(1, acrossDirection ? picture.width : picture.height);
     const int across = std::max(1, acrossDirection ? picture.height : picture.width);
     const int extent = std::max(1, options.extent);
-    if (options.onlyReduce && across <= extent) {
+    if (options.resize == StripResize::Never || (options.resize == StripResize::OnlyReduce && across <= extent)) {
         return {along, across};
     }
     const double scale = static_cast<double>(extent) / across;

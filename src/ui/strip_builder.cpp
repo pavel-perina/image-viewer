@@ -169,8 +169,8 @@ bool StripBuilder::down() const { return m_impl->options.direction == StripDirec
 void StripBuilder::setDown(bool down) { setOption(this, m_impl->options.direction, down ? StripDirection::Down : StripDirection::Across); }
 int StripBuilder::extent() const { return m_impl->options.extent; }
 void StripBuilder::setExtent(int extent) { setOption(this, m_impl->options.extent, std::max(1, extent)); }
-bool StripBuilder::onlyReduce() const { return m_impl->options.onlyReduce; }
-void StripBuilder::setOnlyReduce(bool only) { setOption(this, m_impl->options.onlyReduce, only); }
+int StripBuilder::resize() const { return static_cast<int>(m_impl->options.resize); }
+void StripBuilder::setResize(int resize) { setOption(this, m_impl->options.resize, static_cast<StripResize>(std::clamp(resize, 0, 2))); }
 int StripBuilder::spacing() const { return m_impl->options.spacing; }
 void StripBuilder::setSpacing(int spacing) { setOption(this, m_impl->options.spacing, std::max(0, spacing)); }
 int StripBuilder::margin() const { return m_impl->options.margin; }
