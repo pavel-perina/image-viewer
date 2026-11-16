@@ -1094,12 +1094,22 @@ Order of work, each a commit of its own: the layout, worked out in core without 
 shadow and putting pictures on the canvas, in core; the thumbnail of the browser's grid made
 a shared component, before a second copy; the dialog, its list and saving.
 
-## Frame and shadow tool (planned, not built)
+## Frame and shadow
 
-* One picture: up to three frames around it (outer, middle, inner), each a colour and a width
-  in pixels, so that they can make a bevel; then the shadow and background of the strip
-  builder. It can be a step in a chain, such as resize, frame, save.
-* With a frame, alpha does not need keeping inside it.
+* Up to three frames around the picture (outer, middle, inner), each a colour and a width in
+  pixels, 0 leaving it out, so that they can make a bevel; then the shadow of the strip
+  builder, on white or transparency. It is an edit in the viewer (`FrameEdit`, applied by
+  `framed` in `core/canvas.h`), not a tool of its own, so that it can be undone and chained
+  with others, such as resize, frame, save.
+* The picture keeps its format, as with every edit: the frames and shadow are made in 8 bits
+  by `composeCanvas` and blended on as annotations are, their colours values of the format's
+  full range. A gray picture becomes colour only for a coloured frame or a transparent shadow.
+* A picture with alpha is put on white first, as a frame stands for a print; the result has
+  alpha only from a shadow on transparency.
+* Room is kept for the whole shadow, its faint edge above and left included, so none of it is
+  cut off.
+* Colours are chosen from the annotation swatches or typed in hex, until there is a colour
+  chooser.
 
 ## Batch processing (planned, not built)
 

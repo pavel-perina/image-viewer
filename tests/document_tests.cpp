@@ -394,3 +394,44 @@ TEST(Document, AWholeTurnedPictureGrowsTowardsTheHorizonAndHasNoneBeyondIt) {
     EXPECT_GT(strong.width, 4 * mild.width);
     EXPECT_EQ(planTilt(image, focal, {0, 70, 0}, true, false).size, (Size{0, 0}));
 }
+
+// Why: a frame is an edit like the others: the document's size grows by it before anything is
+// decoded, the source says what the pixels will be (colour, alpha), and undo takes it away.
+// Input: an opaque 40 x 20 picture with an edge straightened off without crop (alpha), then a
+// red frame of 3 with no shadow; then with a shadow on transparency; a gray picture in the
+// red frame. The truth: 46 x 26 without alpha (the frame takes it away), the frame red at
+// the edge; with the shadow alpha again; the gray one colour; after undo, the size before.
+TEST(Document, AFrameGrowsThePictureAndDecidesItsAlpha) {
+    FrameLook look;
+    look.frames[0] = {3, {220, 20, 20, 255}};
+    Document document(plainSource({40, 20}, PixelFormat::Bgrx8, 200), 0);
+    document.apply(FrameEdit{look});
+    EXPECT_EQ(document.size(), (Size{46, 26}));
+    EXPECT_FALSE(document.source()->subimages()[0].alpha);
+    const ImageBuffer pixels = pixelsOf(document);
+    ASSERT_EQ(pixels.size(), (Size{46, 26}));
+    const auto* edge = reinterpret_cast<const std::uint8_t*>(pixels.row(10));
+    EXPECT_EQ(edge[2], 220);
+    EXPECT_EQ(edge[1], 20);
+    document.undo();
+    EXPECT_EQ(document.size(), (Size{40, 20}));
+
+    Document turned(plainSource({40, 20}, PixelFormat::Bgrx8, 200), 0);
+    turned.apply(TiltEdit{{.roll = 10}, 100, true, false});
+    ASSERT_TRUE(turned.source()->subimages()[0].alpha);
+    turned.apply(FrameEdit{look});
+    EXPECT_FALSE(turned.source()->subimages()[0].alpha) << "a frame stands for a print";
+    EXPECT_FALSE(pixelsOf(turned).hasAlpha());
+    look.shadow = 6;
+    look.transparent = true;
+    turned.apply(FrameEdit{look});
+    EXPECT_TRUE(turned.source()->subimages()[0].alpha);
+    EXPECT_TRUE(pixelsOf(turned).hasAlpha());
+
+    Document gray(plainSource({40, 20}, PixelFormat::Gray8, 90), 0);
+    look.shadow = 0;
+    look.transparent = false;
+    gray.apply(FrameEdit{look});
+    EXPECT_EQ(gray.source()->subimages()[0].format, PixelFormat::Bgrx8);
+    EXPECT_EQ(pixelsOf(gray).format(), PixelFormat::Bgrx8);
+}

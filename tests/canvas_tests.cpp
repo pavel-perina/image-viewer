@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 
 #include "core/canvas.h"
 
@@ -122,4 +123,112 @@ TEST(Canvas, OnlyWhatAPictureCoversCastsAShadow) {
     const Rgba8 half = at(plain, 25, 15);
     EXPECT_NEAR(half.r, (200 + 255) / 2, 2);
     EXPECT_NEAR(half.g, (30 + 255) / 2, 2);
+}
+
+namespace {
+
+FrameLook threeFrames(int outer, int middle, int inner) {
+    FrameLook look;
+    look.frames = {FrameLook::Frame{outer, {0, 0, 0, 255}}, FrameLook::Frame{middle, {255, 255, 255, 255}},
+                   FrameLook::Frame{inner, {128, 128, 128, 255}}};
+    return look;
+}
+
+}  // namespace
+
+// Why: the frames go around the picture, outer first, each as wide as set, and one of width 0
+// is left out. Input: a red 4 x 3 picture in frames of 1 black, 2 white and 1 gray; then of 2
+// black, none white and 1 gray. The truth: 12 x 11, black at the edge, white two pixels in,
+// gray next, then the picture; without the white frame, gray straight after the black.
+TEST(Frame, FramesGoAroundThePictureOuterFirst) {
+    const ImageBuffer picture = filled({4, 3}, kRed);
+    const FrameLook look = threeFrames(1, 2, 1);
+    EXPECT_EQ(framedSize(picture.size(), look), (Size{12, 11}));
+    const ImageBuffer result = framed(picture, look);
+    ASSERT_EQ(result.size(), (Size{12, 11}));
+    EXPECT_FALSE(result.hasAlpha());
+    EXPECT_EQ(at(result, 0, 5), (Rgba8{0, 0, 0, 255}));
+    EXPECT_EQ(at(result, 1, 5), kWhite);
+    EXPECT_EQ(at(result, 2, 5), kWhite);
+    EXPECT_EQ(at(result, 3, 5), (Rgba8{128, 128, 128, 255}));
+    EXPECT_EQ(at(result, 4, 5), kRed);
+    EXPECT_EQ(at(result, 11, 10), (Rgba8{0, 0, 0, 255})) << "the far corner";
+
+    const ImageBuffer noMiddle = framed(picture, threeFrames(2, 0, 1));
+    ASSERT_EQ(noMiddle.size(), (Size{10, 9}));
+    EXPECT_EQ(at(noMiddle, 1, 4), (Rgba8{0, 0, 0, 255}));
+    EXPECT_EQ(at(noMiddle, 2, 4), (Rgba8{128, 128, 128, 255}));
+    EXPECT_EQ(at(noMiddle, 3, 4), kRed);
+}
+
+// Why: a frame is an edit, and edits keep a picture's depth, so a 16-bit picture is framed in
+// 16 bits, its own pixels untouched. Input: a 16-bit 2 x 2 picture of value 1000, in a white
+// frame of 1. The truth: Rgba16; the picture still 1000; the frame 65535, the full range's white.
+TEST(Frame, AFramedPictureKeepsItsDepth) {
+    const ImageBuffer deep = ImageBuffer::create({2, 2}, PixelFormat::Rgba16);
+    for (int y = 0; y < 2; ++y) {
+        auto* p = reinterpret_cast<std::uint16_t*>(deep.row(y));
+        for (int i = 0; i < 8; ++i) {
+            p[i] = i % 4 == 3 ? 65535 : 1000;
+        }
+    }
+    FrameLook look;
+    look.frames[0] = {1, {255, 255, 255, 255}};
+    const ImageBuffer result = framed(deep, look);
+    ASSERT_EQ(result.format(), PixelFormat::Rgba16);
+    ASSERT_EQ(result.size(), (Size{4, 4}));
+    EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(result.row(1))[4], 1000);
+    EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(result.row(0))[0], 65535);
+}
+
+// Why: a gray picture stays gray in gray frames, and becomes colour only when a frame needs
+// it, as annotations do. Input: a gray 2 x 2 picture in a gray frame, then in a red one. The
+// truth: Gray8, then Bgrx8 with the frame red.
+TEST(Frame, AGrayPictureBecomesColourOnlyForAColouredFrame) {
+    const ImageBuffer gray = ImageBuffer::create({2, 2}, PixelFormat::Gray8);
+    std::memset(gray.row(0), 90, 2);
+    std::memset(gray.row(1), 90, 2);
+    FrameLook look;
+    look.frames[0] = {1, {200, 200, 200, 255}};
+    EXPECT_EQ(framed(gray, look).format(), PixelFormat::Gray8);
+    look.frames[0].colour = kRed;
+    const ImageBuffer coloured = framed(gray, look);
+    ASSERT_EQ(coloured.format(), PixelFormat::Bgrx8);
+    EXPECT_EQ(at(coloured, 0, 0), kRed);
+    EXPECT_EQ(at(coloured, 1, 1), (Rgba8{90, 90, 90, 255}));
+}
+
+// Why: room is kept for the shadow so none of it is cut off, and on transparency the result
+// keeps alpha only around the picture, while a picture with alpha is put on white, as a frame
+// stands for a print. Input: a 20 x 20 red picture in a black frame of 2, shadow 6 (reach 6
+// right and below, faint edge (6 + 2) / 3 = 2 left and above), on white, then on transparency;
+// and a fully transparent picture in the same frame without a shadow. The truth: 32 x 32 with
+// the picture at 4, 4; on white no alpha; on transparency the corner clear, the shadow black
+// and partly opaque, the frame and picture opaque; the transparent picture white and opaque.
+TEST(Frame, AShadowGetsRoomAndOnlyItKeepsAlpha) {
+    const ImageBuffer picture = filled({20, 20}, kRed);
+    FrameLook look;
+    look.frames[0] = {2, {0, 0, 0, 255}};
+    look.shadow = 6;
+    EXPECT_EQ(framedSize(picture.size(), look), (Size{32, 32}));
+    EXPECT_EQ(framedPicture(picture.size(), look).x, 4);
+    const ImageBuffer onWhite = framed(picture, look);
+    EXPECT_FALSE(onWhite.hasAlpha());
+    EXPECT_EQ(at(onWhite, 4, 4), kRed);
+    EXPECT_LT(at(onWhite, 27, 15).g, 200) << "the shadow, right of the frame";
+
+    look.transparent = true;
+    const ImageBuffer clear = framed(picture, look);
+    ASSERT_TRUE(clear.hasAlpha());
+    EXPECT_EQ(at(clear, 0, 31).a, 0);
+    EXPECT_GT(at(clear, 27, 15).a, 40);
+    EXPECT_EQ(at(clear, 27, 15).r, 0);
+    EXPECT_EQ(at(clear, 2, 15), (Rgba8{0, 0, 0, 255})) << "the frame";
+    EXPECT_EQ(at(clear, 10, 10), kRed);
+
+    FrameLook plain;
+    plain.frames[0] = {2, {0, 0, 0, 255}};
+    const ImageBuffer cutOut = framed(filled({4, 4}, Rgba8{200, 30, 20, 0}, true), plain);
+    EXPECT_FALSE(cutOut.hasAlpha());
+    EXPECT_EQ(at(cutOut, 3, 3), kWhite);
 }

@@ -7,6 +7,7 @@
 
 #include "core/coverage.h"
 #include "core/image_layer.h"
+#include "core/image_ops.h"
 
 namespace iv {
 
@@ -82,6 +83,119 @@ ImageBuffer composeCanvas(Size size, std::span<const PlacedPicture> pictures, co
         blendLayerInto(canvas, premultiplied(picture.pixels), picture.x, picture.y, LayerBlend::Over, range);
     }
     return canvas;
+}
+
+namespace {
+
+int frameWidth(const FrameLook& look) {
+    int total = 0;
+    for (const FrameLook::Frame& frame : look.frames) {
+        total += std::max(0, frame.width);
+    }
+    return total;
+}
+
+// How far the shadow's faint edge reaches left and above.
+int shadowLead(const FrameLook& look) { return look.shadow > 0 ? (look.shadow + 2) / 3 : 0; }
+
+}  // namespace
+
+Size framedSize(Size picture, const FrameLook& look) {
+    const int around = 2 * frameWidth(look) + shadowLead(look) + std::max(0, look.shadow);
+    return {picture.width + around, picture.height + around};
+}
+
+PixelRect framedPicture(Size picture, const FrameLook& look) {
+    const int at = shadowLead(look) + frameWidth(look);
+    return {at, at, picture.width, picture.height};
+}
+
+bool framedInColour(const FrameLook& look) {
+    if (look.shadow > 0 && look.transparent) {
+        return true;
+    }
+    return std::ranges::any_of(look.frames, [](const FrameLook::Frame& frame) {
+        return frame.width > 0 && (frame.colour.r != frame.colour.g || frame.colour.g != frame.colour.b);
+    });
+}
+
+bool framedWithAlpha(const FrameLook& look) { return look.shadow > 0 && look.transparent; }
+
+ImageBuffer framed(const ImageBuffer& picture, const FrameLook& look) {
+    ImageBuffer inside = flattened(picture, 1.0);
+    if (framedInColour(look)) {
+        inside = toColour(inside);
+    }
+    const Size size = framedSize(inside.size(), look);
+    const PixelRect hole = framedPicture(inside.size(), look);
+    if (size == inside.size()) {
+        return inside;
+    }
+
+    // The frames, as one opaque picture with the hole in the middle, which composeCanvas puts
+    // over its shadow on the background.
+    const int lead = shadowLead(look);
+    const Size outer{size.width - lead - std::max(0, look.shadow), size.height - lead - std::max(0, look.shadow)};
+    const ImageBuffer frames = ImageBuffer::create(outer, PixelFormat::Bgrx8);
+    for (int y = 0; y < outer.height; ++y) {
+        auto* out = reinterpret_cast<std::uint8_t*>(frames.row(y));
+        for (int x = 0; x < outer.width; ++x, out += 4) {
+            // Which frame the pixel is in: by how far it is from the nearest edge.
+            const int from = std::min({x, y, outer.width - 1 - x, outer.height - 1 - y});
+            Rgba8 colour{0, 0, 0, 255};
+            int edge = 0;
+            for (const FrameLook::Frame& frame : look.frames) {
+                edge += std::max(0, frame.width);
+                if (from < edge) {
+                    colour = frame.colour;
+                    break;
+                }
+            }
+            out[0] = colour.b;
+            out[1] = colour.g;
+            out[2] = colour.r;
+            out[3] = 255;
+        }
+    }
+    CanvasLook canvasLook;
+    canvasLook.shadow = look.shadow;
+    if (look.transparent) {
+        canvasLook.background.reset();
+    }
+    const std::array placed{PlacedPicture{frames, lead, lead}};
+    const ImageBuffer surround = composeCanvas(size, placed, canvasLook);
+
+    // As a layer, clear where the picture goes, laid over the picture in its own format.
+    ImageBuffer layer = premultiplied(surround);
+    for (int y = hole.y; y < hole.y + hole.height; ++y) {
+        std::memset(reinterpret_cast<std::uint8_t*>(layer.row(y)) + static_cast<std::ptrdiff_t>(hole.x) * 4, 0,
+                    static_cast<std::size_t>(hole.width) * 4);
+    }
+    const ImageBuffer result = ImageBuffer::create(size, inside.format()).withAlpha(framedWithAlpha(look));
+    const auto pixelBytes = static_cast<std::size_t>(bytesPerPixel(inside.format()));
+    for (int y = 0; y < size.height; ++y) {
+        std::memset(result.row(y), 0, static_cast<std::size_t>(size.width) * pixelBytes);
+    }
+    for (int y = 0; y < hole.height; ++y) {
+        auto* out = reinterpret_cast<std::uint8_t*>(result.row(hole.y + y)) + static_cast<std::size_t>(hole.x) * pixelBytes;
+        std::memcpy(out, inside.row(y), static_cast<std::size_t>(hole.width) * pixelBytes);
+    }
+    // Opaque, as pixels without alpha are kept too; with alpha, clear around the picture, for
+    // the background and shadow to fill.
+    if (!isGray(result.format())) {
+        for (int y = 0; y < size.height; ++y) {
+            for (int x = 0; x < size.width; ++x) {
+                const bool shown = !result.hasAlpha() || (x >= hole.x && x < hole.x + hole.width && y >= hole.y && y < hole.y + hole.height);
+                switch (result.format()) {
+                case PixelFormat::Bgrx8: reinterpret_cast<std::uint8_t*>(result.row(y))[x * 4 + 3] = shown ? 255 : 0; break;
+                case PixelFormat::Rgba16: reinterpret_cast<std::uint16_t*>(result.row(y))[x * 4 + 3] = shown ? 65535 : 0; break;
+                default: reinterpret_cast<float*>(result.row(y))[x * 4 + 3] = shown ? 1.0F : 0.0F; break;
+                }
+            }
+        }
+    }
+    blendLayerInto(result, layer, 0, 0, LayerBlend::Over, fullRange(result.format()));
+    return result;
 }
 
 }  // namespace iv

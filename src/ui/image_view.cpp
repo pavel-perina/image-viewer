@@ -598,7 +598,7 @@ struct ImageView::Impl {
             }
         }
         // The range is of what is shown, which for now is the picture flattened.
-        std::ranges::transform(tiles, tiles.begin(), flattened);
+        std::ranges::transform(tiles, tiles.begin(), [](const ImageBuffer& tile) { return flattened(tile); });
         loaded.autoRange = autoRange(tiles);
         displayTransform(info, ColorSettings::target());  // cached, so showing the page does not wait for it
         return loaded;
