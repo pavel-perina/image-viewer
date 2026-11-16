@@ -72,6 +72,7 @@ QtObject {
     readonly property color onImageBright: "#f0f0f0"
     readonly property color onImageShade: "#404040"
     readonly property color swatchFrame: "#606060"  // neutral, so it does not tint the swatch
+    readonly property color rampHatch: "#73000000"  // over colours sRGB cannot show, on a slider
     readonly property color scrollHandle: "#a6ffffff"      // the bars over the image
     readonly property color scrollHandleEdge: "#99000000"
 

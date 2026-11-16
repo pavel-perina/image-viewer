@@ -1042,7 +1042,7 @@ Left out for now:
 * Folders in the grid too, each drawn with a few thumbnails of the images inside it.
 * Options to show more than images: video files, raw files, and all files.
 
-## Image strip builder (planned, not built)
+## Image strip builder
 
 Several pictures side by side in one, for a web page or a manual: a contact sheet of one row
 or one column.
@@ -1113,8 +1113,8 @@ a shared component, before a second copy; the dialog, its list and saving.
   and the size it gives. OK applies it as an edit, seen at once and undone as any other. At
   first outer 1 px dark gray, middle 12 px white, inner 1 px gray, no shadow, then what was
   used last. No preview inside the dialog, as the image shows it once applied.
-* A colour is a `ColorField`: hex typed, with a swatch of it. It is to get a caret that opens
-  the colour chooser once there is one, and to replace the annotation panel's hex field.
+* A colour is a `ColorField`: hex typed, with a swatch of it; clicking the swatch opens the
+  colour chooser. It is to replace the annotation panel's hex field.
 
 ## Batch processing (planned, not built)
 
@@ -1123,7 +1123,7 @@ a shared component, before a second copy; the dialog, its list and saving.
   suffix, a counter or the date and time. Perhaps kept as recipes.
 * It can only offer the processing the program has.
 
-## Colour chooser (being built)
+## Colour chooser
 
 * One chooser, `ColorChooser`, an item any panel or dialog can hold, and `ColorChooserDialog`
   around it where there is no room. Annotations use it, and the frame panel will.
@@ -1136,10 +1136,17 @@ a shared component, before a second copy; the dialog, its list and saving.
   Colours sRGB cannot show are hatched on the tracks; set there, chroma is reduced until it
   fits, keeping lightness and hue, as the palette does (`fromOklch`). Chroma goes to 0.37,
   a little past the most sRGB has.
-* A gray keeps the hue last set, so that its hue slider does not jump to 0.
+* A gray keeps the hue last set, so that its hue slider does not jump to 0. Lightness,
+  chroma and hue stay as set even past sRGB, the colour then having less chroma, so a slider
+  stays where it was dragged. `ColorChoice` (`ui/color_choice_model.h`) holds this, and
+  `ColorRamp` draws a track, hatched in a colour from `Theme`.
+* It opens by clicking the swatch of a `ColorField`. No caret beside the field, which would
+  be clutter on every colour; a double click stays for selecting the text, as in any field.
 * The slider with its colour track is a QML component of its own, `GradientSlider`, which
   draws the colours C++ gives it, so other panels can use it too. The annotation swatches stay,
-  as presets.
+  as presets: `ColorSwatches`, shared by the chooser and the annotation panel, whose hex field
+  is now a `ColorField`. The chooser shows the colour before and after, and says when sRGB
+  cannot show what the sliders ask, keeping its room so the dialog does not change height.
 
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files

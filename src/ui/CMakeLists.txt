@@ -37,6 +37,10 @@ qt_add_library(iv_ui STATIC
     key_names.cpp
     key_names.h
     histogram_handle.h
+    color_choice_model.cpp
+    color_choice_model.h
+    color_ramp.cpp
+    color_ramp.h
     histogram_view.cpp
     histogram_view.h
     image_overlay.cpp
@@ -81,7 +85,10 @@ qt_add_qml_module(iv_ui
         qml/AppMenu.qml
         qml/AppMenuItem.qml
         qml/AppScrollBar.qml
+        qml/ColorChooser.qml
+        qml/ColorChooserDialog.qml
         qml/ColorField.qml
+        qml/ColorSwatches.qml
         qml/BarButton.qml
         qml/BrowserPage.qml
         qml/Caret.qml
@@ -96,6 +103,7 @@ qt_add_qml_module(iv_ui
         qml/FileListView.qml
         qml/FolderTree.qml
         qml/FrameDialog.qml
+        qml/GradientSlider.qml
         qml/IconButton.qml
         qml/ImageScrollBars.qml
         qml/ImageSurface.qml
