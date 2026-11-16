@@ -149,3 +149,81 @@ TEST(Layer, PixelatingAveragesBlocksCountedFromTheRectangle) {
     EXPECT_EQ(at<std::uint8_t>(whole, 0, 0, 0, 1), 50);
     EXPECT_EQ(at<std::uint8_t>(whole, 3, 1, 0, 1), 50);
 }
+
+// Why: annotating a transparent picture must not lose its transparency, and what is drawn
+// must show there as it would on paper. Input: a 4 x 1 picture of transparent blue (0, 0,
+// 255, alpha 0) beside opaque gray, at 8 bits. The truth, worked out by the compositing
+// formulas: opaque red drawn over the transparent pixel makes it opaque red; half-opaque red
+// (stored 128, alpha 128) makes it red with alpha 128, the hidden blue not mixed in; a
+// yellow marker (multiply) over transparency shows plain yellow; over the opaque gray 200 it
+// darkens as on an opaque picture: blue 200 * 0 = 0, red and green stay 200.
+TEST(Layer, DrawsOnATransparentPictureAndFillsItIn) {
+    ImageBuffer image = ImageBuffer::create({4, 1}, PixelFormat::Bgrx8);
+    const std::uint8_t pixels[16] = {255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 200, 200, 200, 255};
+    std::memcpy(image.row(0), pixels, 16);
+    image = image.withAlpha(true);
+    const DisplayRange range = fullRange(image.format());
+
+    const ImageBuffer opaque = blendLayer(image, layerOf({1, 1}, 0, 0, 255, 255), 0, 0, LayerBlend::Over, range);
+    EXPECT_TRUE(opaque.hasAlpha());
+    EXPECT_EQ(at<std::uint8_t>(opaque, 0, 0, 2, 4), 255);
+    EXPECT_EQ(at<std::uint8_t>(opaque, 0, 0, 0, 4), 0) << "no hidden blue";
+    EXPECT_EQ(at<std::uint8_t>(opaque, 0, 0, 3, 4), 255);
+    EXPECT_EQ(at<std::uint8_t>(opaque, 1, 0, 3, 4), 0) << "outside the layer it stays transparent";
+
+    const ImageBuffer half = blendLayer(image, layerOf({1, 1}, 0, 0, 128, 128), 0, 0, LayerBlend::Over, range);
+    EXPECT_EQ(at<std::uint8_t>(half, 0, 0, 2, 4), 255);
+    EXPECT_EQ(at<std::uint8_t>(half, 0, 0, 0, 4), 0);
+    EXPECT_EQ(at<std::uint8_t>(half, 0, 0, 3, 4), 128);
+
+    // Yellow: blue 0, green 255, red 255, opaque.
+    const ImageBuffer marked = blendLayer(image, layerOf({4, 1}, 0, 255, 255, 255), 0, 0, LayerBlend::Multiply, range);
+    EXPECT_EQ(at<std::uint8_t>(marked, 1, 0, 0, 4), 0);
+    EXPECT_EQ(at<std::uint8_t>(marked, 1, 0, 1, 4), 255);
+    EXPECT_EQ(at<std::uint8_t>(marked, 1, 0, 2, 4), 255);
+    EXPECT_EQ(at<std::uint8_t>(marked, 1, 0, 3, 4), 255);
+    EXPECT_EQ(at<std::uint8_t>(marked, 3, 0, 0, 4), 0);
+    EXPECT_EQ(at<std::uint8_t>(marked, 3, 0, 1, 4), 200);
+    EXPECT_EQ(at<std::uint8_t>(marked, 3, 0, 2, 4), 200);
+}
+
+// Why: on an opaque picture with alpha the result must be what the picture without alpha
+// gets, so turning alpha on changes nothing where nothing was transparent. Input: gray 100,
+// opaque, under half-opaque white and under a half-opaque marker, at 16 bits too. The truth
+// is the same blend on the same pixels marked as having no alpha.
+TEST(Layer, AnOpaquePictureWithAlphaGetsWhatOneWithoutDoes) {
+    for (const LayerBlend blend : {LayerBlend::Over, LayerBlend::Multiply}) {
+        const ImageBuffer eight = filled<std::uint8_t>({2, 1}, PixelFormat::Bgrx8, {100, 100, 100, 255});
+        const ImageBuffer layer = layerOf({2, 1}, 30, 128, 128, 128);
+        const ImageBuffer plain = blendLayer(eight, layer, 0, 0, blend, fullRange(eight.format()));
+        const ImageBuffer withAlpha = blendLayer(eight.withAlpha(true), layer, 0, 0, blend, fullRange(eight.format()));
+        for (int c = 0; c < 4; ++c) {
+            EXPECT_NEAR(at<std::uint8_t>(withAlpha, 0, 0, c, 4), at<std::uint8_t>(plain, 0, 0, c, 4), 1) << c;
+        }
+        const ImageBuffer deep = filled<std::uint16_t>({2, 1}, PixelFormat::Rgba16, {25700, 25700, 25700, 65535});
+        const ImageBuffer plainDeep = blendLayer(deep, layer, 0, 0, blend, fullRange(deep.format()));
+        const ImageBuffer alphaDeep = blendLayer(deep.withAlpha(true), layer, 0, 0, blend, fullRange(deep.format()));
+        for (int c = 0; c < 3; ++c) {
+            EXPECT_NEAR(at<std::uint16_t>(alphaDeep, 0, 0, c, 4), at<std::uint16_t>(plainDeep, 0, 0, c, 4), 2) << c;
+        }
+        EXPECT_EQ(at<std::uint16_t>(alphaDeep, 0, 0, 3, 4), 65535);
+    }
+}
+
+// Why: pixelating hides what was there by averaging it, and the colour stored under
+// transparency must not come into the average. Input: one 2 x 1 block of opaque red beside
+// transparent green. The truth: the block is red, with alpha the average, 128 (255 / 2,
+// rounded).
+TEST(Layer, PixelatingWeighsColoursByAlpha) {
+    ImageBuffer image = ImageBuffer::create({2, 1}, PixelFormat::Bgrx8);
+    const std::uint8_t pixels[8] = {0, 0, 255, 255, 0, 255, 0, 0};
+    std::memcpy(image.row(0), pixels, 8);
+    image = image.withAlpha(true);
+    const ImageBuffer result = pixelate(image, {0, 0, 2, 1}, 2);
+    EXPECT_TRUE(result.hasAlpha());
+    for (int x = 0; x < 2; ++x) {
+        EXPECT_EQ(at<std::uint8_t>(result, x, 0, 2, 4), 255);
+        EXPECT_EQ(at<std::uint8_t>(result, x, 0, 1, 4), 0);
+        EXPECT_EQ(at<std::uint8_t>(result, x, 0, 3, 4), 128);
+    }
+}

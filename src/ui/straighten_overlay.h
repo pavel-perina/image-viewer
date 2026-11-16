@@ -29,6 +29,8 @@ class StraightenOverlay : public ImageOverlay {
     Q_PROPERTY(double yaw READ yaw WRITE setYaw NOTIFY tiltChanged)
     Q_PROPERTY(double focal35mm READ focal35mm WRITE setFocal35mm NOTIFY tiltChanged)
     Q_PROPERTY(bool keepRatio READ keepRatio WRITE setKeepRatio NOTIFY tiltChanged)
+    // Off keeps the whole turned picture, with transparent corners.
+    Q_PROPERTY(bool crop READ crop WRITE setCrop NOTIFY tiltChanged)
     Q_PROPERTY(bool showResult READ showResult WRITE setShowResult NOTIFY showResultChanged)
     // What the lines meant to be vertical and horizontal are drawn in.
     Q_PROPERTY(QColor verticalColor MEMBER m_verticalColor NOTIFY coloursChanged)
@@ -52,6 +54,8 @@ public:
     void setFocal35mm(double value);
     bool keepRatio() const { return m_keepRatio; }
     void setKeepRatio(bool value);
+    bool crop() const { return m_crop; }
+    void setCrop(bool value);
     bool showResult() const { return m_showResult; }
     void setShowResult(bool value);
 
@@ -93,6 +97,7 @@ private:
     Tilt m_tilt;
     double m_focal35mm = 0;
     bool m_keepRatio = true;
+    bool m_crop = true;
     bool m_showResult = false;
     QColor m_verticalColor{79, 195, 247};
     QColor m_horizontalColor{255, 183, 77};

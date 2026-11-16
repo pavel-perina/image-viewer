@@ -78,7 +78,8 @@ Result<ImageBuffer> makeThumbnail(const std::filesystem::path& path, int maxEdge
         const double scale = std::min(1.0, static_cast<double>(maxEdge) / std::max(level->width(), level->height()));
         const Size size{std::max(1, static_cast<int>(std::lround(level->width() * scale))),
                         std::max(1, static_cast<int>(std::lround(level->height() * scale)))};
-        const ImageBuffer small = resize(*level, size, stop);
+        // A thumbnail shows transparency as mid gray, so that its cache keeps opaque pictures.
+        const ImageBuffer small = resize(flattened(*level), size, stop);
         if (stop.stop_requested()) {
             return std::unexpected("cancelled");
         }

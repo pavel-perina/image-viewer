@@ -192,10 +192,7 @@ Result<ImageBuffer> decode(const std::vector<std::uint8_t>& bytes, PixelFormat f
     if (!reader.readPixels(image, stop, stopped)) {
         return std::unexpected(stopped ? "cancelled" : reader.error());
     }
-    if (hasAlpha) {
-        flattenAlpha(image);
-    }
-    return image;
+    return image.withAlpha(hasAlpha);
 }
 
 // In the order the PNG specification gives them precedence.
@@ -250,6 +247,7 @@ Result<std::shared_ptr<ImageSource>> openPngSource(std::vector<std::uint8_t> byt
     SubimageInfo info;
     info.format = gray && !hasAlpha ? (depth < 16 ? PixelFormat::Gray8 : PixelFormat::Gray16)
                                     : depth < 16 ? PixelFormat::Bgrx8 : PixelFormat::Rgba16;
+    info.alpha = hasAlpha;
     if (!fitsInMemoryLimit(size, info.format)) {
         return std::unexpected("image is too large");
     }

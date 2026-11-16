@@ -36,6 +36,7 @@
 #include "core/exif.h"
 #include "core/xmp.h"
 #include "core/file_io.h"
+#include "core/image_ops.h"
 
 namespace iv {
 
@@ -43,11 +44,14 @@ namespace {
 
 enum class Depth { Eight, Sixteen, Float };
 
-// Interleaved samples in rows without padding, in native byte order: gray or R, G, B.
+// Interleaved samples in rows without padding, in native byte order: gray or R, G, B, and
+// then alpha if the picture has it. The colours are not multiplied by alpha.
 struct Packed {
     int width = 0;
     int height = 0;
-    int channels = 3;  // 1 or 3
+    int colours = 3;     // 1 for gray, or 3
+    bool alpha = false;  // one more channel, after the colours
+    int channels = 3;    // both together
     int bits = 8;      // 8, 16, or 32 for float
     std::vector<std::uint8_t> bytes;
 
@@ -92,13 +96,16 @@ std::string profileSpace(const std::vector<std::uint8_t>& icc) {
 }
 
 // Converts the image to what a format can hold. With grayAllowed, gray images keep one channel.
+// Alpha is kept if the image has it, so a format without takes the image flattened.
 Packed pack(const ImageBuffer& image, Depth deepest, bool grayAllowed) {
     const PixelFormat format = image.format();
     Packed out;
     out.width = image.width();
     out.height = image.height();
     const bool gray = isGrayFormat(format) || (grayAllowed && allGray(image));
-    out.channels = gray && grayAllowed ? 1 : 3;
+    out.colours = gray && grayAllowed ? 1 : 3;
+    out.alpha = image.hasAlpha();
+    out.channels = out.colours + (out.alpha ? 1 : 0);
     switch (format) {
     case PixelFormat::Bgrx8:
     case PixelFormat::Gray8:
@@ -124,7 +131,10 @@ Packed pack(const ImageBuffer& image, Depth deepest, bool grayAllowed) {
                 // Which source channel: B, G, R order for 8-bit, the only one for gray.
                 int source = isGrayFormat(format) ? 0 : c;
                 if (format == PixelFormat::Bgrx8) {
-                    source = out.channels == 1 ? 1 : 2 - c;
+                    source = out.colours == 1 ? 1 : 2 - c;
+                }
+                if (c == out.colours) {
+                    source = 3;  // alpha, in every format that has it
                 }
                 const std::size_t at = static_cast<std::size_t>(x) * sourceChannels + static_cast<std::size_t>(source);
                 double value = 0;  // 0 to 1, or as stored for float
@@ -283,10 +293,10 @@ public:
         m_cinfo.image_width = static_cast<JDIMENSION>(pixels.width);
         m_cinfo.image_height = static_cast<JDIMENSION>(pixels.height);
         m_cinfo.input_components = pixels.channels;
-        m_cinfo.in_color_space = pixels.channels == 1 ? JCS_GRAYSCALE : JCS_RGB;
+        m_cinfo.in_color_space = pixels.colours == 1 ? JCS_GRAYSCALE : JCS_RGB;
         jpeg_set_defaults(&m_cinfo);
         jpeg_set_quality(&m_cinfo, std::clamp(options.quality, 1, 100), TRUE);
-        if (pixels.channels == 3) {
+        if (pixels.colours == 3) {
             m_cinfo.comp_info[0].h_samp_factor = options.chroma == ChromaSubsampling::Full ? 1 : 2;
             m_cinfo.comp_info[0].v_samp_factor = options.chroma == ChromaSubsampling::Both ? 2 : 1;
         }
@@ -326,7 +336,7 @@ Result<std::vector<std::uint8_t>> encodeJpeg(const ImageBuffer& image, const Wri
                                              const JpegWriteOptions& options) {
     const GrayChoice gray = grayChoiceFor(metadata);
     const Packed pixels = pack(image, Depth::Eight, gray.allowed);
-    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
+    const std::vector<std::uint8_t>& icc = pixels.colours == 1 ? gray.profile : metadata.iccProfile;
     // A marker holds at most 65533 bytes. What does not fit is left out; a longer XMP packet
     // would need the extended XMP split over several markers.
     std::vector<std::uint8_t> app1[2];
@@ -383,10 +393,11 @@ bool writePng(PngWriter& writer, const Packed& pixels, const PngWriteOptions& op
     png_set_write_fn(png, &writer, onPngWrite, onPngFlush);
     png_set_compression_level(png, std::clamp(options.compressionLevel, 0, 9));
     png_set_IHDR(png, info, static_cast<png_uint_32>(pixels.width), static_cast<png_uint_32>(pixels.height), pixels.bits,
-                 pixels.channels == 1 ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+                 (pixels.colours == 1 ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB) | (pixels.alpha ? PNG_COLOR_MASK_ALPHA : 0),
+                 PNG_INTERLACE_NONE,
                  PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
     // A profile for the wrong colour space would be rejected, so only a matching one goes in.
-    const bool profileFits = profileSpace(icc) == (pixels.channels == 1 ? "GRAY" : "RGB ");
+    const bool profileFits = profileSpace(icc) == (pixels.colours == 1 ? "GRAY" : "RGB ");
     if (!icc.empty() && profileFits) {
         png_set_iCCP(png, info, "ICC Profile", PNG_COMPRESSION_TYPE_BASE, icc.data(), static_cast<png_uint_32>(icc.size()));
     } else if (icc.empty()) {
@@ -422,7 +433,7 @@ Result<std::vector<std::uint8_t>> encodePng(const ImageBuffer& image, const Writ
                                             const PngWriteOptions& options) {
     const GrayChoice gray = grayChoiceFor(metadata);
     const Packed pixels = pack(image, Depth::Sixteen, gray.allowed);
-    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
+    const std::vector<std::uint8_t>& icc = pixels.colours == 1 ? gray.profile : metadata.iccProfile;
     PngWriter writer;
     std::vector<char> xmp;
     if (const auto packet = xmpFor(metadata); !packet.empty()) {
@@ -489,7 +500,7 @@ Result<std::vector<std::uint8_t>> encodeTiff(const ImageBuffer& image, const Wri
                                              const TiffWriteOptions& options) {
     const GrayChoice gray = grayChoiceFor(metadata);
     const Packed pixels = pack(image, Depth::Float, gray.allowed);
-    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
+    const std::vector<std::uint8_t>& icc = pixels.colours == 1 ? gray.profile : metadata.iccProfile;
     MemoryFile file;
     TIFFOpenOptions* openOptions = TIFFOpenOptionsAlloc();
     TIFFOpenOptionsSetErrorHandlerExtR(openOptions, captureTiffError, &file);
@@ -507,7 +518,7 @@ Result<std::vector<std::uint8_t>> encodeTiff(const ImageBuffer& image, const Wri
     TIFFSetField(tiff, TIFFTAG_SAMPLESPERPIXEL, static_cast<std::uint16_t>(pixels.channels));
     TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, static_cast<std::uint16_t>(pixels.bits));
     TIFFSetField(tiff, TIFFTAG_SAMPLEFORMAT, isFloat ? SAMPLEFORMAT_IEEEFP : SAMPLEFORMAT_UINT);
-    TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, pixels.channels == 1 ? PHOTOMETRIC_MINISBLACK : PHOTOMETRIC_RGB);
+    TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, pixels.colours == 1 ? PHOTOMETRIC_MINISBLACK : PHOTOMETRIC_RGB);
     TIFFSetField(tiff, TIFFTAG_PLANARCONFIG, PLANARCONFIG_CONTIG);
     TIFFSetField(tiff, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT);
     switch (options.compression) {
@@ -522,7 +533,7 @@ Result<std::vector<std::uint8_t>> encodeTiff(const ImageBuffer& image, const Wri
         break;
     }
     TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(tiff, 0));
-    if (!icc.empty() && profileSpace(icc) == (pixels.channels == 1 ? "GRAY" : "RGB ")) {
+    if (!icc.empty() && profileSpace(icc) == (pixels.colours == 1 ? "GRAY" : "RGB ")) {
         TIFFSetField(tiff, TIFFTAG_ICCPROFILE, static_cast<std::uint32_t>(icc.size()), icc.data());
     }
     if (const auto xmp = xmpFor(metadata); !xmp.empty()) {
@@ -558,6 +569,9 @@ Result<std::vector<std::uint8_t>> encodeWebp(const ImageBuffer& image, const Wri
     config.quality = static_cast<float>(std::clamp(options.quality, 0, 100));
     config.method = std::clamp(options.effort, 0, 6);
     config.thread_level = 1;
+    // Lossless keeps the colours under full transparency too, which the encoder otherwise
+    // replaces with whatever compresses best.
+    config.exact = options.lossless ? 1 : 0;
     picture.use_argb = options.lossless ? 1 : 0;
     picture.width = pixels.width;
     picture.height = pixels.height;
@@ -565,7 +579,8 @@ Result<std::vector<std::uint8_t>> encodeWebp(const ImageBuffer& image, const Wri
     WebPMemoryWriterInit(&writer);
     picture.writer = WebPMemoryWrite;
     picture.custom_ptr = &writer;
-    const bool encoded = WebPPictureImportRGB(&picture, pixels.bytes.data(), static_cast<int>(pixels.rowBytes())) &&
+    const auto import = pixels.alpha ? WebPPictureImportRGBA : WebPPictureImportRGB;
+    const bool encoded = import(&picture, pixels.bytes.data(), static_cast<int>(pixels.rowBytes())) &&
                          WebPEncode(&config, &picture);
     const WebPEncodingError error = picture.error_code;
     WebPPictureFree(&picture);
@@ -655,7 +670,7 @@ Result<std::vector<std::uint8_t>> encodeAvif(const ImageBuffer& image, const Wri
 
     avifRGBImage rgb;
     avifRGBImageSetDefaults(&rgb, avif);
-    rgb.format = AVIF_RGB_FORMAT_RGB;
+    rgb.format = pixels.alpha ? AVIF_RGB_FORMAT_RGBA : AVIF_RGB_FORMAT_RGB;
     rgb.depth = static_cast<std::uint32_t>(pixels.bits);
     rgb.pixels = pixels.bytes.data();
     rgb.rowBytes = static_cast<std::uint32_t>(pixels.rowBytes());
@@ -672,6 +687,8 @@ Result<std::vector<std::uint8_t>> encodeAvif(const ImageBuffer& image, const Wri
             error = "out of memory";
         } else {
             encoder->quality = std::clamp(options.quality, 0, 100);
+            // Alpha is small beside the colours, and its losses show as fringes.
+            encoder->qualityAlpha = AVIF_QUALITY_LOSSLESS;
             encoder->speed = std::clamp(options.speed, 0, 10);
             encoder->maxThreads = static_cast<int>(std::clamp(std::thread::hardware_concurrency(), 1u, 8u));
             avifRWData output = AVIF_DATA_EMPTY;
@@ -699,7 +716,7 @@ Result<std::vector<std::uint8_t>> encodeJxl(const ImageBuffer& image, const Writ
                                             const JxlWriteOptions& options) {
     const GrayChoice gray = grayChoiceFor(metadata);
     const Packed pixels = pack(image, Depth::Float, gray.allowed);
-    const std::vector<std::uint8_t>& icc = pixels.channels == 1 ? gray.profile : metadata.iccProfile;
+    const std::vector<std::uint8_t>& icc = pixels.colours == 1 ? gray.profile : metadata.iccProfile;
     const auto encoder = JxlEncoderMake(nullptr);
     const auto runner = JxlThreadParallelRunnerMake(nullptr, std::clamp(std::thread::hardware_concurrency(), 1u, 8u));
     if (!encoder || !runner ||
@@ -713,20 +730,26 @@ Result<std::vector<std::uint8_t>> encodeJxl(const ImageBuffer& image, const Writ
     info.ysize = static_cast<std::uint32_t>(pixels.height);
     info.bits_per_sample = static_cast<std::uint32_t>(pixels.bits);
     info.exponent_bits_per_sample = pixels.bits == 32 ? 8 : 0;
-    info.num_color_channels = static_cast<std::uint32_t>(pixels.channels);
+    info.num_color_channels = static_cast<std::uint32_t>(pixels.colours);
+    if (pixels.alpha) {
+        info.num_extra_channels = 1;
+        info.alpha_bits = info.bits_per_sample;
+        info.alpha_exponent_bits = info.exponent_bits_per_sample;
+        info.alpha_premultiplied = JXL_FALSE;
+    }
     // Lossless keeps the pixels in their own colour space instead of the encoder's own.
     info.uses_original_profile = options.lossless ? JXL_TRUE : JXL_FALSE;
     if (JxlEncoderSetBasicInfo(encoder.get(), &info) != JXL_ENC_SUCCESS) {
         return std::unexpected("cannot write JPEG XL of this size");
     }
-    const bool profileFits = profileSpace(icc) == (pixels.channels == 1 ? "GRAY" : "RGB ");
+    const bool profileFits = profileSpace(icc) == (pixels.colours == 1 ? "GRAY" : "RGB ");
     if (!icc.empty() && profileFits) {
         if (JxlEncoderSetICCProfile(encoder.get(), icc.data(), icc.size()) != JXL_ENC_SUCCESS) {
             return std::unexpected("cannot write JPEG XL: the colour profile is not usable");
         }
     } else {
         JxlColorEncoding color;
-        JxlColorEncodingSetToSRGB(&color, pixels.channels == 1 ? JXL_TRUE : JXL_FALSE);
+        JxlColorEncodingSetToSRGB(&color, pixels.colours == 1 ? JXL_TRUE : JXL_FALSE);
         JxlEncoderSetColorEncoding(encoder.get(), &color);
     }
 
@@ -754,6 +777,8 @@ Result<std::vector<std::uint8_t>> encodeJxl(const ImageBuffer& image, const Writ
     JxlEncoderFrameSettingsSetOption(settings, JXL_ENC_FRAME_SETTING_EFFORT, std::clamp(options.effort, 1, 9));
     if (options.lossless) {
         JxlEncoderSetFrameLossless(settings, JXL_TRUE);
+        // The colours under full transparency are part of the picture, and stay.
+        JxlEncoderFrameSettingsSetOption(settings, JXL_ENC_FRAME_SETTING_KEEP_INVISIBLE, 1);
     } else {
         JxlEncoderSetFrameDistance(settings, std::clamp(options.distance, 0.1F, 25.0F));
     }
@@ -801,8 +826,9 @@ Result<std::vector<std::uint8_t>> encodeImage(const ImageBuffer& image, const Wr
     try {
         return std::visit(
             Overloaded{
-                [&](const JpegWriteOptions& o) { return encodeJpeg(image, metadata, o); },
-                [&](const TiffWriteOptions& o) { return encodeTiff(image, metadata, o); },
+                // These two hold no alpha, or none that is written yet.
+                [&](const JpegWriteOptions& o) { return encodeJpeg(flattened(image), metadata, o); },
+                [&](const TiffWriteOptions& o) { return encodeTiff(flattened(image), metadata, o); },
 #ifdef IV_HAVE_PNG
                 [&](const PngWriteOptions& o) { return encodePng(image, metadata, o); },
 #endif
@@ -833,6 +859,10 @@ Result<void> writeImage(const std::filesystem::path& path, const ImageBuffer& im
         return std::unexpected(bytes.error());
     }
     return writeFileSafely(path, *bytes, replace);
+}
+
+bool holdsAlpha(const WriteOptions& options) {
+    return !std::holds_alternative<JpegWriteOptions>(options) && !std::holds_alternative<TiffWriteOptions>(options);
 }
 
 bool canWrite(const WriteOptions& options) {

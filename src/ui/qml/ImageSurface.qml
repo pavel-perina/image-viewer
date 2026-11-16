@@ -48,6 +48,8 @@ Item {
                     clip: true
                     resampling: surface.sharp
                     keepAutoContrast: ViewSettings.keepAutoContrast
+                    backdropFirst: ViewSettings.backdropFirst
+                    backdropSecond: ViewSettings.backdropSecond
                 }
 
                 Loader {

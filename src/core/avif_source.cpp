@@ -94,10 +94,9 @@ Result<ImageBuffer> decode(const std::vector<std::uint8_t>& bytes, PixelFormat f
     if (avifImageYUVToRGB(image, &rgb) != AVIF_RESULT_OK) {
         return std::unexpected("cannot convert AVIF image");
     }
-    if (decoder->alphaPresent) {
-        flattenAlpha(out);
-    }
-    return out;
+    // The colours come without alpha multiplied in, which is what the conversion gives unless
+    // asked otherwise, also for a file that stores them multiplied.
+    return out.withAlpha(decoder->alphaPresent != 0);
 }
 
 }  // namespace
@@ -150,6 +149,7 @@ Result<std::shared_ptr<ImageSource>> openAvifSource(std::vector<std::uint8_t> by
         stored.colorModel = "RGB";
     }
     if (decoder->alphaPresent) {
+        info.alpha = true;
         stored.colorModel += " + alpha";
     }
     // AV1 has no flag for it. Storing RGB directly is how lossless AVIF is made, and lossy

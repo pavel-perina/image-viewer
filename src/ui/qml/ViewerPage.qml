@@ -159,7 +159,7 @@ Rectangle {
         const p = straightenPanel
         drop("straighten")
         if (p.changes)
-            view.straighten(p.roll, p.pitch, p.yaw, p.focal, straightenOverlay.keepRatio)
+            view.straighten(p.roll, p.pitch, p.yaw, p.focal, straightenOverlay.keepRatio, straightenOverlay.crop)
     }
 
     function cancelStraighten() {

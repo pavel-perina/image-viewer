@@ -73,7 +73,7 @@ struct ColorEdit {
     bool operator==(const ColorEdit& other) const;
 };
 
-// The picture with the edit applied, in the same format. Colours that leave the range of an
+// The picture with the edit applied, in the same format, with alpha as it was. Colours that leave the range of an
 // integer format are fitted as gamutMap says, then clipped in linear light. A stop request gives up between rows and returns an empty buffer.
 ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const std::stop_token& stop = {});
 

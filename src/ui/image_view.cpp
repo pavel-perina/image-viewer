@@ -79,11 +79,11 @@ bool fromTouchpad(const QWheelEvent& event) {
 // The pixels of a tile's texture. Half floats where the image has more than 8 bits, so that the
 // colour preview and sharp resampling work on all of them; 8 bits for the software renderer,
 // which shows no more, and for 8-bit images.
-QImage tileImage(const ImageBuffer& tile, DisplayRange range, const ColorTransform* color, bool wide) {
+QImage tileImage(const ImageBuffer& tile, DisplayRange range, const ColorTransform* color, bool wide, const Backdrop& backdrop) {
     if (!wide) {
-        return toQImage(toDisplay(tile, range, color));
+        return toQImage(toDisplay(tile, range, color, backdrop));
     }
-    const ImageBuffer shown = toDisplayWide(tile, range, color);
+    const ImageBuffer shown = toDisplayWide(tile, range, color, backdrop);
     if (shown.format() != PixelFormat::Rgba16) {
         return toQImage(shown);
     }
@@ -232,6 +232,16 @@ struct ImageView::Impl {
     DisplayRange autoDisplayRange;
     DisplayRange displayRange;
     std::shared_ptr<const ColorTransform> colorTransform;
+    Backdrop backdrop;  // its x and y are set for each tile
+
+    // The backdrop for a tile, its squares continuing those of the tiles before it.
+    Backdrop backdropFor(const TileKey& key) const {
+        const LevelInfo& level = levels()[static_cast<std::size_t>(key.level)];
+        Backdrop placed = backdrop;
+        placed.x = key.col * level.tileSize.width;
+        placed.y = key.row * level.tileSize.height;
+        return placed;
+    }
     std::vector<std::pair<TileKey, ImageBuffer>> preview;
     bool previewIsRough = false;  // a likeness of the level, to be replaced by the level itself
     Size fullSize;
@@ -512,12 +522,13 @@ struct ImageView::Impl {
     void requestTile(const TileKey& key) {
         const std::uint64_t doc = document;
         const auto id = queue.submit(group, kTilePriority,
-                                     [this, source = source, key, doc, page = page, range = displayRange, color = colorTransform, wide = wideTiles](std::stop_token stop) {
+                                     [this, source = source, key, doc, page = page, range = displayRange, color = colorTransform, wide = wideTiles,
+                                      under = backdropFor(key)](std::stop_token stop) {
             const Result<ImageBuffer> read = source->readTile({page, key.level, key.col, key.row}, stop);
             Result<QImage> tile = std::unexpected(read ? std::string() : read.error());
             if (read) {
                 try {
-                    tile = tileImage(*read, range, color.get(), wide);
+                    tile = tileImage(*read, range, color.get(), wide, under);
                 } catch (const std::bad_alloc&) {
                     tile = std::unexpected("not enough memory for tile");
                 }
@@ -586,6 +597,8 @@ struct ImageView::Impl {
                 loaded.preview.emplace_back(TileKey{coarsest, col, row}, *tile);
             }
         }
+        // The range is of what is shown, which for now is the picture flattened.
+        std::ranges::transform(tiles, tiles.begin(), flattened);
         loaded.autoRange = autoRange(tiles);
         displayTransform(info, ColorSettings::target());  // cached, so showing the page does not wait for it
         return loaded;
@@ -801,7 +814,7 @@ struct ImageView::Impl {
         pendingUpload.clear();
         rough.clear();
         for (const auto& [key, tile] : preview) {
-            pendingUpload.emplace(key, tileImage(tile, displayRange, colorTransform.get(), wideTiles));
+            pendingUpload.emplace(key, tileImage(tile, displayRange, colorTransform.get(), wideTiles, backdropFor(key)));
             if (previewIsRough) {
                 rough.insert(key);
             }
@@ -1051,6 +1064,37 @@ void ImageView::setKeepAutoContrast(bool keep) {
     emit keepAutoContrastChanged();
     if (keep && contrastAdjustable()) {
         m_impl->setAutoContrast(true);
+    }
+}
+
+namespace {
+
+QColor toQColor(const Rgba8& c) { return QColor(c.r, c.g, c.b); }
+
+Rgba8 fromQColor(const QColor& c) {
+    const QColor rgb = c.toRgb();
+    return {static_cast<std::uint8_t>(rgb.red()), static_cast<std::uint8_t>(rgb.green()), static_cast<std::uint8_t>(rgb.blue()), 255};
+}
+
+}  // namespace
+
+QColor ImageView::backdropFirst() const { return toQColor(m_impl->backdrop.first); }
+
+QColor ImageView::backdropSecond() const { return toQColor(m_impl->backdrop.second); }
+
+void ImageView::setBackdropFirst(const QColor& colour) {
+    if (fromQColor(colour) != m_impl->backdrop.first) {
+        m_impl->backdrop.first = fromQColor(colour);
+        emit backdropChanged();
+        m_impl->colorSettingsChanged();  // the tiles are made again on it
+    }
+}
+
+void ImageView::setBackdropSecond(const QColor& colour) {
+    if (fromQColor(colour) != m_impl->backdrop.second) {
+        m_impl->backdrop.second = fromQColor(colour);
+        emit backdropChanged();
+        m_impl->colorSettingsChanged();
     }
 }
 
@@ -1388,7 +1432,7 @@ void ImageView::prepareDraw() {
         }
         ImageBuffer base;
         try {
-            base = applyOrientation(*pixels, orientation);
+            base = applyOrientation(flattened(*pixels), orientation);  // until drawing keeps alpha
         } catch (const std::bad_alloc&) {
             return;
         }
@@ -1545,14 +1589,14 @@ void ImageView::prepareStraighten() {
     const double scale = static_cast<double>(levels[static_cast<std::size_t>(level)].size.width) / d.fullSize.width;
     d.queue.submit(d.group, kStraightenPriority,
                    [this, source = d.source, page = d.page, level, scale, orientation = d.subimage().orientation,
-                    range = d.displayRange, transform = d.colorTransform, request](std::stop_token stop) {
+                    range = d.displayRange, transform = d.colorTransform, under = d.backdrop, request](std::stop_token stop) {
         auto pixels = readLevel(*source, page, level, stop);
         if (!pixels) {
             return;
         }
         ImageBuffer base;
         try {
-            ImageBuffer shown = toDisplay(applyOrientation(*pixels, orientation), range, transform.get());
+            ImageBuffer shown = toDisplay(applyOrientation(*pixels, orientation), range, transform.get(), under);
             // Larger levels than wanted, as a small file may have only its full size.
             const int edge = std::max(shown.width(), shown.height());
             if (edge > kStraightenBaseEdge * 2) {
@@ -1636,43 +1680,50 @@ double ImageView::focalLength35mm() const {
     return d.fileSource->subimages()[static_cast<std::size_t>(d.filePage)].exif.focalLength35mm.value_or(0);
 }
 
-QSize ImageView::straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) const {
+QSize ImageView::straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop) const {
     const Impl& d = *m_impl;
-    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), {roll, pitch, yaw}, keepRatio).size;
+    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), {roll, pitch, yaw}, keepRatio, crop).size;
     return {size.width, size.height};
 }
 
-void ImageView::straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) {
+void ImageView::straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop) {
     Impl& d = *m_impl;
     const Tilt tilt{roll, pitch, yaw};
     if (!editable() || d.status != Status::Ready || tilt.isZero()) {
         return;
     }
+    // Without the crop, strong perspective can make the result much larger than the picture.
+    const Size size = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio, crop).size;
+    const bool fits = d.edit ? d.edit->canResizeTo(size).has_value() : Document(d.fileSource, d.filePage).canResizeTo(size).has_value();
+    if (!fits) {
+        return;
+    }
     if (!d.edit) {
         d.edit.emplace(d.fileSource, d.filePage);
     }
-    d.edit->apply(TiltEdit{tilt, d.focalPixelsFor(focal35mm), keepRatio});
+    d.edit->apply(TiltEdit{tilt, d.focalPixelsFor(focal35mm), keepRatio, crop});
     d.showEdit();
 }
 
-QImage ImageView::straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio) const {
+QImage ImageView::straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop) const {
     const Impl& d = *m_impl;
     if (d.straightenBase.isNull()) {
         return {};
     }
     const ImageBuffer& base = d.straightenBase;
-    const TiltPlan plan = planTilt(base.size(), d.focalPixelsFor(focal35mm) * d.straightenBaseScale, tilt, keepRatio);
+    const TiltPlan plan = planTilt(base.size(), d.focalPixelsFor(focal35mm) * d.straightenBaseScale, tilt, keepRatio, crop);
     const Homography toSource = plan.transform.inverse() * Homography{{1, 0, plan.kept.x, 0, 1, plan.kept.y, 0, 0, 1}};
     try {
-        return toQImage(warp(base, toSource.m, plan.size));
+        // The corners left empty show as transparency is shown, on mid gray for now.
+        return toQImage(crop ? warp(base, toSource.m, plan.size) : flattened(warp(base, toSource.m, plan.size, {}, WarpEdge::Clear)));
     } catch (const std::bad_alloc&) {
         return {};
     }
 }
 
-std::array<QPointF, 4> ImageView::straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio) const {
+std::array<QPointF, 4> ImageView::straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop) const {
     const Impl& d = *m_impl;
-    const TiltPlan plan = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio);
+    const TiltPlan plan = planTilt(d.shownSize(), d.focalPixelsFor(focal35mm), tilt, keepRatio, crop);
     const Homography back = plan.transform.inverse();
     const RectD k = plan.kept;
     std::array<QPointF, 4> corners;

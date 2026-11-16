@@ -124,7 +124,7 @@ private:
         std::vector<ImageBuffer> built;
         try {
             const ImageBuffer finest =
-                ImageBuffer::create(subimage.levels[static_cast<std::size_t>(realLevels)].size, subimage.format);
+                ImageBuffer::create(subimage.levels[static_cast<std::size_t>(realLevels)].size, subimage.format).withAlpha(subimage.alpha);
             std::memset(finest.data(), 0, finest.stride() * static_cast<std::size_t>(finest.height()));
             // A budget that dropped the largest levels leaves more than one halving to do at once.
             const auto scanned = halvedSize(base.size) == finest.size()

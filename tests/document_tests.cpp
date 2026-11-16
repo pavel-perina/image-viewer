@@ -309,3 +309,88 @@ TEST(Document, DrawingInColourTurnsAGrayPictureIntoAColourOne) {
     document.undo();
     EXPECT_EQ(document.source()->subimages()[0].format, PixelFormat::Gray8);
 }
+
+namespace {
+
+// A made-up source of one colour or gray, opaque, whose fourth channel holds 0 so that taking
+// it for alpha would show.
+std::shared_ptr<ImageSource> plainSource(Size size, PixelFormat format, std::uint8_t value) {
+    SubimageInfo info;
+    info.format = format;
+    return makeWholeImageSource(info, size, [size, format, value](const std::stop_token&) -> Result<ImageBuffer> {
+        const ImageBuffer image = ImageBuffer::create(size, format);
+        for (int y = 0; y < size.height; ++y) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
+            if (format == PixelFormat::Gray8) {
+                std::fill_n(p, size.width, value);
+            } else {
+                for (int x = 0; x < size.width; ++x, p += 4) {
+                    p[0] = value, p[1] = 20, p[2] = 10, p[3] = 0;
+                }
+            }
+        }
+        return image;
+    });
+}
+
+}  // namespace
+
+// Why: straightening without its crop keeps the whole turned picture, so nothing of it is lost,
+// and the corners it uncovers are transparent rather than a made-up colour. Input: an opaque
+// picture of one colour, 40 x 20, without alpha, turned by 90 and by 30 degrees, and a gray one.
+// The truth: turned 90 degrees it is 20 x 40, as a quarter turn gives; turned 30 degrees it has
+// alpha, a corner is transparent, the middle opaque and of the colour it had; a gray picture
+// becomes a colour one with alpha, of the same gray; with the crop, as before, there is no alpha.
+TEST(Document, TiltWithoutCropKeepsTheWholePictureWithClearCorners) {
+    const auto colour = plainSource({40, 20}, PixelFormat::Bgrx8, 200);
+    {
+        Document document(colour, 0);
+        document.apply(TiltEdit{{.roll = 90}, 100, true, false});
+        EXPECT_EQ(document.size(), (Size{20, 40}));
+    }
+    Document document(colour, 0);
+    document.apply(TiltEdit{{.roll = 30}, 100, true, false});
+    const auto edited = document.source();
+    EXPECT_TRUE(edited->subimages()[0].alpha);
+    const ImageBuffer turned = pixelsOf(document);
+    ASSERT_TRUE(turned.hasAlpha());
+    EXPECT_EQ(turned.size(), document.size());
+    EXPECT_GT(turned.width(), 40) << "the whole turned picture is wider than the picture";
+    const auto* corner = reinterpret_cast<const std::uint8_t*>(turned.row(0));
+    EXPECT_EQ(corner[3], 0);
+    const auto* middle = reinterpret_cast<const std::uint8_t*>(turned.row(turned.height() / 2)) + turned.width() / 2 * 4;
+    EXPECT_EQ(middle[3], 255);
+    EXPECT_NEAR(middle[0], 200, 1);
+    EXPECT_NEAR(middle[2], 10, 1);
+
+    Document gray(plainSource({40, 20}, PixelFormat::Gray8, 90), 0);
+    gray.apply(TiltEdit{{.roll = 30}, 100, true, false});
+    EXPECT_EQ(gray.source()->subimages()[0].format, PixelFormat::Bgrx8);
+    const ImageBuffer grayTurned = pixelsOf(gray);
+    ASSERT_EQ(grayTurned.format(), PixelFormat::Bgrx8);
+    ASSERT_TRUE(grayTurned.hasAlpha());
+    const auto* grayMiddle = reinterpret_cast<const std::uint8_t*>(grayTurned.row(grayTurned.height() / 2)) + grayTurned.width() / 2 * 4;
+    EXPECT_NEAR(grayMiddle[1], 90, 1);
+    EXPECT_EQ(grayMiddle[3], 255);
+
+    Document cropped(colour, 0);
+    cropped.apply(TiltEdit{{.roll = 30}, 100, true});
+    EXPECT_FALSE(pixelsOf(cropped).hasAlpha());
+    EXPECT_LT(cropped.size().width, 40);
+}
+
+// Why: without the crop, the whole turned picture grows as a strong perspective brings an edge
+// towards the horizon, and past it there is no whole picture; its corners would project onto
+// the far side, which a bounding box takes for a small picture. Input: 400 x 300 at a 28 mm
+// focal length, pitched 40, 64 and 70 degrees. The truth, as measured once and checked by eye
+// against the geometry: 40 is somewhat larger than the picture, 64 several times larger, and
+// at 70 the top edge lies beyond the horizon (at about 65 degrees for this lens), so 0 x 0.
+TEST(Document, AWholeTurnedPictureGrowsTowardsTheHorizonAndHasNoneBeyondIt) {
+    const Size image{400, 300};
+    const double focal = focalPixels(image, 28);
+    const Size mild = planTilt(image, focal, {0, 40, 0}, true, false).size;
+    const Size strong = planTilt(image, focal, {0, 64, 0}, true, false).size;
+    EXPECT_GT(mild.width, 400);
+    EXPECT_GT(strong.width, 4 * mild.width);
+    EXPECT_EQ(planTilt(image, focal, {0, 70, 0}, true, false).size, (Size{0, 0}));
+}

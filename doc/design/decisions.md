@@ -43,9 +43,8 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * PNG, WebP, AVIF and JPEG XL cannot be entered at a tile or scaled while decoding, so they share
   a source that decodes the whole picture on first use and serves tiles as views. Large ones
   get overviews like any flat image. Each is optional at build time.
-* Alpha is not displayed yet. These formats flatten it onto mid gray, where dark and light
-  content both stay visible, while TIFF still drops it. Real transparency needs an alpha
-  format through the whole display path.
+* Alpha is decoded, kept and written for PNG, WebP, AVIF and JPEG XL, but not drawn or edited
+  yet: see "Transparency". TIFF still drops it.
 * AV1 and JPEG XL have no flag for lossless. AVIF storing RGB directly is treated as lossless.
   JPEG XL keeping the original colour space is called "likely lossless".
 
@@ -434,8 +433,8 @@ change nothing useful. The first press of a double click does this too, for that
   JPEG are left out, as almost nothing uses them.
 * Depth: each format keeps what it can. 16-bit stays 16-bit in PNG, TIFF and JPEG XL, becomes
   10-bit in AVIF, and 8-bit in JPEG and WebP. Float stays float in TIFF and JPEG XL and becomes
-  16-bit in PNG and AVIF, taking 0 to 1 as the range. The unused fourth channel is never written,
-  as the viewer does not keep alpha.
+  16-bit in PNG and AVIF, taking 0 to 1 as the range. Alpha is written where the format holds
+  it (see "Transparency"); without alpha the fourth channel is never written.
 * Images whose pixels are all gray, at any depth, are written as grayscale where the format has
   it (JPEG, PNG, TIFF, JPEG XL). An RGB profile then becomes a gray one made with lcms from its
   green curve and D50 white. For a matrix profile with one curve for all three channels, which
@@ -1235,3 +1234,69 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   model has been seen to list it all the same, which does no harm. The thumbnails and the path
   bar work as anywhere. Turning the switch on there reveals the folder in the tree, as the
   tree keeps following the folder it was asked to show.
+
+
+## Transparency
+
+* A picture may have alpha: how much of each pixel shows. A flag on `ImageBuffer` and on
+  `SubimageInfo` says so, rather than new pixel formats. The pixels cannot say it themselves,
+  as the fourth channel of a picture without alpha holds whatever the decoder left there, and
+  16-bit and float pictures have had the channel all along. A gray picture with alpha becomes
+  a colour one on reading, so no gray format with alpha is needed.
+* The colours are kept as they are, not multiplied by alpha. Converting a picture to another
+  lossless format then gives back the same numbers exactly, which multiplying and dividing in
+  8 bits cannot, and adjusting contrast or colour changes a colour and leaves how much of it
+  shows alone, so edges stay right. Colours are multiplied only inside filters, in floating
+  point, and for the screen. Files that store them multiplied (AVIF and JPEG XL may) are
+  divided when read.
+* It is built in steps. Done: PNG, WebP, AVIF and JPEG XL decode alpha and write it, so an
+  unedited picture saved or converted keeps its transparency. Lossless WebP and JPEG XL are
+  told to keep the colours under full transparency, which they otherwise replace with what
+  compresses best: the picture would look the same, but would not be the same numbers. AVIF
+  writes alpha without loss at any quality, as it is small beside the colours and its losses
+  show as fringes. Gray pixels with alpha are written as gray with alpha where the format
+  has that.
+* Everything else that reads pixels still sees the picture on mid gray, as it looked before,
+  by calling `flattened`: the screen, the probe, the histogram, and writing to JPEG and TIFF.
+  Edits keep alpha, so an edited picture is saved with its transparency. Each of those calls
+  goes as its step arrives. Thumbnails stay on mid gray for good, so their cache
+  keeps opaque pictures.
+* Resizing keeps alpha, and mixes pixels with their colours multiplied by it, so the colour
+  stored under transparency does not show at edges.
+  Overviews are made the same way and keep alpha; the 8-bit
+  halving then leaves its fast integer path for the general one.
+  Straightening's resampling keeps alpha the same way.
+* Annotations drawn on a picture with alpha keep it. What is drawn fills in what was
+  transparent, by the usual compositing of a source over a backdrop: half-opaque red on a
+  transparent pixel is half-opaque red, without the colour stored there. A marker darkens what
+  shows under it and keeps its own colour over transparency. Pixelating weighs colours by
+  alpha and averages alpha.
+* Of the edits, only some need to keep alpha: crop (which costs nothing), resize and
+  annotations. Adjust and Grayscale leave it as it is. Straightening keeps it, and with its
+  cropping turned off it will make it: the whole turned picture is kept and the empty corners
+  are transparent. The histogram and Auto Contrast go on counting the picture as shown.
+* Straightening can keep the whole turned picture instead of cropping it: the result is the
+  bounding box of the turned picture, rounded up so nothing is cut off, and the corners it
+  uncovers are transparent, with an edge as smooth as the rest. A picture without alpha gets
+  it, and a gray one becomes a colour one, as gray formats have no alpha. Keeping the ratio
+  does not apply then. It is a check box in the Straighten panel, "Crop the empty corners",
+  on unless turned off, and remembered.
+* A perspective strong enough to put part of the picture beyond the horizon has no whole
+  picture: its corners would project onto the far side, which a bounding box takes for a
+  small picture. The panel says so and Apply is off. A result too large to be saved is
+  refused like a resize to that size.
+* The view shows transparent parts on dark squares, light squares or plain mid gray, chosen
+  in View > Transparency and remembered; dark is the default, as the surround is dark. The
+  colours come from `Theme`, neutral like the surround. The picture is put on them on the
+  CPU, as tiles are made, after the conversion for the screen, so the backdrop keeps its
+  colours however a picture is stretched. Doing it there rather than drawing squares behind
+  textures with alpha keeps one path for everything that shows pictures, the software
+  renderer and comparing included; the GPU path is only a faster way for some pictures. The
+  cost is that a square is 8 pixels of the level shown, so past 100% the squares grow with
+  the picture. The squares continue from tile to tile.
+* Put off, perhaps for good, as the rest covers what transparency is wanted for: the probe
+  showing alpha (it shows the pixel on mid gray), and a warning when saving to a format
+  without alpha, such as JPEG, with a fill colour to choose. Saving to such a format puts
+  the picture on mid gray without a word, and so will a batch conversion.
+* TIFF is left as it is until a transparent TIFF is met. Its alpha stored multiplied could not
+  be divided back exactly in 8 bits.

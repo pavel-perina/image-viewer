@@ -383,6 +383,52 @@ TEST(Editing, CropsOutsideTheImageOrOfAllOfItAreIgnored) {
     EXPECT_EQ(f.view->status(), ImageView::Status::Ready);
 }
 
+// Why: Save As in the viewer must keep the transparency of a picture, edited or not, and what
+// the view hands over differs between the two. Input: a made-up PNG, half transparent red,
+// saved as lossless WebP the way the Save As dialog does it: untouched, cropped and undone,
+// and cropped. The truth is the WebP read back: the same colour and alpha as the PNG.
+TEST(SaveAs, ATransparentPictureKeepsItsTransparencyEditedOrNot) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("clear.png"));
+    QImage image(32, 24, QImage::Format_ARGB32);
+    image.fill(qRgba(200, 40, 20, 128));
+    ASSERT_TRUE(image.save(path));
+    ViewFixture f;
+    ASSERT_TRUE(f.load(path));
+    BrowseContext context;
+    if (context.saveFormat(QStringLiteral("a.webp")).isEmpty()) {
+        GTEST_SKIP() << "this build writes no WebP";
+    }
+    const auto saveAndRead = [&](const QString& name) {
+        QSignalSpy edited(&context, &BrowseContext::filesEdited);
+        const QString target = dir.filePath(name);
+        context.saveAs(path, 0, target, {{QStringLiteral("lossless"), true}}, f.view->editedImage());
+        EXPECT_TRUE(waitUntil([&] { return edited.count() == 1; }));
+        // Read with the program's reader, as Qt may have none for WebP: blue, green, red, alpha.
+        const auto opened = iv::openImageSource(QFileInfo(target).filesystemFilePath());
+        const auto tile = opened ? (*opened)->readTile({0, 0, 0, 0}, {}) : std::unexpected(opened.error());
+        if (!tile || !tile->hasAlpha()) {
+            ADD_FAILURE() << (tile ? "the saved picture has no alpha" : tile.error());
+            return QRgb(0);
+        }
+        const auto* p = reinterpret_cast<const std::uint8_t*>(tile->row(5)) + 5 * 4;
+        return qRgba(p[2], p[1], p[0], p[3]);
+    };
+    EXPECT_FALSE(f.view->editedImage().isValid());
+    EXPECT_EQ(saveAndRead(QStringLiteral("untouched.webp")), qRgba(200, 40, 20, 128));
+
+    f.view->crop(QRect(4, 4, 20, 10));
+    ASSERT_TRUE(settled(f.view));
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(saveAndRead(QStringLiteral("undone.webp")), qRgba(200, 40, 20, 128));
+
+    f.view->crop(QRect(4, 4, 20, 10));
+    ASSERT_TRUE(settled(f.view));
+    ASSERT_TRUE(f.view->editedImage().isValid());
+    EXPECT_EQ(saveAndRead(QStringLiteral("cropped.webp")), qRgba(200, 40, 20, 128));
+}
+
 TEST(Editing, SaveAsWritesTheEditedImageAndMarksItSaved) {
     QTemporaryDir dir;
     const QString path = writeTurnedJpeg(dir);
@@ -904,6 +950,48 @@ TEST(Straighten, FindsTheEdgesFitsTheAnglesAndApplies) {
     f.view->undo();
     ASSERT_TRUE(settled(f.view));
     EXPECT_EQ(f.view->imageWidth(), 400);
+}
+
+// Why: with cropping off, straightening keeps the whole turned picture, and the view must say
+// the larger size, preview it, apply it with transparent corners and refuse a result too large
+// to be saved. Input: a 400 x 300 JPEG turned 10 degrees with cropping off, then a perspective
+// that puts part of it beyond the horizon. The truth: the size is that of the turned picture's
+// bounding box (larger than 400 x 300), the applied picture has it, the edited image has alpha,
+// and the perspective has no size and changes nothing. A finite result too large to be saved
+// is refused by the same check of the size.
+TEST(Straighten, WithoutCroppingKeepsTheWholePictureWithClearCorners) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTiltedJpeg(dir)));
+    QSignalSpy ready(f.view, &ImageView::straightenReady);
+    f.view->prepareStraighten();
+    ASSERT_TRUE(waitUntil([&] { return ready.count() == 1; }));
+
+    const QSize size = f.view->straightenedSize(10, 0, 0, 0, true, false);
+    EXPECT_GT(size.width(), 400);
+    EXPECT_GT(size.height(), 300);
+    EXPECT_FALSE(f.view->straightenPreview({10, 0, 0}, 0, true, false).isNull());
+
+    f.view->straighten(10, 0, 0, 0, true, false);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_EQ(f.view->imageWidth(), size.width());
+    EXPECT_EQ(f.view->imageHeight(), size.height());
+    const auto edited = f.view->editedImage().value<std::shared_ptr<iv::ImageSource>>();
+    ASSERT_TRUE(edited);
+    EXPECT_TRUE(edited->subimages()[0].alpha);
+    const auto tile = edited->readTile({0, 0, 0, 0}, {});
+    ASSERT_TRUE(tile.has_value());
+    EXPECT_TRUE(tile->hasAlpha());
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(tile->row(0))[3], 0) << "the top left corner is empty";
+
+    f.view->undo();
+    ASSERT_TRUE(settled(f.view));
+    // So strong a perspective puts part of the picture beyond the horizon: no whole picture.
+    EXPECT_EQ(f.view->straightenedSize(0, 80, 0, 10, true, false), QSize(0, 0));
+    f.view->straighten(0, 80, 0, 10, true, false);
+    QCoreApplication::processEvents();
+    EXPECT_FALSE(f.view->modified()) << "it is refused";
+
 }
 
 TEST(Straighten, ALineDrawnOnTheImageSetsTheRotation) {

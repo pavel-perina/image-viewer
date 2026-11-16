@@ -31,11 +31,14 @@ struct ResizeEdit {
 
 // Straightens as if the camera had been turned, then keeps the largest rectangle with no empty
 // corners, of the picture's ratio or of any. The focal length is in pixels of the picture the
-// edit is applied to.
+// edit is applied to. Without crop it keeps the whole turned picture instead, and the empty
+// corners are transparent: the picture gets alpha if it had none, and a gray one becomes a
+// colour one, as gray pictures have no alpha.
 struct TiltEdit {
     Tilt tilt;
     double focalPixels = 0;
     bool keepRatio = true;
+    bool crop = true;
     bool operator==(const TiltEdit&) const = default;
 };
 

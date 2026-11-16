@@ -94,6 +94,7 @@ Result<std::shared_ptr<ImageSource>> openWebpSource(std::vector<std::uint8_t> by
 
     SubimageInfo info;
     info.format = PixelFormat::Bgrx8;
+    info.alpha = features.has_alpha != 0;
     readChunks(bytes, info);
     StoredFormat& stored = info.stored;
     stored.container = "WebP";
@@ -121,8 +122,8 @@ Result<std::shared_ptr<ImageSource>> openWebpSource(std::vector<std::uint8_t> by
         }
         try {
             auto image = animated ? decodeFirstFrame(bytes, size) : decodeStill(bytes, size);
-            if (image && hasAlpha) {
-                flattenAlpha(*image);
+            if (image) {
+                return image->withAlpha(hasAlpha);
             }
             return image;
         } catch (const std::bad_alloc&) {

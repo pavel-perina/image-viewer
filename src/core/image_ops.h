@@ -7,17 +7,20 @@
 
 #include "core/geometry.h"
 #include "core/image_buffer.h"
+#include "core/rgba.h"
 
 namespace iv {
 
 class ColorTransform;
 
-// Shrinks by averaging. Works for every pixel format.
+// Shrinks by averaging. Works for every pixel format. A picture with alpha keeps it, and here
+// as in halving below its colours are weighed by alpha, so the colour stored under
+// transparency does not show at edges.
 ImageBuffer shrink(const ImageBuffer& source, Size size);
 
 // Averages one block of a larger image into a target that represents the whole image at a
 // smaller size. Lets an overview be built one tile at a time, without the full image in
-// memory. The target must have the block's format.
+// memory. The target must have the block's format, and says whether there is alpha.
 void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size fullSize, const ImageBuffer& target);
 
 // The size halveRows gives, rounding up.
@@ -31,20 +34,27 @@ ImageBuffer halve(const ImageBuffer& source);
 // The same for rows [firstRow, endRow) of the target, from a strip of the source that begins
 // at row stripY of fullHeight and has its full width. An image too large to hold is reduced
 // this way, so the strip has to contain rows 2 * firstRow - 1 to 2 * endRow, where they exist.
+// The target says whether there is alpha.
 void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow);
 
 // Any size to any size with Magic Kernel Sharp 2013, stretched along when reducing. 8-bit images
 // are filtered in linear light, assuming the sRGB curve, and other formats as they are. Works on
 // the whole image, so use it for what has to be right, not for what has to be drawn quickly.
+// A picture with alpha keeps it, and is filtered with its colours multiplied by alpha, so the
+// colour stored under transparency does not show at edges.
 // A stop request makes it give up between rows and return an empty buffer.
 ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& stop = {});
 
 // A picture of the given size whose pixel centres are taken from the source where a projective
 // transform of target pixel coordinates leads, row by row as 3 x 3, with a Catmull-Rom cubic.
-// 8-bit images are mixed in linear light. Points beyond the edge repeat it. A stop request gives
-// up between rows and returns an empty buffer.
+// 8-bit images are mixed in linear light. Points beyond the edge repeat it, or with
+// WarpEdge::Clear are transparent, which gives the result alpha; that needs a colour format, as
+// gray ones have no alpha. A stop request gives up between rows and returns an empty buffer.
+// A picture with alpha keeps it, mixed with its colours multiplied by alpha, as in resize.
+// What lies beyond the edge of the source: the edge repeated, or nothing, transparent.
+enum class WarpEdge { Repeat, Clear };
 ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size,
-                 const std::stop_token& stop = {});
+                 const std::stop_token& stop = {}, WarpEdge edge = WarpEdge::Repeat);
 
 // How colour becomes gray. Luma weighs the samples as stored by Rec. 601, as JPEG does for its
 // Y. Lightness keeps the lightness of Oklab and sets its chroma to zero, which follows how light
@@ -55,12 +65,14 @@ enum class GrayMethod { Luma, Lightness };
 // are returned as they are. A stop request gives up between rows and returns an empty buffer.
 ImageBuffer toGray(const ImageBuffer& source, GrayMethod method, const std::stop_token& stop = {});
 
-// The pixels turned and mirrored the way an orientation shows them. Normal returns the same buffer.
+// The pixels turned and mirrored the way an orientation shows them, with alpha if they had it.
+// Normal returns the same buffer.
 ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation);
 
-// Puts a picture with alpha in its fourth channel on a mid gray background, where both dark
-// and light content stay visible, and makes it opaque. Not for gray formats, which have none.
-void flattenAlpha(const ImageBuffer& image);
+// A picture with alpha as it looks on a mid gray background, where both dark and light
+// content stay visible: a copy, opaque and without alpha. A picture without alpha is returned
+// as it is.
+ImageBuffer flattened(const ImageBuffer& source);
 
 // The sample values that map to black and white on screen.
 struct DisplayRange {
@@ -79,13 +91,29 @@ DisplayRange autoRange(std::span<const ImageBuffer> samples);
 // Whether a format looks right only after stretching to its content by default.
 bool usesAutoRangeByDefault(PixelFormat format);
 
+// What transparency is shown on: squares of two colours, or one colour when both are the same,
+// in the colours of the screen. The squares are counted from x, y, where the picture's top
+// left corner lies in the pattern, so that tiles of one picture continue it.
+struct Backdrop {
+    Rgba8 first{128, 128, 128, 255};
+    Rgba8 second{128, 128, 128, 255};
+    int size = 8;  // of a square, in pixels of the picture shown
+    int x = 0;
+    int y = 0;
+    bool operator==(const Backdrop&) const = default;
+};
+
 // Converts for display. An 8-bit image without a transform is returned as is, without copying.
+// A picture with alpha is converted as if opaque and then put on the backdrop, so the backdrop
+// keeps its colours whatever range the picture is stretched by.
 // A transform applies to RGB, but not to floats that were stretched: those are data rather than
 // colours, and their encoding may be linear, which 8 bits could not hold before converting.
-ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
+ImageBuffer toDisplay(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr,
+                      const Backdrop& backdrop = {});
 
 // The same in Rgba16, R, G, B and opaque alpha, for images with more than 8 bits, whose steps
 // 8 bits would lose when they are stretched or adjusted further. 8-bit images go to toDisplay.
-ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr);
+ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const ColorTransform* transform = nullptr,
+                          const Backdrop& backdrop = {});
 
 }  // namespace iv

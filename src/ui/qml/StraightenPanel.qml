@@ -7,12 +7,13 @@ import QtQuick.Layouts
 import ImageViewer
 
 // Straightening as if the camera had been turned: the angles come from lines drawn or found on
-// the image, and can be typed instead. Applying keeps the largest rectangle with no empty corners.
+// the image, and can be typed instead. Applying keeps the largest rectangle with no empty corners,
+// or, with cropping off, the whole turned picture with transparent corners.
 ToolPanel {
     id: panel
 
     title: "Straighten"
-    applyEnabled: panel.changes
+    applyEnabled: panel.changes && panel.resultSize.width > 0
     extraText: "Reset"
     onExtraRequested: panel.reset()
 
@@ -35,7 +36,7 @@ ToolPanel {
         return typed > 0 ? typed : 0
     }
     readonly property bool changes: roll !== 0 || pitch !== 0 || yaw !== 0
-    readonly property size resultSize: changes ? view.straightenedSize(roll, pitch, yaw, focal, settings.keepRatio)
+    readonly property size resultSize: changes ? view.straightenedSize(roll, pitch, yaw, focal, settings.keepRatio, settings.crop)
                                                : Qt.size(view.imageWidth, view.imageHeight)
 
     Settings {
@@ -43,6 +44,7 @@ ToolPanel {
         category: "Straighten"
         property int mode: 2
         property bool keepRatio: true
+        property bool crop: true
     }
 
     Binding { target: panel.overlay; property: "roll"; value: panel.roll }
@@ -50,6 +52,7 @@ ToolPanel {
     Binding { target: panel.overlay; property: "yaw"; value: panel.yaw }
     Binding { target: panel.overlay; property: "focal35mm"; value: panel.focal }
     Binding { target: panel.overlay; property: "keepRatio"; value: settings.keepRatio }
+    Binding { target: panel.overlay; property: "crop"; value: settings.crop }
 
     // A new image starts straight, with no lines.
     function start() {
@@ -196,10 +199,19 @@ ToolPanel {
                                     : "The camera data has no focal length; it matters for perspective only."
     }
 
+    // Off keeps the whole turned picture, its empty corners transparent.
+    CheckBox {
+        objectName: "straightenCrop"
+        focusPolicy: Qt.NoFocus
+        text: "Crop the empty corners"
+        checked: settings.crop
+        onToggled: settings.crop = checked
+    }
     CheckBox {
         focusPolicy: Qt.NoFocus
         text: "Keep the image's ratio"
         checked: settings.keepRatio
+        enabled: settings.crop
         onToggled: settings.keepRatio = checked
     }
     CheckBox {
@@ -212,7 +224,12 @@ ToolPanel {
     }
 
     Label {
-        text: "Result " + Math.round(panel.resultSize.width) + " x " + Math.round(panel.resultSize.height) + " pixels"
+        objectName: "straightenResultSize"
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        // A turn that puts part of the picture beyond the horizon has no whole picture to keep.
+        text: panel.resultSize.width > 0 ? "Result " + Math.round(panel.resultSize.width) + " x " + Math.round(panel.resultSize.height) + " pixels"
+                                         : "Part of the image would lie beyond the horizon"
         color: Theme.textMuted
     }
 

@@ -158,6 +158,7 @@ ApplicationWindow {
     }
 
     ActionGroup { id: sortGroup }
+    ActionGroup { id: transparencyGroup }
 
     // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
@@ -486,6 +487,12 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
+            AppMenu {
+                title: "&Transparency"
+                Action { text: "&Dark Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "dark"; onTriggered: ViewSettings.transparency = "dark" }
+                Action { text: "&Light Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "light"; onTriggered: ViewSettings.transparency = "light" }
+                Action { text: "&Gray"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "plain"; onTriggered: ViewSettings.transparency = "plain" }
+            }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }
             AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.start("", "") }

@@ -117,20 +117,22 @@ Result<ImageBuffer> readLevel(ImageSource& source, int subimage, int levelIndex,
     }
 
     const auto pixelBytes = static_cast<std::size_t>(bytesPerPixel(info.format));
-    const ImageBuffer whole = ImageBuffer::create(level.size, info.format);
+    ImageBuffer whole = ImageBuffer::create(level.size, info.format);
+    bool alpha = false;
     for (int row = 0; row < rows; ++row) {
         for (int col = 0; col < cols; ++col) {
             const auto tile = source.readTile({subimage, levelIndex, col, row}, stop);
             if (!tile) {
                 return tile;
             }
+            alpha = alpha || tile->hasAlpha();
             for (int y = 0; y < tile->height(); ++y) {
                 std::memcpy(whole.row(row * tileHeight + y) + static_cast<std::size_t>(col * tileWidth) * pixelBytes,
                             tile->row(y), static_cast<std::size_t>(tile->width()) * pixelBytes);
             }
         }
     }
-    return whole;
+    return whole.withAlpha(alpha);
 }
 
 }  // namespace iv

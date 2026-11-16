@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QPointF>
 #include <QQuickItem>
 #include <QRect>
@@ -43,6 +44,10 @@ class ImageView : public QQuickItem {
     // Auto Contrast for every image that can have it, rather than by its kind; turning it on
     // turns it on for the image shown too.
     Q_PROPERTY(bool keepAutoContrast READ keepAutoContrast WRITE setKeepAutoContrast NOTIFY keepAutoContrastChanged)
+    // What transparent parts are shown on: squares of these two colours, or one colour when
+    // they are the same. From Theme, as the user chose.
+    Q_PROPERTY(QColor backdropFirst READ backdropFirst WRITE setBackdropFirst NOTIFY backdropChanged)
+    Q_PROPERTY(QColor backdropSecond READ backdropSecond WRITE setBackdropSecond NOTIFY backdropChanged)
     // Rows of {section, label, value} describing the file and the current page.
     Q_PROPERTY(QVariantList details READ details NOTIFY detailsChanged)
     // The same in a line: "400x300 0.12MP 24bit PNG 12kB 2021-12-24 12:34:56", and
@@ -116,6 +121,10 @@ public:
     void setAutoContrast(bool enabled);
     bool keepAutoContrast() const;
     void setKeepAutoContrast(bool keep);
+    QColor backdropFirst() const;
+    void setBackdropFirst(const QColor& colour);
+    QColor backdropSecond() const;
+    void setBackdropSecond(const QColor& colour);
     QVariantList details() const;
     QString summary() const;
     QString cameraSummary() const;
@@ -228,12 +237,14 @@ public:
     Q_INVOKABLE QVariantMap fitStraightLines(const QVariantList& lines, int mode, double focal35mm, bool robust) const;
     // From the camera data, or 0 when unknown.
     Q_INVOKABLE double focalLength35mm() const;
-    Q_INVOKABLE QSize straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio) const;
-    Q_INVOKABLE void straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio);
+    Q_INVOKABLE QSize straightenedSize(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop = true) const;
+    // Without crop the whole turned picture is kept, with transparent corners. Nothing happens
+    // if the result would be too large to be saved.
+    Q_INVOKABLE void straighten(double roll, double pitch, double yaw, double focal35mm, bool keepRatio, bool crop = true);
     // The reduced copy straightened; null until it is ready.
-    QImage straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio) const;
+    QImage straightenPreview(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop = true) const;
     // The corners of what straightening keeps, in pixels of the image as shown.
-    std::array<QPointF, 4> straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio) const;
+    std::array<QPointF, 4> straightenKept(const Tilt& tilt, double focal35mm, bool keepRatio, bool crop = true) const;
 
 signals:
     void sourceChanged();
@@ -245,6 +256,7 @@ signals:
     void resampleChanged();
     void wheelNavigatesChanged();
     void keepAutoContrastChanged();
+    void backdropChanged();
     void editChanged();
     void colorPreviewChanged();
     void linkedViewChanged();

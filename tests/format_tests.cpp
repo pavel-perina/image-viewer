@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -28,12 +29,17 @@
 #include <jxl/encode_cxx.h>
 #endif
 
+#include "core/document.h"
 #include "core/histogram.h"
 #include "core/color.h"
 #include "core/image_details.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
+#include "core/overview_source.h"
+#include "core/pixel_probe.h"
+#include "core/save_image.h"
 #include "core/thumbnail.h"
+#include "core/whole_image_source.h"
 #include "test_exif.h"
 #include "test_jpeg.h"
 
@@ -45,11 +51,13 @@ namespace {
 constexpr int kWidth = 64;
 constexpr int kHeight = 48;
 
-// Left half red-ish, right half blue-ish, with partial transparency on the bottom right.
+// Left half red-ish, right half blue-ish. The bottom right is transparent, below four rows
+// that are half transparent.
+constexpr int kHalfRows = 4;
 void pixelAt(int x, int y, std::array<std::uint8_t, 4>& rgba) {
     rgba = x < kWidth / 2 ? std::array<std::uint8_t, 4>{200, 40, 20, 255} : std::array<std::uint8_t, 4>{20, 40, 200, 255};
     if (x >= kWidth / 2 && y >= kHeight / 2) {
-        rgba[3] = 0;
+        rgba[3] = y < kHeight / 2 + kHalfRows ? 128 : 0;
     }
 }
 
@@ -86,6 +94,62 @@ std::array<int, 3> shown(ImageSource& source, int x, int y) {
     const ImageBuffer display = toDisplay(*tile, fullRange(info.format));
     const auto* p = reinterpret_cast<const std::uint8_t*>(display.row(y)) + static_cast<std::size_t>(x) * 4;
     return {p[2], p[1], p[0]};
+}
+
+void expectNear(const std::array<int, 3>& actual, const std::array<int, 3>& expected, int tolerance);
+
+// A pixel as decoded, before anything is done for showing it: red, green, blue and the fourth
+// channel, each brought to 0 to 255.
+std::array<int, 4> decoded(ImageSource& source, int x, int y) {
+    const auto tile = source.readTile({0, 0, 0, 0}, {});
+    if (!tile) {
+        ADD_FAILURE() << tile.error();
+        return {};
+    }
+    const std::byte* p = tile->row(y) + static_cast<std::size_t>(x) * static_cast<std::size_t>(bytesPerPixel(tile->format()));
+    switch (tile->format()) {
+    case PixelFormat::Bgrx8: {
+        const auto* b = reinterpret_cast<const std::uint8_t*>(p);
+        return {b[2], b[1], b[0], b[3]};
+    }
+    case PixelFormat::Rgba16: {
+        const auto* w = reinterpret_cast<const std::uint16_t*>(p);
+        return {(w[0] + 128) / 257, (w[1] + 128) / 257, (w[2] + 128) / 257, (w[3] + 128) / 257};
+    }
+    case PixelFormat::Rgba32F: {
+        const auto* f = reinterpret_cast<const float*>(p);
+        const auto byte = [](float v) { return static_cast<int>(std::lround(v * 255)); };
+        return {byte(f[0]), byte(f[1]), byte(f[2]), byte(f[3])};
+    }
+    default:
+        ADD_FAILURE() << "a format without a fourth channel";
+        return {};
+    }
+}
+
+// What a format's alpha test promises. The decoded pixels are compared with the picture the
+// test wrote, pixelAt: the half transparent rows keep their own colour, not one mixed with a
+// background or multiplied by alpha, and their alpha; the transparent part has alpha 0. Its
+// colour is not checked, as an encoder may drop what cannot be seen. The colour tolerance is
+// for lossy formats.
+void expectAlphaKept(ImageSource& source, int colourTolerance) {
+    EXPECT_TRUE(source.subimages()[0].alpha);
+    const auto tile = source.readTile({0, 0, 0, 0}, {});
+    ASSERT_TRUE(tile);
+    EXPECT_TRUE(tile->hasAlpha());
+    const auto half = decoded(source, kWidth - 8, kHeight / 2 + 1);
+    expectNear({half[0], half[1], half[2]}, {20, 40, 200}, colourTolerance);
+    EXPECT_NEAR(half[3], 128, 1);
+    EXPECT_EQ(decoded(source, kWidth - 8, kHeight - 8)[3], 0);
+    EXPECT_EQ(decoded(source, 8, 8)[3], 255);
+}
+
+// A file without alpha says so, and its tiles too, whatever their fourth channel holds.
+void expectNoAlpha(ImageSource& source) {
+    EXPECT_FALSE(source.subimages()[0].alpha);
+    const auto tile = source.readTile({0, 0, 0, 0}, {});
+    ASSERT_TRUE(tile);
+    EXPECT_FALSE(tile->hasAlpha());
 }
 
 void expectNear(const std::array<int, 3>& actual, const std::array<int, 3>& expected, int tolerance) {
@@ -147,22 +211,44 @@ TEST(Formats, ListsTheExtensionsItWasBuiltWith) {
 #endif
 }
 
-TEST(Alpha, FlattensOntoMidGray) {
-    const ImageBuffer image = ImageBuffer::create({3, 1}, PixelFormat::Bgrx8);
+// Showing a picture with alpha on mid gray, which is how transparency looks until it is drawn.
+// The values are worked out by hand: half of white and gray is 192. The source keeps its
+// pixels, as other readers share them.
+TEST(Alpha, FlattensACopyOntoMidGray) {
+    const ImageBuffer image = ImageBuffer::create({3, 1}, PixelFormat::Bgrx8).withAlpha(true);
     const std::array<std::uint8_t, 12> pixels{10, 20, 30, 255, 10, 20, 30, 0, 255, 255, 255, 128};
     std::memcpy(image.row(0), pixels.data(), pixels.size());
-    flattenAlpha(image);
-    const auto* out = reinterpret_cast<const std::uint8_t*>(image.row(0));
+    const ImageBuffer flat = flattened(image);
+    EXPECT_FALSE(flat.hasAlpha());
+    const auto* out = reinterpret_cast<const std::uint8_t*>(flat.row(0));
     EXPECT_EQ(out[0], 10);  // opaque stays
     EXPECT_EQ(out[4], 128);  // transparent shows the background
     EXPECT_EQ(out[7], 255);  // and becomes opaque
     EXPECT_NEAR(out[8], 192, 1);  // half of white and gray
+    EXPECT_EQ(std::memcmp(image.row(0), pixels.data(), pixels.size()), 0) << "the source is left alone";
 
-    const ImageBuffer deep = ImageBuffer::create({1, 1}, PixelFormat::Rgba16);
+    const ImageBuffer deep = ImageBuffer::create({1, 1}, PixelFormat::Rgba16).withAlpha(true);
     const std::array<std::uint16_t, 4> pixel16{65535, 0, 0, 0};
     std::memcpy(deep.row(0), pixel16.data(), sizeof(pixel16));
-    flattenAlpha(deep);
-    EXPECT_NEAR(reinterpret_cast<const std::uint16_t*>(deep.row(0))[0], 32768, 1);
+    EXPECT_NEAR(reinterpret_cast<const std::uint16_t*>(flattened(deep).row(0))[0], 32768, 1);
+}
+
+// Without alpha the fourth channel means nothing, so whatever it holds changes no colour, and
+// nothing is copied.
+TEST(Alpha, APictureWithoutAlphaIsLeftAsItIs) {
+    const ImageBuffer image = ImageBuffer::create({1, 1}, PixelFormat::Bgrx8);
+    const std::array<std::uint8_t, 4> pixel{10, 20, 30, 0};
+    std::memcpy(image.row(0), pixel.data(), pixel.size());
+    const ImageBuffer flat = flattened(image);
+    EXPECT_EQ(flat.data(), image.data());
+    EXPECT_EQ(std::memcmp(flat.row(0), pixel.data(), pixel.size()), 0);
+}
+
+// A part of a picture has alpha as the whole has.
+TEST(Alpha, AViewKeepsIt) {
+    const ImageBuffer image = ImageBuffer::create({4, 4}, PixelFormat::Rgba16).withAlpha(true);
+    EXPECT_TRUE(image.view(1, 1, 2, 2).hasAlpha());
+    EXPECT_FALSE(image.withAlpha(false).view(1, 1, 2, 2).hasAlpha());
 }
 
 #ifdef IV_HAVE_PNG
@@ -347,13 +433,17 @@ TEST(Png, PaletteWithAndWithoutTransparency) {
     EXPECT_EQ(valueOf(describeImage(transparent->subimages()[0]), "Color"), "Palette + alpha");
 }
 
-TEST(Png, AlphaIsFlattenedAtBothDepthsAndForGray) {
+// Alpha is decoded as the file has it, and shown on mid gray for now. PNG is lossless and
+// keeps the colour of transparent pixels, so that is compared too.
+TEST(Png, AlphaIsKeptAtBothDepthsAndForGrayAndShownOnMidGray) {
     PngOptions rgba;
     rgba.colorType = PNG_COLOR_TYPE_RGBA;
     const auto source = open(write("rgba.png", encodePng(rgba)));
     ASSERT_TRUE(source);
     expectPicture(*source, 0);
     expectNear(shown(*source, kWidth - 8, kHeight - 8), {128, 128, 128}, 0);
+    expectAlphaKept(*source, 0);
+    EXPECT_EQ(decoded(*source, kWidth - 8, kHeight - 8), (std::array<int, 4>{20, 40, 200, 0}));
 
     rgba.depth = 16;
     const auto deep = open(write("rgba16.png", encodePng(rgba)));
@@ -361,6 +451,11 @@ TEST(Png, AlphaIsFlattenedAtBothDepthsAndForGray) {
     EXPECT_EQ(deep->subimages()[0].format, PixelFormat::Rgba16);
     expectPicture(*deep, 0);
     expectNear(shown(*deep, kWidth - 8, kHeight - 8), {128, 128, 128}, 1);
+    expectAlphaKept(*deep, 0);
+
+    const auto opaque = open(write("rgb_opaque.png", encodePng(PngOptions{})));
+    ASSERT_TRUE(opaque);
+    expectNoAlpha(*opaque);
 
     PngOptions grayAlpha;
     grayAlpha.colorType = PNG_COLOR_TYPE_GRAY_ALPHA;
@@ -368,6 +463,7 @@ TEST(Png, AlphaIsFlattenedAtBothDepthsAndForGray) {
     ASSERT_TRUE(gray);
     expectNear(shown(*gray, 8, 8), {200, 200, 200}, 0);
     expectNear(shown(*gray, kWidth - 8, kHeight - 8), {128, 128, 128}, 0);
+    EXPECT_EQ(decoded(*gray, kWidth - 8, kHeight / 2 + 1), (std::array<int, 4>{40, 40, 40, 128}));
 
     // A transparent colour turns 16-bit gray into a format with room for the result.
     PngOptions keyed;
@@ -587,11 +683,18 @@ TEST(Webp, LossyAndLosslessAreToldApart) {
     EXPECT_EQ(valueOf(rows, "Chroma"), "");
 }
 
-TEST(Webp, AlphaIsFlattened) {
+TEST(Webp, AlphaIsKeptAndShownOnMidGray) {
     const auto source = open(write("alpha.webp", encodeWebp(true, true)));
     ASSERT_TRUE(source);
     expectPicture(*source, 0);
     expectNear(shown(*source, kWidth - 8, kHeight - 8), {128, 128, 128}, 0);
+    expectAlphaKept(*source, 0);
+    const auto lossy = open(write("alpha_lossy.webp", encodeWebp(false, true)));
+    ASSERT_TRUE(lossy);
+    expectAlphaKept(*lossy, 12);
+    const auto opaque = open(write("opaque.webp", encodeWebp(true, false)));
+    ASSERT_TRUE(opaque);
+    expectNoAlpha(*opaque);
     EXPECT_EQ(valueOf(describeImage(source->subimages()[0]), "Color"), "RGB + alpha");
 }
 
@@ -781,11 +884,15 @@ TEST_F(AvifTest, TenBitKeepsItsPrecision) {
     EXPECT_EQ(histogram->binCount(), 65536);
 }
 
-TEST_F(AvifTest, AlphaIsFlattened) {
+TEST_F(AvifTest, AlphaIsKeptAndShownOnMidGray) {
     AvifOptions options;
+    const auto opaque = open(write("opaque.avif", encodeAvif(options)));
+    ASSERT_TRUE(opaque);
+    expectNoAlpha(*opaque);
     options.alpha = true;
     const auto source = open(write("alpha.avif", encodeAvif(options)));
     ASSERT_TRUE(source);
+    expectAlphaKept(*source, 25);
     expectNear(shown(*source, kWidth - 8, kHeight - 8), {128, 128, 128}, 25);
     expectNear(shown(*source, 8, 8), {200, 40, 20}, 25);
     EXPECT_EQ(valueOf(describeImage(source->subimages()[0]), "Color"), "YCbCr + alpha");
@@ -996,11 +1103,15 @@ TEST(Jxl, GrayHighDepthIsGrayFormat) {
     expectNear(shown(*eight, 8, 8), {200, 200, 200}, 1);
 }
 
-TEST(Jxl, AlphaIsFlattened) {
+TEST(Jxl, AlphaIsKeptAndShownOnMidGray) {
     JxlOptions options;
+    const auto opaque = open(write("opaque.jxl", encodeJxl(options)));
+    ASSERT_TRUE(opaque);
+    expectNoAlpha(*opaque);
     options.alpha = true;
     const auto source = open(write("alpha.jxl", encodeJxl(options)));
     ASSERT_TRUE(source);
+    expectAlphaKept(*source, 0);
     expectNear(shown(*source, kWidth - 8, kHeight - 8), {128, 128, 128}, 0);
     expectNear(shown(*source, 8, 8), {200, 40, 20}, 0);
     EXPECT_EQ(valueOf(describeImage(source->subimages()[0]), "Color"), "RGB + alpha");
@@ -1008,6 +1119,7 @@ TEST(Jxl, AlphaIsFlattened) {
     options.bits = 16;
     const auto deep = open(write("alpha16.jxl", encodeJxl(options)));
     ASSERT_TRUE(deep);
+    expectAlphaKept(*deep, 0);
     expectNear(shown(*deep, kWidth - 8, kHeight - 8), {128, 128, 128}, 1);
 }
 
@@ -1047,6 +1159,365 @@ TEST(Jxl, RecognizesARecompressedJpeg) {
 TEST(Jxl, SurvivesDamage) { survivesDamage("x.jxl", encodeJxl({})); }
 
 #endif  // IV_HAVE_JXL
+
+// A level larger than one tile is copied together from its tiles, and has alpha as they have.
+// The source is made up: 3000 pixels wide, so two tiles, of one half transparent colour.
+TEST(Alpha, ALevelPutTogetherFromTilesKeepsIt) {
+    const Size size{3000, 8};
+    SubimageInfo info;
+    info.alpha = true;
+    const auto source = makeWholeImageSource(info, size, [size](const std::stop_token&) -> Result<ImageBuffer> {
+        const ImageBuffer image = ImageBuffer::create(size, PixelFormat::Bgrx8);
+        for (int y = 0; y < size.height; ++y) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
+            for (int x = 0; x < size.width; ++x, p += 4) {
+                p[0] = 10, p[1] = 20, p[2] = 30, p[3] = 128;
+            }
+        }
+        return image.withAlpha(true);
+    });
+    ASSERT_GT(size.width, source->subimages()[0].levels[0].tileSize.width) << "the test needs two tiles";
+    const auto level = readLevel(*source, 0, 0, {});
+    ASSERT_TRUE(level.has_value());
+    EXPECT_TRUE(level->hasAlpha());
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(level->row(7))[2999 * 4 + 3], 128);
+}
+
+// Why: resizing mixes neighbouring pixels, and a transparent pixel has a colour all the same,
+// which must not be mixed in: the edge of a red shape on transparent "green" would turn
+// brown. Input: the left half opaque red, the right half fully transparent green, reduced to
+// a quarter, at 8 and 16 bits. The truth: every pixel that shows at all is pure red, with no
+// green in it; alpha goes from opaque to none, and the picture still says it has alpha.
+TEST(Alpha, ResizingKeepsItAndDoesNotMixInTheColourUnderTransparency) {
+    for (const PixelFormat format : {PixelFormat::Bgrx8, PixelFormat::Rgba16}) {
+        SCOPED_TRACE(format == PixelFormat::Bgrx8 ? "8 bits" : "16 bits");
+        const bool deep = format == PixelFormat::Rgba16;
+        const int max = deep ? 65535 : 255;
+        const ImageBuffer image = ImageBuffer::create({64, 16}, format).withAlpha(true);
+        // Red, green and alpha of a pixel, whatever the order of the format's channels.
+        const auto at = [&](const ImageBuffer& buffer, int x, int y) -> std::array<int, 3> {
+            if (deep) {
+                const auto* p = reinterpret_cast<const std::uint16_t*>(buffer.row(y)) + x * 4;
+                return {p[0], p[1], p[3]};
+            }
+            const auto* p = reinterpret_cast<const std::uint8_t*>(buffer.row(y)) + x * 4;
+            return {p[2], p[1], p[3]};
+        };
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool left = x < 32;
+                if (deep) {
+                    auto* p = reinterpret_cast<std::uint16_t*>(image.row(y)) + x * 4;
+                    p[0] = left ? 65535 : 0, p[1] = left ? 0 : 65535, p[2] = 0, p[3] = left ? 65535 : 0;
+                } else {
+                    auto* p = reinterpret_cast<std::uint8_t*>(image.row(y)) + x * 4;
+                    p[0] = 0, p[1] = left ? 0 : 255, p[2] = left ? 255 : 0, p[3] = left ? 255 : 0;
+                }
+            }
+        }
+        const ImageBuffer small = resize(image, {16, 4});
+        ASSERT_FALSE(small.isNull());
+        EXPECT_TRUE(small.hasAlpha());
+        EXPECT_EQ(at(small, 0, 2)[2], max);
+        EXPECT_EQ(at(small, 15, 2)[2], 0);
+        for (int x = 0; x < 16; ++x) {
+            const int red = at(small, x, 2)[0];
+            const int green = at(small, x, 2)[1];
+            const int alpha = at(small, x, 2)[2];
+            if (alpha > max / 50) {
+                EXPECT_EQ(green, 0) << "column " << x;
+                EXPECT_NEAR(red, max, max / 100) << "column " << x;
+            }
+        }
+    }
+}
+
+// Why: straightening resamples the picture as resizing does, with a kernel that reaches into
+// neighbours, so the same leak of hidden colour would show at transparent edges. Input: the
+// left half opaque red, the right half transparent green, turned a little (a few degrees),
+// at 8 and 16 bits. The truth: the result has alpha, every pixel that shows at all is red
+// without green, and both opaque and fully transparent pixels remain.
+TEST(Alpha, StraighteningKeepsItAndDoesNotMixInTheColourUnderTransparency) {
+    for (const PixelFormat format : {PixelFormat::Bgrx8, PixelFormat::Rgba16}) {
+        SCOPED_TRACE(format == PixelFormat::Bgrx8 ? "8 bits" : "16 bits");
+        const bool deep = format == PixelFormat::Rgba16;
+        const int max = deep ? 65535 : 255;
+        const ImageBuffer image = ImageBuffer::create({64, 64}, format).withAlpha(true);
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool left = x < 32;
+                if (deep) {
+                    auto* p = reinterpret_cast<std::uint16_t*>(image.row(y)) + x * 4;
+                    p[0] = left ? 65535 : 0, p[1] = left ? 0 : 65535, p[2] = 0, p[3] = left ? 65535 : 0;
+                } else {
+                    auto* p = reinterpret_cast<std::uint8_t*>(image.row(y)) + x * 4;
+                    p[0] = 0, p[1] = left ? 0 : 255, p[2] = left ? 255 : 0, p[3] = left ? 255 : 0;
+                }
+            }
+        }
+        // Turned by about 3 degrees around the middle, target pixels to source pixels.
+        const double c = std::cos(0.05), s = std::sin(0.05);
+        const std::array<double, 9> turn{c, -s, 32 - 32 * c + 32 * s, s, c, 32 - 32 * s - 32 * c, 0, 0, 1};
+        const ImageBuffer turned = warp(image, turn, {64, 64});
+        ASSERT_FALSE(turned.isNull());
+        EXPECT_TRUE(turned.hasAlpha());
+        int opaque = 0;
+        int clear = 0;
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                int red = 0, green = 0, a = 0;
+                if (deep) {
+                    const auto* p = reinterpret_cast<const std::uint16_t*>(turned.row(y)) + x * 4;
+                    red = p[0], green = p[1], a = p[3];
+                } else {
+                    const auto* p = reinterpret_cast<const std::uint8_t*>(turned.row(y)) + x * 4;
+                    red = p[2], green = p[1], a = p[3];
+                }
+                opaque += a == max;
+                clear += a == 0;
+                if (a > max / 50) {
+                    EXPECT_EQ(green, 0) << x << ", " << y;
+                    EXPECT_NEAR(red, max, max / 100) << x << ", " << y;
+                }
+            }
+        }
+        EXPECT_GT(opaque, 0);
+        EXPECT_GT(clear, 0);
+    }
+}
+
+// A picture without alpha is resized as before: its fourth channel is not a weight, whatever
+// it holds. Opaque red with zeros there stays red, where taking them for alpha would give black.
+TEST(Alpha, ResizingAPictureWithoutAlphaIgnoresTheFourthChannel) {
+    const ImageBuffer image = ImageBuffer::create({8, 8}, PixelFormat::Bgrx8);
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y)) + x * 4;
+            p[0] = 0, p[1] = 0, p[2] = 255, p[3] = 0;
+        }
+    }
+    const ImageBuffer small = resize(image, {4, 4});
+    EXPECT_FALSE(small.hasAlpha());
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(small.row(1))[1 * 4 + 2], 255);
+}
+
+// Turning a picture makes new pixels, which must have alpha as the old ones had: otherwise a
+// turned transparent picture would show the colours stored under its transparency. One
+// transparent blue pixel beside an opaque one, turned a quarter, is shown as gray above blue
+// or below it, never as two blues.
+TEST(Alpha, TurningKeepsItSoATurnedPictureIsShownTheSame) {
+    const ImageBuffer image = ImageBuffer::create({2, 1}, PixelFormat::Bgrx8).withAlpha(true);
+    const std::array<std::uint8_t, 8> pixels{200, 40, 20, 255, 200, 40, 20, 0};
+    std::memcpy(image.row(0), pixels.data(), pixels.size());
+    const ImageBuffer turned = applyOrientation(image, Orientation::Rotate90CW);
+    ASSERT_EQ(turned.height(), 2);
+    EXPECT_TRUE(turned.hasAlpha());
+    const ImageBuffer display = toDisplay(turned, fullRange(PixelFormat::Bgrx8));
+    const int top = reinterpret_cast<const std::uint8_t*>(display.row(0))[0];
+    const int bottom = reinterpret_cast<const std::uint8_t*>(display.row(1))[0];
+    EXPECT_EQ(std::min(top, bottom), 128);
+    EXPECT_EQ(std::max(top, bottom), 200);
+}
+
+// The view asks for 16-bit pixels for pictures deeper than 8 bits. They go on the backdrop
+// too: transparent white, 65535, shows the default backdrop, gray 128 (32896 in 16 bits).
+TEST(Alpha, DeepPicturesAreShownOnTheBackdropToo) {
+    const ImageBuffer deep = ImageBuffer::create({1, 1}, PixelFormat::Rgba16).withAlpha(true);
+    const std::array<std::uint16_t, 4> pixel{65535, 65535, 65535, 0};
+    std::memcpy(deep.row(0), pixel.data(), sizeof(pixel));
+    const ImageBuffer wide = toDisplayWide(deep, fullRange(PixelFormat::Rgba16));
+    ASSERT_EQ(wide.format(), PixelFormat::Rgba16);
+    EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(wide.row(0))[0], 128 * 257);
+    EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(wide.row(0))[3], 65535);
+}
+
+// Why: transparency is shown on squares of two colours, and a picture is drawn in tiles, so
+// the squares must continue from one tile to the next, and keep their colours however the
+// picture is stretched. Input: a fully transparent 16 x 1 picture at 8 bits, and one at 16
+// bits whose values use a small part of the range and are shown stretched, on 4-pixel squares
+// of black and white, starting at x = 2 as the second tile of a picture would. The truth:
+// pixels 0 and 1 finish the first square (black), 2 to 5 are white, 6 to 9 black; the same
+// with 16 bits however stretched; a half transparent white pixel is half way to the square.
+TEST(Alpha, ShownOnSquaresThatContinueAcrossTiles) {
+    Backdrop backdrop;
+    backdrop.first = {0, 0, 0, 255};
+    backdrop.second = {255, 255, 255, 255};
+    backdrop.size = 4;
+    backdrop.x = 2;
+    const ImageBuffer clear = ImageBuffer::create({16, 1}, PixelFormat::Bgrx8).withAlpha(true);
+    std::memset(clear.row(0), 0, 16 * 4);
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[3 * 4 + 0] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[3 * 4 + 1] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[3 * 4 + 2] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 0] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 1] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 2] = 255;
+    reinterpret_cast<std::uint8_t*>(clear.row(0))[6 * 4 + 3] = 128;  // half white over black
+    const ImageBuffer shownClear = toDisplay(clear, fullRange(PixelFormat::Bgrx8), nullptr, backdrop);
+    const auto grayAt = [&](int x) { return static_cast<int>(reinterpret_cast<const std::uint8_t*>(shownClear.row(0))[x * 4 + 1]); };
+    const std::array<int, 10> expected{0, 0, 255, 255, 255, 255, 128, 0, 0, 0};
+    for (int x = 0; x < 10; ++x) {
+        EXPECT_EQ(grayAt(x), expected[static_cast<std::size_t>(x)]) << "pixel " << x;
+    }
+    EXPECT_NE(shownClear.data(), clear.data()) << "the picture's own pixels are left alone";
+
+    const ImageBuffer deep = ImageBuffer::create({16, 1}, PixelFormat::Rgba16).withAlpha(true);
+    for (int x = 0; x < 16; ++x) {
+        auto* p = reinterpret_cast<std::uint16_t*>(deep.row(0)) + x * 4;
+        p[0] = p[1] = p[2] = 1000;
+        p[3] = 0;
+    }
+    const ImageBuffer shownDeep = toDisplay(deep, {0, 2000}, nullptr, backdrop);
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(shownDeep.row(0))[1], 0);
+    EXPECT_EQ(reinterpret_cast<const std::uint8_t*>(shownDeep.row(0))[2 * 4 + 1], 255);
+}
+
+// Why: a large picture is shown reduced through overviews, made from its tiles by halving and
+// averaging, and these mix neighbours as resizing does. Input: made up, large enough to need
+// overviews: the left half opaque red, the right half fully transparent green. The truth: the
+// overviews keep alpha, every pixel that shows at all is red without green, the right edge is
+// transparent, and it is shown on mid gray as before. Overviews are made by halving, and by
+// averaging when the memory budget skips levels, which a picture this small never needs, so
+// averaging is checked through shrink, which uses the same code.
+TEST(Alpha, OverviewsKeepItAndDoNotMixInTheColourUnderTransparency) {
+    const Size size{6000, 16};
+    SubimageInfo info;
+    info.alpha = true;
+    const auto paint = [](const ImageBuffer& image) {
+        for (int y = 0; y < image.height(); ++y) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
+            for (int x = 0; x < image.width(); ++x, p += 4) {
+                const bool left = x < image.width() / 2;
+                p[0] = 0, p[1] = left ? 0 : 255, p[2] = left ? 255 : 0, p[3] = left ? 255 : 0;
+            }
+        }
+        return image.withAlpha(true);
+    };
+    const auto source = withOverviews(makeWholeImageSource(info, size, [size, paint](const std::stop_token&) -> Result<ImageBuffer> {
+        return paint(ImageBuffer::create(size, PixelFormat::Bgrx8));
+    }));
+    const auto& levels = source->subimages()[0].levels;
+    ASSERT_GT(levels.size(), 1u) << "the test needs a picture with overviews";
+    const auto tile = source->readTile({0, static_cast<int>(levels.size()) - 1, 0, 0}, {});
+    ASSERT_TRUE(tile.has_value()) << tile.error();
+
+    const auto expectClean = [](const ImageBuffer& reduced) {
+        EXPECT_TRUE(reduced.hasAlpha());
+        const int y = reduced.height() / 2;
+        const auto* row = reinterpret_cast<const std::uint8_t*>(reduced.row(y));
+        EXPECT_EQ(row[3], 255);
+        EXPECT_EQ(row[(reduced.width() - 1) * 4 + 3], 0);
+        for (int x = 0; x < reduced.width(); ++x) {
+            const std::uint8_t* p = row + x * 4;
+            if (p[3] > 5) {
+                EXPECT_EQ(p[1], 0) << "column " << x;
+                EXPECT_NEAR(p[2], 255, 2) << "column " << x;
+            }
+        }
+        const ImageBuffer display = toDisplay(reduced, fullRange(PixelFormat::Bgrx8));
+        const auto* edge = reinterpret_cast<const std::uint8_t*>(display.row(y)) + (reduced.width() - 1) * 4;
+        EXPECT_EQ(edge[1], 128);
+    };
+    {
+        SCOPED_TRACE("halved");
+        expectClean(*tile);
+    }
+    {
+        SCOPED_TRACE("averaged");
+        expectClean(shrink(paint(ImageBuffer::create({64, 16}, PixelFormat::Bgrx8)), {10, 4}));
+    }
+}
+
+#ifdef IV_HAVE_PNG
+
+// Until transparency is drawn, what reads pixels for showing them sees the picture on mid
+// gray, as before alpha was decoded. Each is checked on the transparent corner of the test
+// picture, which has to come out as gray 128 and not as the blue stored under it.
+TEST(Alpha, IsStillMidGrayInThumbnailsHistogramsAndTheProbe) {
+    PngOptions rgba;
+    rgba.colorType = PNG_COLOR_TYPE_RGBA;
+    const auto path = write("flat.png", encodePng(rgba));
+
+    const auto thumbnail = makeThumbnail(path, kWidth, {});
+    ASSERT_TRUE(thumbnail.has_value()) << thumbnail.error();
+    EXPECT_FALSE(thumbnail->hasAlpha());
+    const auto* corner = reinterpret_cast<const std::uint8_t*>(thumbnail->row(kHeight - 4)) + (kWidth - 4) * 4;
+    EXPECT_EQ(corner[0], 128);
+    EXPECT_EQ(corner[2], 128);
+
+    const auto source = open(path);
+    ASSERT_TRUE(source);
+    const auto histogram = computeHistogram(*source, 0, {});
+    ASSERT_TRUE(histogram.has_value());
+    // Blue 200 is the right half's opaque part only: a quarter of the picture.
+    EXPECT_EQ(histogram->channels[2][200], static_cast<std::uint64_t>(kWidth / 2 * kHeight / 2));
+
+    const auto probe = probePixel(*source, 0, kWidth - 8, kHeight - 8, {});
+    ASSERT_TRUE(probe.has_value());
+    EXPECT_EQ(probe->eightBit, (std::array<std::uint8_t, 3>{128, 128, 128}));
+}
+
+// Alpha of an edited picture at a pixel, from 0 to 255.
+int editedAlpha(const ImageBuffer& pixels, int x, int y) {
+    return reinterpret_cast<const std::uint8_t*>(pixels.row(y))[x * 4 + 3];
+}
+
+// Why: an edited transparent picture must keep its transparency, so that it is saved with it.
+// Input: the test picture (its bottom right transparent below four half transparent rows),
+// with each edit alone, and then with several, saved as PNG and as JPEG. The truth: every
+// edit leaves pixels with alpha, the transparent corner stays transparent, the PNG has alpha
+// and its transparent corner, and the JPEG, which has none, gets mid gray.
+TEST(Alpha, EditsKeepItAndAnEditedPictureIsSavedWithIt) {
+    PngOptions rgba;
+    rgba.colorType = PNG_COLOR_TYPE_RGBA;
+    const auto source = open(write("edit.png", encodePng(rgba)));
+    ASSERT_TRUE(source);
+
+    ColorEdit adjust;
+    adjust.chroma = 0.5;
+    const std::pair<const char*, Edit> edits[] = {
+        {"crop", CropEdit{{kWidth / 4, kHeight / 4, kWidth * 3 / 4, kHeight * 3 / 4}}},
+        {"resize", ResizeEdit{{kWidth / 2, kHeight / 2}}},
+        {"straighten", TiltEdit{{.roll = 0.02}, 50, true}},
+        {"grayscale", GrayEdit{}},
+        {"adjust", adjust},
+    };
+    for (const auto& [name, edit] : edits) {
+        SCOPED_TRACE(name);
+        Document document(source, 0);
+        document.apply(edit);
+        const auto edited = document.source();
+        EXPECT_TRUE(edited->subimages()[0].alpha);
+        const auto pixels = readLevel(*edited, 0, 0, {});
+        ASSERT_TRUE(pixels.has_value()) << pixels.error();
+        ASSERT_TRUE(pixels->hasAlpha());
+        EXPECT_EQ(editedAlpha(*pixels, pixels->width() - 3, pixels->height() - 3), 0);
+        EXPECT_EQ(editedAlpha(*pixels, 2, 2), 255);
+    }
+
+    Document document(source, 0);
+    document.apply(CropEdit{{kWidth / 2, 0, kWidth / 2, kHeight}});
+    document.apply(ResizeEdit{{kWidth / 4, kHeight / 2}});
+    document.apply(adjust);
+    const auto edited = document.source();
+
+    const auto png = testFolder() / "edited.png";
+    ASSERT_TRUE(saveSubimage(*edited, 0, png, PngWriteOptions{}, {}, true).has_value());
+    const auto reopened = open(png);
+    ASSERT_TRUE(reopened);
+    EXPECT_TRUE(reopened->subimages()[0].alpha);
+    EXPECT_EQ(decoded(*reopened, kWidth / 4 - 2, kHeight / 2 - 2)[3], 0);
+    EXPECT_EQ(decoded(*reopened, 2, 2)[3], 255);
+
+    const auto jpeg = testFolder() / "edited.jpg";
+    ASSERT_TRUE(saveSubimage(*edited, 0, jpeg, JpegWriteOptions{.quality = 100}, {}, true).has_value());
+    const auto flat = open(jpeg);
+    ASSERT_TRUE(flat);
+    expectNoAlpha(*flat);
+    expectNear(shown(*flat, kWidth / 4 - 3, kHeight / 2 - 3), {128, 128, 128}, 3);
+}
+
+#endif  // IV_HAVE_PNG
 
 TEST(WholeImage, SupportsThumbnailsCancellingAndMissingTiles) {
 #ifdef IV_HAVE_JXL
