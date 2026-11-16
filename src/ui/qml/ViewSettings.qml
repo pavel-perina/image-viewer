@@ -21,9 +21,10 @@ QtObject {
     readonly property color backdropSecond: transparency === "light" ? Theme.checksLightSecond
                                             : transparency === "plain" ? Theme.transparencyPlain : Theme.checksDarkSecond
 
-    // Bits per channel of the window's output, and the step the last pass dithers by.
-    property int outputBits: 8
-    readonly property real ditherStep: 1 / (Math.pow(2, outputBits) - 1)
+    // Bits per channel of the window's output, and the step the last pass dithers by: one step
+    // of the output, or 0 with IV_NO_DITHER=1 (see display_output.h).
+    readonly property int outputBits: DisplayOutput.bits
+    readonly property real ditherStep: DisplayOutput.dither ? 1 / (Math.pow(2, outputBits) - 1) : 0
 
     readonly property Settings store: Settings {
         category: "View"

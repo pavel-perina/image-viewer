@@ -49,6 +49,19 @@ W for Windows.
       numbers of the probe. Text that is scaled or turned would blur with it, which nothing
       in the window is. Linux was judged on a denser screen, where this does not show.
 
+## Display depth
+
+Needs a monitor and cable that take 10 bits, set in the driver (NVIDIA Control Panel: Change
+resolution, Use NVIDIA color settings, Output color depth 10 bpc). Make the image with
+`python tools/gradient_test.py gradients.png` and open it at 100%: each gradient is drawn in
+full 16 bits, rounded to 10 bits and rounded to 8 bits.
+
+- [ ] L [ ] W  Run with `IV_OUTPUT_BITS=10 IV_NO_DITHER=1`. About says 10 bits per channel, not
+      dithered; the first two strips of each gradient are smooth and only the third bands.
+- [ ] L [ ] W  The same with `IV_NO_DITHER=1` alone: About says 8 bits, all three strips band
+      alike. This is the comparison.
+- [ ] L [ ] W  `IV_OUTPUT_BITS=10` alone: smooth, with no grain to see, and About says dithered.
+
 ## Disks
 
 - [ ] A folder on a spinning disk or a USB stick: thumbnails come one file at a time, the image

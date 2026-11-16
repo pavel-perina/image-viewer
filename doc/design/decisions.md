@@ -85,6 +85,17 @@ change nothing useful. The first press of a double click does this too, for that
   output wide (`ViewSettings.ditherStep`, 1/255 for an 8-bit window) keeps the average of each
   area at its true value, so smooth gradients show grain finer than the eye resolves instead of
   bands. The hash needs no integers, as the kernel's shaders still build for GLSL ES 1.
+* A 10-bit window is asked for with `IV_OUTPUT_BITS=10`, which also takes OpenGL: Qt Quick
+  makes 8-bit swap chains through Direct3D, Vulkan and Metal, and offers deeper ones only for
+  HDR (`QSG_RHI_HDR`, and on Windows only while HDR is on). OpenGL passes 10 bits per channel
+  to the driver's pixel format, which NVIDIA and AMD give for windows. The bits are read from
+  the context once the window draws (`DisplayOutput`), never assumed, so the dither step is
+  right either way, and About shows them with the API. `QSG_RHI_BACKEND`, when set, still
+  chooses the backend, though only OpenGL then gives 10 bits. It is a variable, not a setting,
+  while it is tried.
+* `IV_NO_DITHER=1` turns the dither off, as on an 8-bit window it makes a 16-bit gradient look
+  smooth and so hides whether 10 bits arrive. `tools/gradient_test.py` writes the image to
+  check with (`doc/manual-checks.md`).
 * Float images default to auto contrast (0.1% percentiles of the coarsest level), because
   they have no natural range. 16-bit and 8-bit gray images default to the full range, and offer
   auto contrast, since gray images are often measurements that use a small part of it. 16-bit

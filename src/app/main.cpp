@@ -9,6 +9,7 @@
 
 #include "build_info.h"
 #include "ui/color_settings.h"
+#include "ui/display_output.h"
 #include "ui/program_font.h"
 #include "ui/retired_settings.h"
 #include "ui/thumbnail_provider.h"
@@ -17,6 +18,7 @@ Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
 
 int main(int argc, char* argv[]) {
+    iv::requestOutputBits();  // before any window, so before the application
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored

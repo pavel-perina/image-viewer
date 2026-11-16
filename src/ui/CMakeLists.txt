@@ -17,6 +17,8 @@ qt_add_library(iv_ui STATIC
     straighten_overlay.h
     directory_tree_model.cpp
     directory_tree_model.h
+    display_output.cpp
+    display_output.h
     edited_image.h
     file_clipboard.cpp
     file_clipboard.h

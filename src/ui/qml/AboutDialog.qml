@@ -11,8 +11,15 @@ AppDialog {
     title: "About Image Viewer"
     width: Math.min(520, parent ? parent.width - 32 : 520)
 
+    // What the window shows, for checking that 10 bits arrive (display_output.h).
+    function outputText() {
+        return "Display output: " + (DisplayOutput.api !== "" ? DisplayOutput.api + ", " : "")
+            + DisplayOutput.bits + " bits per channel"
+            + (DisplayOutput.dither ? ", dithered" : ", not dithered")
+    }
+
     function plainText() {
-        const lines = ["Image Viewer " + AppInfo.version, ""]
+        const lines = ["Image Viewer " + AppInfo.version, outputText(), ""]
         for (const part of AppInfo.components)
             lines.push(part.name + " " + part.version + " (" + part.licence + ")")
         return lines.join("\n")
@@ -67,6 +74,11 @@ AppDialog {
         Label {
             objectName: "aboutVersion"
             text: "Version " + AppInfo.version
+            color: Theme.textMuted
+        }
+        Label {
+            objectName: "aboutOutput"
+            text: dialog.outputText()
             color: Theme.textMuted
         }
         Label {
