@@ -8,6 +8,8 @@ pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET GLOBAL lcms2)
 
 add_library(iv_core STATIC
     bands.h
+    canvas.cpp
+    canvas.h
     color.cpp
     color.h
     color_edit.cpp

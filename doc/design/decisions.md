@@ -1056,7 +1056,12 @@ or one column.
   pixels, and a margin around the whole.
 * **Shadow:** optional, 5 to 10 pixels: what the picture covers, moved and blurred with a
   separable Gaussian (`core/coverage.h`), black. It is worked out from the picture's
-  rectangle, or its alpha where it has some, never by scanning for edges.
+  rectangle, or its alpha where it has some, never by scanning for edges. One number, how
+  far it reaches: it is moved by half of it and blurred with a sigma of a sixth, so that it
+  reaches that far (the offset and three sigmas) and nothing comes out above or left of the
+  picture. `composeCanvas` (`core/canvas.h`) puts pictures and shadows on the canvas, for
+  the frame tool too, through the same blending as annotations (`blendLayerInto`, in place,
+  as a strip of fifty pictures would otherwise copy the canvas fifty times).
 * **Background:** transparent, or a colour (white by default); the two exclude each other.
   On a transparent background the shadow is in the alpha.
 * **Size first:** the dialog shows the size of the result, worked out from the sizes of the
