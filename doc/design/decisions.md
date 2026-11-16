@@ -1042,6 +1042,60 @@ Left out for now:
 * Folders in the grid too, each drawn with a few thumbnails of the images inside it.
 * Options to show more than images: video files, raw files, and all files.
 
+## Image strip builder (planned, not built)
+
+Several pictures side by side in one, for a web page or a manual: a contact sheet of one row
+or one column.
+
+* **Input:** the selection in the browser, at most 50 pictures. The dialog lists them as
+  thumbnails, smaller than the browser's, in a list that scrolls, and they are put in order by
+  dragging. It is a dialog of its own (`DialogWindow`), as previews do not fit a side panel.
+* **Layout:** across or down. The pictures share one height (across) or one width (down),
+  typed by the user; the other side follows each picture's ratio. Optionally only reducing:
+  a picture smaller than that keeps its size and is centred. A space between pictures, in
+  pixels, and a margin around the whole.
+* **Shadow:** optional, 5 to 10 pixels: what the picture covers, moved and blurred with a
+  separable Gaussian (`core/coverage.h`), black. It is worked out from the picture's
+  rectangle, or its alpha where it has some, never by scanning for edges.
+* **Background:** transparent, or a colour (white by default); the two exclude each other.
+  On a transparent background the shadow is in the alpha.
+* **Size first:** the dialog shows the size of the result, worked out from the sizes of the
+  pictures and the options before anything is decoded, as the long side often matters.
+* **Building:** each picture is decoded, turned upright, reduced with Magic Kernel Sharp
+  (keeping alpha), converted to sRGB 8-bit, as the result is meant for the web or for print
+  in a manual, and placed on the canvas over its shadow. It runs on the work queue with
+  progress, and can be cancelled, as 50 pictures of 40 megapixels take a while. The result
+  must be small enough to be saved whole.
+* **Saving:** the result goes to Save As at once, named by the time, such as
+  `2026-11-16_234516.webp`; it is not opened in the viewer first. Save As already takes an
+  image that has no file, as it does for edited ones.
+* **Not in the first version:** names under the pictures (fonts, and what to do when a name
+  is longer than its picture).
+* **In core, for a contact sheet later:** the layout and the filters are in core, without Qt,
+  so that a contact sheet (a grid of previews, such as one picture through several filters)
+  can be built on them. The layout can already wrap after a number of pictures, which makes
+  a grid; the first dialog offers one row or column.
+* **Parts to share** with the frame tool and batch processing that come later: the shadow
+  and background, and the reduction to sRGB 8-bit.
+
+Order of work, each a commit of its own: the layout, worked out in core without pixels; the
+shadow and putting pictures on the canvas, in core; the thumbnail of the browser's grid made
+a shared component, before a second copy; the dialog, its list and saving.
+
+## Frame and shadow tool (planned, not built)
+
+* One picture: up to three frames around it (outer, middle, inner), each a colour and a width
+  in pixels, so that they can make a bevel; then the shadow and background of the strip
+  builder. It can be a step in a chain, such as resize, frame, save.
+* With a frame, alpha does not need keeping inside it.
+
+## Batch processing (planned, not built)
+
+* A chain of steps for the selected pictures, such as resize, removing or adding metadata
+  (a position from a GPX track), then saving in a format, with names made of a prefix, a
+  suffix, a counter or the date and time. Perhaps kept as recipes.
+* It can only offer the processing the program has.
+
 ## Known limitations
 * Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
   rather than the image being edited.
