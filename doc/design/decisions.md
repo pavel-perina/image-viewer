@@ -1266,6 +1266,11 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   edits still flatten first. Overviews are made the same way and keep alpha; the 8-bit
   halving then leaves its fast integer path for the general one.
   Straightening's resampling keeps alpha the same way.
+* Annotations drawn on a picture with alpha keep it. What is drawn fills in what was
+  transparent, by the usual compositing of a source over a backdrop: half-opaque red on a
+  transparent pixel is half-opaque red, without the colour stored there. A marker darkens what
+  shows under it and keeps its own colour over transparency. Pixelating weighs colours by
+  alpha and averages alpha.
 * Of the edits, only some need to keep alpha: crop (which costs nothing), resize and
   annotations. Adjust and Grayscale leave it as it is. Straightening keeps it, and with its
   cropping turned off it will make it: the whole turned picture is kept and the empty corners

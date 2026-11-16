@@ -28,12 +28,13 @@ enum class LayerBlend { Over, Multiply };
 // reach beyond the picture. Its black and white become the low and high of the range, so
 // that on a picture using a small part of its values, shown stretched, white is the white
 // seen and not a value far above it. A gray picture stays gray, taking the layer's luma:
-// use toColour first to keep colours.
+// use toColour first to keep colours. A picture with alpha keeps it: what is drawn fills in
+// what was transparent, and a marker on a transparent part shows its own colour.
 ImageBuffer blendLayer(const ImageBuffer& image, const ImageBuffer& layer, int x, int y, LayerBlend blend, DisplayRange range);
 
 // A copy of the picture with a rectangle coarsened into blocks of one colour each, the
 // average of what was there, counted from the rectangle's corner. The part of the rectangle
-// outside the picture is ignored.
+// outside the picture is ignored. With alpha, colours are weighed by it and alpha is averaged.
 ImageBuffer pixelate(const ImageBuffer& image, PixelRect rect, int block);
 
 }  // namespace iv
