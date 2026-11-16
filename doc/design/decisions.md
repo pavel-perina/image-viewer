@@ -1113,8 +1113,8 @@ a shared component, before a second copy; the dialog, its list and saving.
   and the size it gives. OK applies it as an edit, seen at once and undone as any other. At
   first outer 1 px dark gray, middle 12 px white, inner 1 px gray, no shadow, then what was
   used last. No preview inside the dialog, as the image shows it once applied.
-* A colour is a `ColorField`: hex typed, with a swatch of it. It is to get a caret that opens
-  the colour chooser once there is one, and to replace the annotation panel's hex field.
+* A colour is a `ColorField`: hex typed, with a swatch of it; clicking the swatch opens the
+  colour chooser. It is to replace the annotation panel's hex field.
 
 ## Batch processing (planned, not built)
 
@@ -1136,7 +1136,12 @@ a shared component, before a second copy; the dialog, its list and saving.
   Colours sRGB cannot show are hatched on the tracks; set there, chroma is reduced until it
   fits, keeping lightness and hue, as the palette does (`fromOklch`). Chroma goes to 0.37,
   a little past the most sRGB has.
-* A gray keeps the hue last set, so that its hue slider does not jump to 0.
+* A gray keeps the hue last set, so that its hue slider does not jump to 0. Lightness,
+  chroma and hue stay as set even past sRGB, the colour then having less chroma, so a slider
+  stays where it was dragged. `ColorChoice` (`ui/color_choice_model.h`) holds this, and
+  `ColorRamp` draws a track, hatched in a colour from `Theme`.
+* It opens by clicking the swatch of a `ColorField`. No caret beside the field, which would
+  be clutter on every colour; a double click stays for selecting the text, as in any field.
 * The slider with its colour track is a QML component of its own, `GradientSlider`, which
   draws the colours C++ gives it, so other panels can use it too. The annotation swatches stay,
   as presets.

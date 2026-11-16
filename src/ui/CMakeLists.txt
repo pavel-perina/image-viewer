@@ -37,6 +37,10 @@ qt_add_library(iv_ui STATIC
     key_names.cpp
     key_names.h
     histogram_handle.h
+    color_choice_model.cpp
+    color_choice_model.h
+    color_ramp.cpp
+    color_ramp.h
     histogram_view.cpp
     histogram_view.h
     image_overlay.cpp
