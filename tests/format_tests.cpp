@@ -1232,6 +1232,60 @@ TEST(Alpha, ResizingKeepsItAndDoesNotMixInTheColourUnderTransparency) {
     }
 }
 
+// Why: straightening resamples the picture as resizing does, with a kernel that reaches into
+// neighbours, so the same leak of hidden colour would show at transparent edges. Input: the
+// left half opaque red, the right half transparent green, turned a little (a few degrees),
+// at 8 and 16 bits. The truth: the result has alpha, every pixel that shows at all is red
+// without green, and both opaque and fully transparent pixels remain.
+TEST(Alpha, StraighteningKeepsItAndDoesNotMixInTheColourUnderTransparency) {
+    for (const PixelFormat format : {PixelFormat::Bgrx8, PixelFormat::Rgba16}) {
+        SCOPED_TRACE(format == PixelFormat::Bgrx8 ? "8 bits" : "16 bits");
+        const bool deep = format == PixelFormat::Rgba16;
+        const int max = deep ? 65535 : 255;
+        const ImageBuffer image = ImageBuffer::create({64, 64}, format).withAlpha(true);
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                const bool left = x < 32;
+                if (deep) {
+                    auto* p = reinterpret_cast<std::uint16_t*>(image.row(y)) + x * 4;
+                    p[0] = left ? 65535 : 0, p[1] = left ? 0 : 65535, p[2] = 0, p[3] = left ? 65535 : 0;
+                } else {
+                    auto* p = reinterpret_cast<std::uint8_t*>(image.row(y)) + x * 4;
+                    p[0] = 0, p[1] = left ? 0 : 255, p[2] = left ? 255 : 0, p[3] = left ? 255 : 0;
+                }
+            }
+        }
+        // Turned by about 3 degrees around the middle, target pixels to source pixels.
+        const double c = std::cos(0.05), s = std::sin(0.05);
+        const std::array<double, 9> turn{c, -s, 32 - 32 * c + 32 * s, s, c, 32 - 32 * s - 32 * c, 0, 0, 1};
+        const ImageBuffer turned = warp(image, turn, {64, 64});
+        ASSERT_FALSE(turned.isNull());
+        EXPECT_TRUE(turned.hasAlpha());
+        int opaque = 0;
+        int clear = 0;
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) {
+                int red = 0, green = 0, a = 0;
+                if (deep) {
+                    const auto* p = reinterpret_cast<const std::uint16_t*>(turned.row(y)) + x * 4;
+                    red = p[0], green = p[1], a = p[3];
+                } else {
+                    const auto* p = reinterpret_cast<const std::uint8_t*>(turned.row(y)) + x * 4;
+                    red = p[2], green = p[1], a = p[3];
+                }
+                opaque += a == max;
+                clear += a == 0;
+                if (a > max / 50) {
+                    EXPECT_EQ(green, 0) << x << ", " << y;
+                    EXPECT_NEAR(red, max, max / 100) << x << ", " << y;
+                }
+            }
+        }
+        EXPECT_GT(opaque, 0);
+        EXPECT_GT(clear, 0);
+    }
+}
+
 // A picture without alpha is resized as before: its fourth channel is not a weight, whatever
 // it holds. Opaque red with zeros there stays red, where taking them for alpha would give black.
 TEST(Alpha, ResizingAPictureWithoutAlphaIgnoresTheFourthChannel) {

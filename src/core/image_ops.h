@@ -48,6 +48,7 @@ ImageBuffer resize(const ImageBuffer& source, Size size, const std::stop_token& 
 // transform of target pixel coordinates leads, row by row as 3 x 3, with a Catmull-Rom cubic.
 // 8-bit images are mixed in linear light. Points beyond the edge repeat it. A stop request gives
 // up between rows and returns an empty buffer.
+// A picture with alpha keeps it, mixed with its colours multiplied by alpha, as in resize.
 ImageBuffer warp(const ImageBuffer& source, const std::array<double, 9>& targetToSource, Size size,
                  const std::stop_token& stop = {});
 

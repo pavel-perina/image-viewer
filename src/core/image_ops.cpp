@@ -746,7 +746,8 @@ namespace {
 
 template <typename Sample, int Channels, typename Samples>
 ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m, Size size, const std::stop_token& stop) {
-    const ImageBuffer target = ImageBuffer::create(size, source.format());
+    const ImageBuffer target = ImageBuffer::create(size, source.format()).withAlpha(source.hasAlpha());
+    const bool alpha = Channels == 4 && source.hasAlpha();
     const int sw = source.width();
     const int sh = source.height();
     std::atomic<bool> stopped = false;
@@ -785,13 +786,23 @@ ImageBuffer warpTyped(const ImageBuffer& source, const std::array<double, 9>& m,
                     std::array<float, Channels> across{};
                     for (int k = 0; k < 4; ++k) {
                         const Sample* pixel = in + static_cast<std::size_t>(columns[static_cast<std::size_t>(k)]) * Channels;
+                        std::array<float, Channels> decoded{};
                         for (int c = 0; c < Channels; ++c) {
-                            across[static_cast<std::size_t>(c)] += wx[static_cast<std::size_t>(k)] * Samples::decode(pixel[c], c);
+                            decoded[static_cast<std::size_t>(c)] = Samples::decode(pixel[c], c);
+                        }
+                        if (alpha) {
+                            premultiply(decoded.data(), kAlphaMax<Sample>);
+                        }
+                        for (int c = 0; c < Channels; ++c) {
+                            across[static_cast<std::size_t>(c)] += wx[static_cast<std::size_t>(k)] * decoded[static_cast<std::size_t>(c)];
                         }
                     }
                     for (int c = 0; c < Channels; ++c) {
                         sum[static_cast<std::size_t>(c)] += wy[static_cast<std::size_t>(j)] * across[static_cast<std::size_t>(c)];
                     }
+                }
+                if (alpha) {
+                    unpremultiply(sum.data(), kAlphaMax<Sample>);
                 }
                 for (int c = 0; c < Channels; ++c) {
                     out[c] = Samples::encode(sum[static_cast<std::size_t>(c)], c);
