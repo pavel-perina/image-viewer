@@ -1108,8 +1108,13 @@ a shared component, before a second copy; the dialog, its list and saving.
   alpha only from a shadow on transparency.
 * Room is kept for the whole shadow, its faint edge above and left included, so none of it is
   cut off.
-* Colours are chosen from the annotation swatches or typed in hex, until there is a colour
-  chooser.
+* Edit > Frame... is a dialog, as Resize is: Outer, Middle and Inner, each a width (0 for
+  none) and a colour; Shadow; Background, white or transparent, offered only with a shadow;
+  and the size it gives. OK applies it as an edit, seen at once and undone as any other. At
+  first outer 1 px dark gray, middle 12 px white, inner 1 px gray, no shadow, then what was
+  used last. No preview inside the dialog, as the image shows it once applied.
+* A colour is a `ColorField`: hex typed, with a swatch of it. It is to get a caret that opens
+  the colour chooser once there is one, and to replace the annotation panel's hex field.
 
 ## Batch processing (planned, not built)
 

@@ -180,6 +180,12 @@ public:
     // middle instead of stretching. resizeProblem says why a size cannot be used, or is empty.
     Q_INVOKABLE void resizeImage(int width, int height, bool fill);
     Q_INVOKABLE QString resizeProblem(int width, int height) const;
+    // Frames and a shadow around the image, as FrameEdit: the look is {frames: [{width,
+    // colour}, ...] outer first, shadow, transparent}. The size it gives, why it cannot be
+    // applied or empty, and applying it.
+    Q_INVOKABLE QSize framedSize(const QVariantMap& look) const;
+    Q_INVOKABLE QString frameProblem(const QVariantMap& look) const;
+    Q_INVOKABLE void frameImage(const QVariantMap& look);
     // Turns the picture gray: 0 weighs R, G and B as JPEG does, 1 keeps Oklab lightness.
     Q_INVOKABLE void grayscale(int method);
     // Burns annotation shapes into the picture, as one edit.
