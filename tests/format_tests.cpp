@@ -1277,31 +1277,60 @@ TEST(Alpha, DeepPicturesAreShownOnMidGrayToo) {
     EXPECT_EQ(reinterpret_cast<const std::uint16_t*>(wide.row(0))[3], 65535);
 }
 
-// A large picture is shown reduced through overviews, made from its tiles. Reducing does not
-// know alpha yet, so the overviews are of the picture on mid gray, and say they have none. The
-// source is made up: transparent white all over, large enough to need overviews.
-TEST(Alpha, OverviewsAreOfThePictureOnMidGray) {
+// Why: a large picture is shown reduced through overviews, made from its tiles by halving and
+// averaging, and these mix neighbours as resizing does. Input: made up, large enough to need
+// overviews: the left half opaque red, the right half fully transparent green. The truth: the
+// overviews keep alpha, every pixel that shows at all is red without green, the right edge is
+// transparent, and it is shown on mid gray as before. Overviews are made by halving, and by
+// averaging when the memory budget skips levels, which a picture this small never needs, so
+// averaging is checked through shrink, which uses the same code.
+TEST(Alpha, OverviewsKeepItAndDoNotMixInTheColourUnderTransparency) {
     const Size size{6000, 16};
     SubimageInfo info;
     info.alpha = true;
-    const auto source = withOverviews(makeWholeImageSource(info, size, [size](const std::stop_token&) -> Result<ImageBuffer> {
-        const ImageBuffer image = ImageBuffer::create(size, PixelFormat::Bgrx8);
-        for (int y = 0; y < size.height; ++y) {
-            std::memset(image.row(y), 255, static_cast<std::size_t>(size.width) * 4);
-            for (int x = 0; x < size.width; ++x) {
-                reinterpret_cast<std::uint8_t*>(image.row(y))[x * 4 + 3] = 0;
+    const auto paint = [](const ImageBuffer& image) {
+        for (int y = 0; y < image.height(); ++y) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
+            for (int x = 0; x < image.width(); ++x, p += 4) {
+                const bool left = x < image.width() / 2;
+                p[0] = 0, p[1] = left ? 0 : 255, p[2] = left ? 255 : 0, p[3] = left ? 255 : 0;
             }
         }
         return image.withAlpha(true);
+    };
+    const auto source = withOverviews(makeWholeImageSource(info, size, [size, paint](const std::stop_token&) -> Result<ImageBuffer> {
+        return paint(ImageBuffer::create(size, PixelFormat::Bgrx8));
     }));
     const auto& levels = source->subimages()[0].levels;
     ASSERT_GT(levels.size(), 1u) << "the test needs a picture with overviews";
     const auto tile = source->readTile({0, static_cast<int>(levels.size()) - 1, 0, 0}, {});
     ASSERT_TRUE(tile.has_value()) << tile.error();
-    EXPECT_FALSE(tile->hasAlpha());
-    const auto* p = reinterpret_cast<const std::uint8_t*>(tile->row(tile->height() / 2)) + (tile->width() / 2) * 4;
-    EXPECT_NEAR(p[0], 128, 1);
-    EXPECT_NEAR(p[2], 128, 1);
+
+    const auto expectClean = [](const ImageBuffer& reduced) {
+        EXPECT_TRUE(reduced.hasAlpha());
+        const int y = reduced.height() / 2;
+        const auto* row = reinterpret_cast<const std::uint8_t*>(reduced.row(y));
+        EXPECT_EQ(row[3], 255);
+        EXPECT_EQ(row[(reduced.width() - 1) * 4 + 3], 0);
+        for (int x = 0; x < reduced.width(); ++x) {
+            const std::uint8_t* p = row + x * 4;
+            if (p[3] > 5) {
+                EXPECT_EQ(p[1], 0) << "column " << x;
+                EXPECT_NEAR(p[2], 255, 2) << "column " << x;
+            }
+        }
+        const ImageBuffer display = toDisplay(reduced, fullRange(PixelFormat::Bgrx8));
+        const auto* edge = reinterpret_cast<const std::uint8_t*>(display.row(y)) + (reduced.width() - 1) * 4;
+        EXPECT_EQ(edge[1], 128);
+    };
+    {
+        SCOPED_TRACE("halved");
+        expectClean(*tile);
+    }
+    {
+        SCOPED_TRACE("averaged");
+        expectClean(shrink(paint(ImageBuffer::create({64, 16}, PixelFormat::Bgrx8)), {10, 4}));
+    }
 }
 
 #ifdef IV_HAVE_PNG

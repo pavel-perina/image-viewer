@@ -124,7 +124,7 @@ private:
         std::vector<ImageBuffer> built;
         try {
             const ImageBuffer finest =
-                ImageBuffer::create(subimage.levels[static_cast<std::size_t>(realLevels)].size, subimage.format);
+                ImageBuffer::create(subimage.levels[static_cast<std::size_t>(realLevels)].size, subimage.format).withAlpha(subimage.alpha);
             std::memset(finest.data(), 0, finest.stride() * static_cast<std::size_t>(finest.height()));
             // A budget that dropped the largest levels leaves more than one halving to do at once.
             const auto scanned = halvedSize(base.size) == finest.size()
@@ -167,7 +167,6 @@ private:
             for (int col = 0; col < cols; ++col) {
                 auto tile = m_base->readTile({subimage, levelIndex, col, row}, stop);
                 if (tile) {
-                    *tile = flattened(*tile);  // until reducing keeps alpha
                     anyRead = true;
                     const int x = col * base.tileSize.width;
                     const int copied = std::min(tile->width(), base.size.width - x);
@@ -214,7 +213,6 @@ private:
             for (int col = 0; col < cols; ++col) {
                 auto tile = m_base->readTile({subimage, levelIndex, col, row}, stop);
                 if (tile) {
-                    *tile = flattened(*tile);  // until reducing keeps alpha
                     anyRead = true;
                     shrinkBlockInto(*tile, col * base.tileSize.width, row * base.tileSize.height, base.size, target);
                 } else if (tile.error() == "cancelled") {

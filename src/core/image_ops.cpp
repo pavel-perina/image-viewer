@@ -20,6 +20,30 @@ namespace iv {
 
 namespace {
 
+// Pixels with alpha are mixed with their colours multiplied by it, so that a pixel counts by
+// how much of it shows and the colour stored under transparency does not leak into edges.
+// These work on one decoded pixel of four channels, whose alpha goes up to alphaMax.
+template <typename Sample>
+constexpr float kAlphaMax = std::is_floating_point_v<Sample> ? 1.0F : static_cast<float>(std::numeric_limits<Sample>::max());
+
+inline void premultiply(float* pixel, float alphaMax) {
+    const float alpha = pixel[3] / alphaMax;
+    pixel[0] *= alpha;
+    pixel[1] *= alpha;
+    pixel[2] *= alpha;
+}
+
+// A kernel that overshoots can leave alpha a little outside its range, so it is brought back.
+// Where nothing shows there is no colour to recover, and it becomes black.
+inline void unpremultiply(float* pixel, float alphaMax) {
+    pixel[3] = std::clamp(pixel[3], 0.0F, alphaMax);
+    const float alpha = pixel[3] / alphaMax;
+    const float scale = alpha > 1e-6F ? 1.0F / alpha : 0.0F;
+    pixel[0] *= scale;
+    pixel[1] *= scale;
+    pixel[2] *= scale;
+}
+
 // Rounds down, in 64 bits so very large images cannot overflow.
 int scaled(int value, int numerator, int denominator) {
     return static_cast<int>(static_cast<std::int64_t>(value) * numerator / denominator);
@@ -56,6 +80,7 @@ void shrinkTyped(const ImageBuffer& block, int blockX, int blockY, Size full, co
 
     const auto* blockStart = reinterpret_cast<const std::uint8_t*>(block.row(0));
     const std::size_t stride = block.stride();
+    const bool alpha = Channels == 4 && target.hasAlpha();
     int inverseOf = 0;
     double inverse = 0;
     for (int y = firstY; y < lastY; ++y) {
@@ -64,7 +89,36 @@ void shrinkTyped(const ImageBuffer& block, int blockX, int blockY, Size full, co
         auto* out = reinterpret_cast<Sample*>(target.row(y)) + static_cast<std::size_t>(firstX) * Channels;
         for (const Span& column : columns) {
             const int count = (bottom - top) * (column.end - column.begin);
-            if (count > 0) {
+            if (count > 0 && alpha) {
+                // Each colour weighed by its alpha; alpha itself is averaged.
+                std::array<double, 3> colour{};
+                double weight = 0;
+                const std::uint8_t* rowStart = blockStart + static_cast<std::size_t>(top) * stride;
+                for (int sy = top; sy < bottom; ++sy, rowStart += stride) {
+                    const auto* in = reinterpret_cast<const Sample*>(rowStart) + static_cast<std::size_t>(column.begin) * Channels;
+                    for (int sx = column.begin; sx < column.end; ++sx, in += Channels) {
+                        const double a = in[3];
+                        weight += a;
+                        for (int c = 0; c < 3; ++c) {
+                            colour[static_cast<std::size_t>(c)] += in[c] * a;
+                        }
+                    }
+                }
+                const double scale = weight > 0 ? 1.0 / weight : 0.0;
+                for (int c = 0; c < 3; ++c) {
+                    const double value = colour[static_cast<std::size_t>(c)] * scale;
+                    if constexpr (std::is_floating_point_v<Sample>) {
+                        out[c] = static_cast<Sample>(value);
+                    } else {
+                        out[c] = static_cast<Sample>(value + 0.5);
+                    }
+                }
+                if constexpr (std::is_floating_point_v<Sample>) {
+                    out[3] = static_cast<Sample>(weight / count);
+                } else {
+                    out[3] = static_cast<Sample>(weight / count + 0.5);
+                }
+            } else if (count > 0) {
                 std::array<Sum, Channels> sum{};
                 const std::uint8_t* rowStart = blockStart + static_cast<std::size_t>(top) * stride;
                 for (int sy = top; sy < bottom; ++sy, rowStart += stride) {
@@ -284,7 +338,7 @@ ImageBuffer shrink(const ImageBuffer& source, Size size) {
     if (source.size() == size) {
         return source;
     }
-    const ImageBuffer target = ImageBuffer::create(size, source.format());
+    const ImageBuffer target = ImageBuffer::create(size, source.format()).withAlpha(source.hasAlpha());
     shrinkBlockInto(source, 0, 0, source.size(), target);
     return target;
 }
@@ -350,6 +404,7 @@ struct DisplaySamples {
 
 template <typename Sample, int Channels, typename Samples>
 void halveTyped(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
+    const bool alpha = Channels == 4 && target.hasAlpha();
     const int width = strip.width();
     const auto rowLength = static_cast<std::size_t>(width) * Channels;
 
@@ -367,6 +422,9 @@ void halveTyped(const ImageBuffer& strip, int stripY, int fullHeight, const Imag
             for (int x = 0; x < width; ++x) {
                 for (int c = 0; c < Channels; ++c) {
                     *out++ = Samples::decode(*in++, c);
+                }
+                if (alpha) {
+                    premultiply(out - 4, kAlphaMax<Sample>);
                 }
             }
             decodedRow[slot] = sourceY;
@@ -390,8 +448,15 @@ void halveTyped(const ImageBuffer& strip, int stripY, int fullHeight, const Imag
             const float* b = mixed.data() + static_cast<std::size_t>(centre) * Channels;
             const float* c1 = mixed.data() + static_cast<std::size_t>(std::min(centre + 1, width - 1)) * Channels;
             const float* d = mixed.data() + static_cast<std::size_t>(std::min(centre + 2, width - 1)) * Channels;
+            std::array<float, Channels> pixel{};
             for (int c = 0; c < Channels; ++c) {
-                *out++ = Samples::encode((a[c] + 3 * (b[c] + c1[c]) + d[c]) / 64.0F, c);
+                pixel[static_cast<std::size_t>(c)] = (a[c] + 3 * (b[c] + c1[c]) + d[c]) / 64.0F;
+            }
+            if (alpha) {
+                unpremultiply(pixel.data(), kAlphaMax<Sample>);
+            }
+            for (int c = 0; c < Channels; ++c) {
+                *out++ = Samples::encode(pixel[static_cast<std::size_t>(c)], c);
             }
         }
     }
@@ -480,7 +545,14 @@ void halveBgrx8(const ImageBuffer& strip, int stripY, int fullHeight, const Imag
 
 void halveBand(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow) {
     switch (strip.format()) {
-    case PixelFormat::Bgrx8:   halveBgrx8(strip, stripY, fullHeight, target, firstRow, endRow); break;
+    case PixelFormat::Bgrx8:
+        // The fast integer path does not weigh by alpha.
+        if (target.hasAlpha()) {
+            halveTyped<std::uint8_t, 4, DisplaySamples>(strip, stripY, fullHeight, target, firstRow, endRow);
+        } else {
+            halveBgrx8(strip, stripY, fullHeight, target, firstRow, endRow);
+        }
+        break;
     case PixelFormat::Gray8:   halveTyped<std::uint8_t, 1, DisplaySamples>(strip, stripY, fullHeight, target, firstRow, endRow); break;
     case PixelFormat::Gray16:  halveTyped<std::uint16_t, 1, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
     case PixelFormat::Rgba16:  halveTyped<std::uint16_t, 4, PlainSamples<std::uint16_t>>(strip, stripY, fullHeight, target, firstRow, endRow); break;
@@ -576,30 +648,6 @@ void sharpenLines(float* data, int lines, int length, std::size_t pixelStep, std
             }
         }
     }
-}
-
-// Pixels with alpha are mixed with their colours multiplied by it, so that a pixel counts by
-// how much of it shows and the colour stored under transparency does not leak into edges.
-// These work on one decoded pixel of four channels, whose alpha goes up to alphaMax.
-template <typename Sample>
-constexpr float kAlphaMax = std::is_floating_point_v<Sample> ? 1.0F : static_cast<float>(std::numeric_limits<Sample>::max());
-
-inline void premultiply(float* pixel, float alphaMax) {
-    const float alpha = pixel[3] / alphaMax;
-    pixel[0] *= alpha;
-    pixel[1] *= alpha;
-    pixel[2] *= alpha;
-}
-
-// A kernel that overshoots can leave alpha a little outside its range, so it is brought back.
-// Where nothing shows there is no colour to recover, and it becomes black.
-inline void unpremultiply(float* pixel, float alphaMax) {
-    pixel[3] = std::clamp(pixel[3], 0.0F, alphaMax);
-    const float alpha = pixel[3] / alphaMax;
-    const float scale = alpha > 1e-6F ? 1.0F / alpha : 0.0F;
-    pixel[0] *= scale;
-    pixel[1] *= scale;
-    pixel[2] *= scale;
 }
 
 template <typename Sample, int Channels, typename Samples>
@@ -894,7 +942,7 @@ void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const Image
 }
 
 ImageBuffer halve(const ImageBuffer& source) {
-    const ImageBuffer target = ImageBuffer::create(halvedSize(source.size()), source.format());
+    const ImageBuffer target = ImageBuffer::create(halvedSize(source.size()), source.format()).withAlpha(source.hasAlpha());
     halveRows(source, 0, source.height(), target, 0, target.height());
     return target;
 }

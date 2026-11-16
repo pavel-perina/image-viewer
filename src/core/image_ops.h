@@ -12,12 +12,14 @@ namespace iv {
 
 class ColorTransform;
 
-// Shrinks by averaging. Works for every pixel format.
+// Shrinks by averaging. Works for every pixel format. A picture with alpha keeps it, and here
+// as in halving below its colours are weighed by alpha, so the colour stored under
+// transparency does not show at edges.
 ImageBuffer shrink(const ImageBuffer& source, Size size);
 
 // Averages one block of a larger image into a target that represents the whole image at a
 // smaller size. Lets an overview be built one tile at a time, without the full image in
-// memory. The target must have the block's format.
+// memory. The target must have the block's format, and says whether there is alpha.
 void shrinkBlockInto(const ImageBuffer& block, int blockX, int blockY, Size fullSize, const ImageBuffer& target);
 
 // The size halveRows gives, rounding up.
@@ -31,6 +33,7 @@ ImageBuffer halve(const ImageBuffer& source);
 // The same for rows [firstRow, endRow) of the target, from a strip of the source that begins
 // at row stripY of fullHeight and has its full width. An image too large to hold is reduced
 // this way, so the strip has to contain rows 2 * firstRow - 1 to 2 * endRow, where they exist.
+// The target says whether there is alpha.
 void halveRows(const ImageBuffer& strip, int stripY, int fullHeight, const ImageBuffer& target, int firstRow, int endRow);
 
 // Any size to any size with Magic Kernel Sharp 2013, stretched along when reducing. 8-bit images
