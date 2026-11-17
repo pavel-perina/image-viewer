@@ -480,6 +480,13 @@ void ThumbnailCache::trim() {
     m_impl->trimLocked();
 }
 
+void ThumbnailCache::setMaxBytes(std::uint64_t maxBytes) {
+    const std::scoped_lock lock(m_impl->mutex);
+    if (m_impl->maxBytes == maxBytes) return;
+    m_impl->maxBytes = maxBytes;
+    m_impl->trimLocked();
+}
+
 ThumbnailCache::Usage ThumbnailCache::usage() {
     const std::scoped_lock lock(m_impl->mutex);
     const Statement query = prepare(m_impl->db.get(), "SELECT COUNT(*), TOTAL(LENGTH(bytes)) FROM thumbnails");

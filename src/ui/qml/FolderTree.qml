@@ -23,7 +23,7 @@ TreeView {
     keyNavigationEnabled: false
     model: DirectoryTreeModel {
         id: treeModel
-        showHidden: ViewSettings.showHiddenFolders
+        showHidden: Preferences.showHiddenFolders
     }
 
     // Opens the folder too, so its subfolders show. Only when arriving at a folder, so

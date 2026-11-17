@@ -1226,6 +1226,38 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 * Without git, as in an unpacked archive, it says "unknown".
 * The project version stays in `CMakeLists.txt` for the installer's file name.
 
+## Preferences have one owner; remembered state stays local
+
+* `Preferences` in UI C++ owns typed application preferences and their `QSettings` keys.
+  QML engines share one process-wide instance. Tests may construct an isolated INI-backed
+  instance. Setters reject out-of-range values and notify only real changes; reading an
+  invalid stored value uses the default without rewriting the file.
+* Existing keys and defaults are retained: `View/{keepAutoContrast,showHiddenFolders,
+  transparency}`, `Color/{enabled,displayProfile}`, `Browser/{sortKey,sortDescending}`,
+  `FileOperations/{askBeforeEditing,trimEdges,trashAfterJxl}`, and
+  `InfoPanel/{panelPinned,panelAnimated,logScale,fitRange}`. These are preferences, not
+  a second copy of the state of the current folder, zoom or edit document.
+* Theme choices were not persisted before: new `Appearance/{hue,accentChroma,surfaceChroma}`
+  keys default to 150 degrees, 0.075 and 0. `ThemePalette` derives colours from this owner;
+  its existing setters forward there. `ColorSettings` retains profile validation and the
+  thread-safe rendering target, but no longer writes settings independently.
+* `Thumbnails/cacheMiB` is new, defaulting to the existing 512 MiB budget. Workers use an
+  atomic snapshot and adjust the existing cache's budget on their next cache operation,
+  including measurement, rather than replacing a cache pointer or doing disk work on
+  the GUI thread. Cache size is limited to 1–65536 MiB.
+* `View/outputBits` is new, default 8. It is a startup request, with `IV_OUTPUT_BITS`
+  retaining precedence (including its existing invalid-value fallback to 8). Actual
+  negotiated depth remains a separate `DisplayOutput` value; changing the preference
+  does not claim that a live window changed its pixel format.
+* A preferred browser sort initializes a new main-window context. Menu sorting updates
+  that context and the saved default, without changing another existing context.
+  Info-panel and animation properties bind to preferences by default; an embedded view
+  may override them locally without saving a second copy.
+* Crop/Resize/Frame choices, dialog geometry, chooser state, favorites and recent-folder
+  history remain with their existing owners. `ViewSettings` now contains only derived
+  backdrop/output values. The Settings dialog and its draft/live-preview rollback are
+  a later step; the persistent owner is not the dialog's draft.
+
 ## The palette is worked out from a hue
 
 * Update, 17 November 2026: surfaces and ordinary text default to neutral gray

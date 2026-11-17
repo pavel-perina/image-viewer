@@ -638,7 +638,7 @@ TEST(BrowserPage, TurningHiddenFoldersOnRevealsTheHiddenFolderOpen) {
         writeJpeg(dir.filePath(inner + QStringLiteral("/a.jpg")));
     }, inner);
     ASSERT_NE(f.window, nullptr);
-    QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "ViewSettings");
+    QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "Preferences");
     ASSERT_NE(settings, nullptr);
     ASSERT_FALSE(settings->property("showHiddenFolders").toBool());
     auto* tree = qobject_cast<QQuickItem*>(f.find(QStringLiteral("folderTree")));

@@ -53,6 +53,8 @@ qt_add_library(iv_ui STATIC
     hidden_folders.h
     program_font.cpp
     program_font.h
+    preferences.cpp
+    preferences.h
     retired_settings.cpp
     retired_settings.h
     shape_painter.cpp

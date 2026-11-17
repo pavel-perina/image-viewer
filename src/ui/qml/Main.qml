@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 
-import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -98,7 +97,7 @@ ApplicationWindow {
     // Created here rather than in C++, so a tab can later own one context and its pages.
     BrowseContext {
         id: context
-        showHiddenFolders: ViewSettings.showHiddenFolders
+        showHiddenFolders: Preferences.showHiddenFolders
         onEmptied: window.viewing = false
     }
 
@@ -156,21 +155,14 @@ ApplicationWindow {
         onRejected: window.pendingLeave = null
     }
 
-    Settings {
-        id: browserSettings
-        category: "Browser"
-        property int sortKey: BrowseContext.SortByName
-        property bool sortDescending: false
-    }
-
     ActionGroup { id: sortGroup }
     ActionGroup { id: transparencyGroup }
 
     // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
         DisplayOutput.watch(window)  // what the window shows, for the dither and About
-        context.sortKey = browserSettings.sortKey
-        context.sortDescending = browserSettings.sortDescending
+        context.sortKey = Preferences.sortKey
+        context.sortDescending = Preferences.sortDescending
         context.openPath(initialPath)
         window.viewing = context.currentPath !== ""
         Qt.callLater(window.focusPage)
@@ -192,7 +184,7 @@ ApplicationWindow {
     }
 
     function sortBy(key) {
-        browserSettings.sortKey = key
+        Preferences.sortKey = key
         context.sortKey = key
     }
 
@@ -353,7 +345,7 @@ ApplicationWindow {
         // For this image and the next ones, until turned off: kept between sessions.
         onTriggered: {
             window.activeView.autoContrast = checked
-            ViewSettings.keepAutoContrast = checked
+            Preferences.keepAutoContrast = checked
         }
     }
     Action {
@@ -361,16 +353,16 @@ ApplicationWindow {
         text: "Show &Hidden Folders"
         shortcut: "Ctrl+H"
         checkable: true
-        checked: ViewSettings.showHiddenFolders
-        onTriggered: ViewSettings.showHiddenFolders = checked
+        checked: Preferences.showHiddenFolders
+        onTriggered: Preferences.showHiddenFolders = checked
     }
     Action {
         id: colorManagedAction
         text: "&Colour Management"
         shortcut: "C"
         checkable: true
-        checked: ColorSettings.enabled
-        onTriggered: ColorSettings.enabled = checked
+        checked: Preferences.colorManaged
+        onTriggered: Preferences.colorManaged = checked
     }
     Action {
         id: infoAction
@@ -379,14 +371,14 @@ ApplicationWindow {
         checkable: true
         enabled: window.viewing && window.visibility !== Window.FullScreen
         checked: viewerPage.panelPinned
-        onTriggered: viewerPage.panelPinned = checked
+        onTriggered: Preferences.panelPinned = checked
     }
     Action {
         id: animatePanelAction
         text: "Animate Info Panel"
         checkable: true
         checked: viewerPage.panelAnimated
-        onTriggered: viewerPage.panelAnimated = checked
+        onTriggered: Preferences.panelAnimated = checked
     }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
@@ -481,7 +473,7 @@ ApplicationWindow {
                     checkable: true
                     checked: context.sortDescending
                     onTriggered: {
-                        browserSettings.sortDescending = checked
+                        Preferences.sortDescending = checked
                         context.sortDescending = checked
                     }
                 }
@@ -504,9 +496,9 @@ ApplicationWindow {
             AppMenuItem { action: autoContrastAction }
             AppMenu {
                 title: "&Transparency"
-                Action { text: "&Dark Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "dark"; onTriggered: ViewSettings.transparency = "dark" }
-                Action { text: "&Light Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "light"; onTriggered: ViewSettings.transparency = "light" }
-                Action { text: "&Gray"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "plain"; onTriggered: ViewSettings.transparency = "plain" }
+                Action { text: "&Dark Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: Preferences.transparency === "dark"; onTriggered: Preferences.transparency = "dark" }
+                Action { text: "&Light Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: Preferences.transparency === "light"; onTriggered: Preferences.transparency = "light" }
+                Action { text: "&Gray"; checkable: true; ActionGroup.group: transparencyGroup; checked: Preferences.transparency === "plain"; onTriggered: Preferences.transparency = "plain" }
             }
             MenuSeparator {}
             AppMenuItem { action: colorManagedAction }

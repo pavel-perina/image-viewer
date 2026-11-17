@@ -11,6 +11,7 @@
 #include "ui/color_settings.h"
 #include "ui/display_output.h"
 #include "ui/program_font.h"
+#include "ui/preferences.h"
 #include "ui/retired_settings.h"
 #include "ui/thumbnail_provider.h"
 
@@ -18,10 +19,10 @@ Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
 
 int main(int argc, char* argv[]) {
-    iv::requestOutputBits();  // before any window, so before the application
-    QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("Image Viewer"));
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
+    iv::requestOutputBits();  // names are set for preferences; still before the application
+    QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationVersion(QStringLiteral(IV_BUILD_COMMIT ", built " IV_BUILD_TIME));
     // Our own style (src/ui/controls), which takes from Fusion what it does not redo, unless
     // another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Fusion, for one.
@@ -32,6 +33,7 @@ int main(int argc, char* argv[]) {
     iv::useProgramFont();  // at the size the system asks for
 
     iv::ColorSettings::instance();  // before anything is decoded, and after the settings have a home
+    iv::Preferences::instance();
     {
         QSettings settings;
         iv::forgetRetiredSettings(settings);

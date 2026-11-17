@@ -5,9 +5,9 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
-#include "core/palette.h"
-
 namespace iv {
+
+class Preferences;
 
 // The choices a palette is worked out from (core/palette.h), and the colours they give, for
 // Theme to bind to. Changing a choice changes every colour bound to it, at once. The roles Qt's
@@ -25,12 +25,13 @@ class ThemePalette : public QObject {
 
 public:
     explicit ThemePalette(QObject* parent = nullptr);
+    explicit ThemePalette(Preferences& preferences, QObject* parent = nullptr);
 
-    double hue() const { return m_choices.hue; }
+    double hue() const;
     void setHue(double hue);
-    double accentChroma() const { return m_choices.accentChroma; }
+    double accentChroma() const;
     void setAccentChroma(double chroma);
-    double surfaceChroma() const { return m_choices.surfaceChroma; }
+    double surfaceChroma() const;
     void setSurfaceChroma(double chroma);
     QVariantMap colours() const { return m_colours; }
     // The palette of Qt's roles (window, base, highlight, ...) from the colours.
@@ -42,7 +43,7 @@ signals:
 private:
     void update();
 
-    PaletteChoices m_choices;
+    Preferences* m_preferences;
     QVariantMap m_colours;
 };
 

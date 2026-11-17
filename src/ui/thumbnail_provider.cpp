@@ -17,6 +17,7 @@
 #include "core/thumbnail_cache.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
+#include "ui/preferences.h"
 #include "ui/qimage_bridge.h"
 
 namespace iv {
@@ -26,9 +27,6 @@ namespace {
 constexpr int kDefaultEdge = 256;
 // Below every other kind of work, so opening an image is never held up by thumbnails.
 constexpr int kBasePriority = -1'000'000'000;
-
-// Enough for about 50 000 thumbnails at the size the browser shows them.
-constexpr std::uint64_t kCacheBytes = 512ull * 1024 * 1024;
 
 class ThumbnailResponse final : public QQuickImageResponse {
 public:
@@ -126,8 +124,9 @@ ThumbnailCache* ThumbnailProvider::diskCache() {
         if (folder.isEmpty() || !QDir().mkpath(folder)) {
             return nullptr;
         }
-        return ThumbnailCache::open(QFileInfo(folder + QStringLiteral("/thumbnails.db")).filesystemFilePath(), kCacheBytes);
+        return ThumbnailCache::open(QFileInfo(folder + QStringLiteral("/thumbnails.db")).filesystemFilePath(), Preferences::thumbnailCacheBudgetBytes());
     }();
+    if (cache) cache->setMaxBytes(Preferences::thumbnailCacheBudgetBytes());
     return cache.get();
 }
 

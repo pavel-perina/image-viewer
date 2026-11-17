@@ -3,7 +3,7 @@
 #include <QFile>
 #include <QJSEngine>
 #include <QQmlEngine>
-#include <QSettings>
+#include <QScopedValueRollback>
 #include <QtDebug>
 
 #include <atomic>
@@ -13,12 +13,11 @@
 #include <string>
 #include <utility>
 
+#include "ui/preferences.h"
+
 namespace iv {
 
 namespace {
-
-const QString kEnabledKey = QStringLiteral("Color/enabled");
-const QString kProfileKey = QStringLiteral("Color/displayProfile");
 
 std::mutex targetMutex;
 ColorTarget currentTarget;
@@ -59,21 +58,34 @@ ColorSettings* ColorSettings::create(QQmlEngine*, QJSEngine*) {
 }
 
 ColorSettings::ColorSettings() {
-    const QSettings settings;
-    ColorTarget target;
-    target.enabled = settings.value(kEnabledKey, true).toBool();
-    const QString path = settings.value(kProfileKey).toString();
-    if (!path.isEmpty()) {
-        LoadedProfile loaded = loadProfile(path);
-        if (loaded.bytes) {
-            target.displayProfile = std::move(loaded.bytes);
-            m_name = loaded.name;
-        } else {
-            qWarning() << "Using sRGB, because the display profile" << path << "cannot be used:" << loaded.problem;
+    auto* preferences = Preferences::instance();
+    connect(preferences, &Preferences::colorManagedChanged, this, &ColorSettings::refreshPreferences);
+    connect(preferences, &Preferences::displayProfileChanged, this, &ColorSettings::refreshPreferences);
+    refreshPreferences();
+}
+
+void ColorSettings::refreshPreferences() {
+    if (m_settingProfile) return;
+    auto* preferences = Preferences::instance();
+    ColorTarget changedTarget = target();
+    const QString path = preferences->displayProfile();
+    if (changedTarget.enabled == preferences->colorManaged() && path == m_profilePath) return;
+    changedTarget.enabled = preferences->colorManaged();
+    if (path != m_profilePath) {
+        changedTarget.displayProfile.reset();
+        m_name.clear();
+        if (!path.isEmpty()) {
+            LoadedProfile loaded = loadProfile(path);
+            if (loaded.bytes) {
+                changedTarget.displayProfile = std::move(loaded.bytes);
+                m_name = loaded.name;
+            } else {
+                qWarning() << "Using sRGB, because the display profile" << path << "cannot be used:" << loaded.problem;
+            }
         }
+        m_profilePath = path;
     }
-    const std::scoped_lock lock(targetMutex);
-    currentTarget = std::move(target);
+    publish(std::move(changedTarget), m_name);
 }
 
 ColorTarget ColorSettings::target() {
@@ -86,13 +98,7 @@ int ColorSettings::generation() { return currentGeneration.load(std::memory_orde
 bool ColorSettings::enabled() const { return target().enabled; }
 
 void ColorSettings::setEnabled(bool enabled) {
-    ColorTarget changedTarget = target();
-    if (changedTarget.enabled == enabled) {
-        return;
-    }
-    changedTarget.enabled = enabled;
-    QSettings().setValue(kEnabledKey, enabled);
-    publish(std::move(changedTarget), m_name, QSettings().value(kProfileKey).toString());
+    Preferences::instance()->setColorManaged(enabled);
 }
 
 QString ColorSettings::displayProfileName() const { return m_name.isEmpty() ? QStringLiteral("sRGB") : m_name; }
@@ -107,22 +113,21 @@ QString ColorSettings::useDisplayProfile(const QUrl& file) {
     }
     ColorTarget changedTarget = target();
     changedTarget.displayProfile = std::move(loaded.bytes);
-    publish(std::move(changedTarget), loaded.name, path);
+    {
+        QScopedValueRollback guard(m_settingProfile, true);
+        Preferences::instance()->setDisplayProfile(path);
+    }
+    m_profilePath = path;
+    publish(std::move(changedTarget), loaded.name);
     return {};
 }
 
 void ColorSettings::useSrgbDisplay() {
-    ColorTarget changedTarget = target();
-    if (!changedTarget.displayProfile) {
-        return;
-    }
-    changedTarget.displayProfile.reset();
-    publish(std::move(changedTarget), {}, {});
+    Preferences::instance()->setDisplayProfile({});
 }
 
-void ColorSettings::publish(ColorTarget target, const QString& name, const QString& path) {
+void ColorSettings::publish(ColorTarget target, const QString& name) {
     m_name = name;
-    QSettings().setValue(kProfileKey, path);
     {
         const std::scoped_lock lock(targetMutex);
         currentTarget = std::move(target);

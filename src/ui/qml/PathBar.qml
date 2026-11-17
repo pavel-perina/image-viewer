@@ -88,7 +88,7 @@ Rectangle {
 
     SubfolderList {
         id: subfolders
-        showHidden: ViewSettings.showHiddenFolders
+        showHidden: Preferences.showHiddenFolders
     }
 
     // What back would pass through, to jump there at once. Most recent first.

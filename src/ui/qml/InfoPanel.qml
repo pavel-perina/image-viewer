@@ -10,8 +10,8 @@ Rectangle {
     id: panel
 
     required property ImageView view
-    property bool logScale: false
-    property bool fitRange: false
+    property bool logScale: Preferences.histogramLogScale
+    property bool fitRange: Preferences.histogramFitRange
 
     width: 320
     color: Theme.panel
@@ -58,12 +58,12 @@ Rectangle {
                 CheckBox {
                     text: "Log scale"
                     checked: panel.logScale
-                    onToggled: panel.logScale = checked
+                    onToggled: Preferences.histogramLogScale = checked
                 }
                 CheckBox {
                     text: "Fit range"
                     checked: panel.fitRange
-                    onToggled: panel.fitRange = checked
+                    onToggled: Preferences.histogramFitRange = checked
                 }
             }
 

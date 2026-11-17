@@ -1262,7 +1262,7 @@ TEST(Main, CtrlHShowsHiddenFoldersAndKeepsIt) {
         hideOnWindows(dir.filePath(QStringLiteral(".hidden")));
     }, QString());
     ASSERT_NE(f.window, nullptr);
-    QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "ViewSettings");
+    QObject* settings = f.engine.singletonInstance<QObject*>("ImageViewer", "Preferences");
     ASSERT_NE(settings, nullptr);
     ASSERT_FALSE(settings->property("showHiddenFolders").toBool());
     ASSERT_TRUE(waitUntil([&] { return f.context->summary().startsWith(QStringLiteral("0 directories")); }))

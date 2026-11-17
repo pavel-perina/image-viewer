@@ -45,9 +45,12 @@ signals:
 
 private:
     ColorSettings();
-    void publish(ColorTarget target, const QString& name, const QString& path);
+    void refreshPreferences();
+    void publish(ColorTarget target, const QString& name);
 
     QString m_name;
+    QString m_profilePath;
+    bool m_settingProfile = false;
 };
 
 }  // namespace iv

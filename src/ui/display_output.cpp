@@ -6,6 +6,7 @@
 #include <QSGRendererInterface>
 #include <QSurfaceFormat>
 #include <QtGui/qtguiglobal.h>
+#include "ui/preferences.h"
 #if QT_CONFIG(opengl)
 #include <QOpenGLContext>
 #endif
@@ -34,7 +35,9 @@ QString graphicsApiName(QSGRendererInterface::GraphicsApi api) {
 }
 
 void requestOutputBits() {
-    if (requestedOutputBits(qgetenv("IV_OUTPUT_BITS")) != 10) {
+    const int requested = qEnvironmentVariableIsSet("IV_OUTPUT_BITS")
+        ? requestedOutputBits(qgetenv("IV_OUTPUT_BITS")) : Preferences::savedOutputBits();
+    if (requested != 10) {
         return;
     }
     // A backend named in QSG_RHI_BACKEND wins, as Qt would let a request from here win over it.
