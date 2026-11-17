@@ -73,7 +73,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
     ctest --test-dir build -j8
 
 * While working, run only the tests of the area changed, with `--gtest_filter`. Run the whole
-  suite and the sanitizers once, at the end.
+  suite once at the end. Run sanitizers before committing substantial changes or merging
+  to `main`, or when investigating a specific memory/lifetime concern. Do not rerun them
+  for routine UI iterations.
 * UI tests must run offscreen, or they open windows on the desktop:
 
       QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
