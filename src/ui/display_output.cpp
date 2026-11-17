@@ -54,7 +54,9 @@ void requestOutputBits() {
 }
 
 DisplayOutput::DisplayOutput(QObject* parent)
-    : QObject(parent), m_dither(qEnvironmentVariableIntValue("IV_NO_DITHER") == 0) {}
+    : QObject(parent), m_dither(qEnvironmentVariableIntValue("IV_NO_DITHER") == 0),
+      m_environmentOverride(qEnvironmentVariableIsSet("IV_OUTPUT_BITS")),
+      m_requestedBits(m_environmentOverride ? requestedOutputBits(qgetenv("IV_OUTPUT_BITS")) : Preferences::savedOutputBits()) {}
 
 void DisplayOutput::watch(QQuickWindow* window) {
     if (!window) {

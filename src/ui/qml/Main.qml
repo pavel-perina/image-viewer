@@ -158,7 +158,6 @@ ApplicationWindow {
     }
 
     ActionGroup { id: sortGroup }
-    ActionGroup { id: transparencyGroup }
 
     // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
@@ -359,14 +358,6 @@ ApplicationWindow {
         onTriggered: Preferences.showHiddenFolders = checked
     }
     Action {
-        id: colorManagedAction
-        text: "&Colour Management"
-        shortcut: "C"
-        checkable: true
-        checked: Preferences.colorManaged
-        onTriggered: Preferences.colorManaged = checked
-    }
-    Action {
         id: infoAction
         text: "Info"
         shortcut: "I"
@@ -496,18 +487,6 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
-            AppMenu {
-                title: "&Transparency"
-                Action { text: "&Dark Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: Preferences.transparency === "dark"; onTriggered: Preferences.transparency = "dark" }
-                Action { text: "&Light Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: Preferences.transparency === "light"; onTriggered: Preferences.transparency = "light" }
-                Action { text: "&Gray"; checkable: true; ActionGroup.group: transparencyGroup; checked: Preferences.transparency === "plain"; onTriggered: Preferences.transparency = "plain" }
-            }
-            MenuSeparator {}
-            AppMenuItem { action: colorManagedAction }
-            AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.start("", "") }
-            AppMenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
-            MenuSeparator {}
-            AppMenuItem { text: "Clear &Thumbnail Cache..."; onTriggered: ThumbnailStore.measure() }
             MenuSeparator {}
             AppMenuItem { action: infoAction }
             AppMenuItem { action: animatePanelAction }
@@ -747,75 +726,12 @@ ApplicationWindow {
     }
 
     FileChooser {
-        id: displayProfileDialog
-        title: "Choose Display Profile"
-        types: [{ label: "ICC profiles", extensions: ["icc", "icm"] }, { label: "All files", extensions: [] }]
-        onChosen: (path) => {
-            const problem = ColorSettings.useDisplayProfile(urlOf(path))
-            if (problem) {
-                profileProblemDialog.text = problem
-                profileProblemDialog.open()
-            }
-        }
-    }
-
-    MessageBox {
-        id: profileProblemDialog
-        kind: "error"
-        title: "Cannot Use This Profile"
-        standardButtons: Dialog.Ok
-    }
-
-    FileChooser {
         id: openDialog
         objectName: "openDialog"
         title: "Open Image"
         types: [{ label: "Images", extensions: ["jpg", "jpeg", "jpe", "jfif", "tif", "tiff", "png", "webp", "avif", "jxl"] },
                 { label: "All files", extensions: [] }]
         onChosen: (path) => window.leaveImage(() => context.openPath(path))
-    }
-
-    // Asks first with what there is, as clearing makes every folder slow to show once more.
-    Connections {
-        target: ThumbnailStore
-        function onMeasured(available, count, bytes) {
-            if (!available) {
-                clearCacheResult.kind = "error"
-                clearCacheResult.text = "The thumbnail cache cannot be opened, perhaps because another copy of the program is using it."
-                clearCacheResult.open()
-            } else if (count === 0) {
-                clearCacheResult.kind = "info"
-                clearCacheResult.text = "There are no stored thumbnails."
-                clearCacheResult.open()
-            } else {
-                clearCacheDialog.text = "Remove all " + count.toLocaleString(Qt.locale(), "f", 0) + " stored thumbnails ("
-                        + context.dataSizeText(bytes) + ")? They are made again when their folders are shown."
-                clearCacheDialog.open()
-            }
-        }
-        function onCleared(done) {
-            if (!done) {
-                clearCacheResult.kind = "error"
-                clearCacheResult.text = "The thumbnails could not be removed."
-                clearCacheResult.open()
-            }
-        }
-    }
-
-    MessageBox {
-        id: clearCacheDialog
-        objectName: "clearCacheDialog"
-        kind: "question"
-        title: "Clear Thumbnail Cache"
-        standardButtons: Dialog.Yes | Dialog.No
-        onAccepted: ThumbnailStore.clear()
-    }
-
-    MessageBox {
-        id: clearCacheResult
-        objectName: "clearCacheResult"
-        title: "Clear Thumbnail Cache"
-        standardButtons: Dialog.Ok
     }
 
     AboutDialog {

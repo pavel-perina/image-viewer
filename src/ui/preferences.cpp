@@ -36,6 +36,7 @@ struct Preferences::Impl {
     bool histogramLogScale = false;
     bool histogramFitRange = false;
     int thumbnailCacheMiB = 512;
+    QSize thumbnailSize{164, 164};
     int outputBits = 8;
 };
 
@@ -69,7 +70,7 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
     }
     {
         const QString value = m_impl->settings->value(QStringLiteral("View/transparency"), QStringLiteral("dark")).toString();
-        if (value == "dark" || value == "light" || value == "plain") m_impl->transparency = value;
+        if (validTransparency(value)) m_impl->transparency = value;
     }
     {
         const bool value = m_impl->settings->value(QStringLiteral("Color/enabled"), true).toBool();
@@ -117,11 +118,15 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
     }
     {
         const int value = m_impl->settings->value(QStringLiteral("Thumbnails/cacheMiB"), 512).toInt();
-        if (value >= 1 && value <= 65536) m_impl->thumbnailCacheMiB = value;
+        if (validCacheMiB(value)) m_impl->thumbnailCacheMiB = value;
+    }
+    {
+        const QSize value = m_impl->settings->value(QStringLiteral("Thumbnails/imageSize"), QSize(164, 164)).toSize();
+        if (validThumbnailSize(value)) m_impl->thumbnailSize = value;
     }
     {
         const int value = m_impl->settings->value(QStringLiteral("View/outputBits"), 8).toInt();
-        if (value == 8 || value == 10) m_impl->outputBits = value;
+        if (validOutputBits(value)) m_impl->outputBits = value;
     }
 }
 
@@ -129,6 +134,12 @@ Preferences::~Preferences() = default;
 
 bool Preferences::validHue(double value) { return std::isfinite(value) && value >= 0 && value <= 360; }
 bool Preferences::validChroma(double value) { return std::isfinite(value) && value >= 0 && value <= 0.4; }
+bool Preferences::validThumbnailSize(QSize value) {
+    return value.width() >= 32 && value.width() <= 2048 && value.height() >= 32 && value.height() <= 2048;
+}
+bool Preferences::validCacheMiB(int value) { return value >= 1 && value <= 65536; }
+bool Preferences::validOutputBits(int value) { return value == 8 || value == 10; }
+bool Preferences::validTransparency(const QString& value) { return value == "dark" || value == "light" || value == "plain"; }
 
 Preferences* Preferences::instance() {
     static Preferences* const preferences = [] {
@@ -206,7 +217,7 @@ void Preferences::setShowHiddenFolders(bool value) {
 QString Preferences::transparency() const { return m_impl->transparency; }
 
 void Preferences::setTransparency(QString value) {
-    if (!(value == "dark" || value == "light" || value == "plain")) return;
+    if (!validTransparency(value)) return;
     if (m_impl->transparency == value) return;
     m_impl->transparency = value;
     m_impl->settings->setValue(QStringLiteral("View/transparency"), value);
@@ -316,7 +327,7 @@ void Preferences::setHistogramFitRange(bool value) {
 int Preferences::thumbnailCacheMiB() const { return m_impl->thumbnailCacheMiB; }
 
 void Preferences::setThumbnailCacheMiB(int value) {
-    if (!(value >= 1 && value <= 65536)) return;
+    if (!validCacheMiB(value)) return;
     if (m_impl->thumbnailCacheMiB == value) return;
     m_impl->thumbnailCacheMiB = value;
     m_impl->settings->setValue(QStringLiteral("Thumbnails/cacheMiB"), value);
@@ -324,10 +335,18 @@ void Preferences::setThumbnailCacheMiB(int value) {
     emit thumbnailCacheMiBChanged();
 }
 
+QSize Preferences::thumbnailSize() const { return m_impl->thumbnailSize; }
+void Preferences::setThumbnailSize(QSize value) {
+    if (!validThumbnailSize(value) || value == m_impl->thumbnailSize) return;
+    m_impl->thumbnailSize = value;
+    m_impl->settings->setValue(QStringLiteral("Thumbnails/imageSize"), value);
+    emit thumbnailSizeChanged();
+}
+
 int Preferences::outputBits() const { return m_impl->outputBits; }
 
 void Preferences::setOutputBits(int value) {
-    if (!(value == 8 || value == 10)) return;
+    if (!validOutputBits(value)) return;
     if (m_impl->outputBits == value) return;
     m_impl->outputBits = value;
     m_impl->settings->setValue(QStringLiteral("View/outputBits"), value);

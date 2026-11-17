@@ -47,7 +47,7 @@ Item {
             anchors.centerIn: parent
             asynchronous: true
             // From the cell, as the area has no size yet when this starts loading.
-            sourceSize: Qt.size(cell.width - 16, cell.width - 16)
+            sourceSize: Qt.size(Math.max(1, cell.width - 16), Math.max(1, cell.height - 36))
             source: cell.thumbnail
         }
     }

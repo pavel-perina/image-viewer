@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QSize>
 #include <QtQml/qqmlregistration.h>
 
 #include <cstdint>
@@ -38,6 +39,7 @@ class Preferences : public QObject {
     Q_PROPERTY(bool histogramLogScale READ histogramLogScale WRITE setHistogramLogScale NOTIFY histogramLogScaleChanged)
     Q_PROPERTY(bool histogramFitRange READ histogramFitRange WRITE setHistogramFitRange NOTIFY histogramFitRangeChanged)
     Q_PROPERTY(int thumbnailCacheMiB READ thumbnailCacheMiB WRITE setThumbnailCacheMiB NOTIFY thumbnailCacheMiBChanged)
+    Q_PROPERTY(QSize thumbnailSize READ thumbnailSize WRITE setThumbnailSize NOTIFY thumbnailSizeChanged)
     Q_PROPERTY(int outputBits READ outputBits WRITE setOutputBits NOTIFY outputBitsChanged)
 
 public:
@@ -53,6 +55,10 @@ public:
     static std::uint64_t thumbnailCacheBudgetBytes();
     static bool validHue(double value);
     static bool validChroma(double value);
+    static bool validThumbnailSize(QSize value);
+    static bool validCacheMiB(int value);
+    static bool validOutputBits(int value);
+    static bool validTransparency(const QString& value);
 
     double hue() const;
     void setHue(double value);
@@ -90,6 +96,8 @@ public:
     void setHistogramFitRange(bool value);
     int thumbnailCacheMiB() const;
     void setThumbnailCacheMiB(int value);
+    QSize thumbnailSize() const;
+    void setThumbnailSize(QSize value);
     int outputBits() const;
     void setOutputBits(int value);
 
@@ -112,6 +120,7 @@ signals:
     void histogramLogScaleChanged();
     void histogramFitRangeChanged();
     void thumbnailCacheMiBChanged();
+    void thumbnailSizeChanged();
     void outputBitsChanged();
 
 private:

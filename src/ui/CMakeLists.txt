@@ -59,6 +59,8 @@ qt_add_library(iv_ui STATIC
     preferences.h
     retired_settings.cpp
     retired_settings.h
+    settings_draft.cpp
+    settings_draft.h
     shape_painter.cpp
     shape_painter.h
     strip_builder.cpp
@@ -128,6 +130,11 @@ qt_add_qml_module(iv_ui
         qml/ResizeDialog.qml
         qml/SearchCombo.qml
         qml/SettingsDialog.qml
+        qml/SettingsPage.qml
+        qml/SettingsAppearancePage.qml
+        qml/SettingsViewingPage.qml
+        qml/SettingsThumbnailsPage.qml
+        qml/ThumbnailCacheDialogs.qml
         qml/StraightenPanel.qml
         qml/StripBuilderDialog.qml
         qml/ResampledView.qml
@@ -152,6 +159,7 @@ qt_add_resources(iv_ui "fonts"
 # freedesktop icon naming spec where it has a name, while the files keep the names of the set
 # they come from (assets/icons/<set>/, each with its licence).
 set(iv_icons
+    "tabler/brush.svg=preferences-desktop-theme"
     "tabler/zoom-in.svg=zoom-in"
     "tabler/zoom-out.svg=zoom-out"
     "tabler/zoom-scan.svg=zoom-fit-best"

@@ -39,6 +39,8 @@ class DisplayOutput : public QObject {
     Q_PROPERTY(int bits READ bits NOTIFY bitsChanged)
     Q_PROPERTY(bool dither READ dither CONSTANT)
     Q_PROPERTY(QString api READ api NOTIFY bitsChanged)  // empty until the window draws
+    Q_PROPERTY(bool environmentOverride READ environmentOverride CONSTANT)
+    Q_PROPERTY(int requestedBits READ requestedBits CONSTANT)
 
 public:
     explicit DisplayOutput(QObject* parent = nullptr);
@@ -46,6 +48,8 @@ public:
     int bits() const { return m_bits; }
     QString api() const { return m_api; }
     bool dither() const { return m_dither; }
+    bool environmentOverride() const { return m_environmentOverride; }
+    int requestedBits() const { return m_requestedBits; }
 
     // Learns the bits of the window's buffer, now if it has drawn and whenever its scene graph
     // starts. Stays at 8 for anything but OpenGL.
@@ -60,6 +64,8 @@ private:
     int m_bits = 8;
     QString m_api;
     bool m_dither = true;
+    bool m_environmentOverride = false;
+    int m_requestedBits = 8;
 };
 
 }  // namespace iv

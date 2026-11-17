@@ -139,8 +139,13 @@ SplitView {
                 anchors.fill: parent
                 anchors.margins: Theme.paneInset
                 clip: true
-                cellWidth: 180
-                cellHeight: 200
+                cellWidth: Preferences.thumbnailSize.width + 16
+                cellHeight: Preferences.thumbnailSize.height + 36
+                function keepCurrentVisible() {
+                    Qt.callLater(() => positionViewAtIndex(currentIndex, GridView.Contain))
+                }
+                onCellWidthChanged: keepCurrentVisible()
+                onCellHeightChanged: keepCurrentVisible()
                 cacheBuffer: 400
                 keyNavigationEnabled: false
                 activeFocusOnTab: true

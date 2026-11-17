@@ -121,7 +121,6 @@ The icons are from [Tabler Icons](https://tabler.io/icons), under the MIT licenc
 | In the folder tree: Up, Down | Open the folder above or below |
 | In the folder tree: Right, Left | Unfold a folder, then go into it; fold it, then go to its parent |
 | In the folder tree: F2, Del, Enter | Rename the folder, move it to the trash after asking, go to its thumbnails |
-| C | Turn colour management on or off |
 | M | Turn sharp resampling on or off (Magic Kernel Sharp 2013) |
 | Ctrl+click | Add or remove a thumbnail from the selection |
 | Shift+click, Shift+arrows, Shift+PgDown, Shift+PgUp | Select a range; with Ctrl+click, add a range |
@@ -145,7 +144,8 @@ The icons are from [Tabler Icons](https://tabler.io/icons), under the MIT licenc
 | Ctrl+L, click the empty end of the path bar | Edit or paste the path |
 | Right-click the back arrow | Choose from the folders visited |
 | Star in the path bar | Favorite and recent folders, and places (home, its usual folders, disks); a click on Places folds them |
-| View > Clear Thumbnail Cache | Remove the thumbnails kept on disk, after asking |
+| Tools > Settings > Viewing | Colour management, display profile, transparency and output depth |
+| Tools > Settings > Thumbnails | Thumbnail size, disk-cache limit and confirmed cache clearing |
 | Enter, Esc, Ctrl+C in a message | Press the highlighted button, cancel, copy the message |
 | Mouse wheel | Previous or next image in the large view; zoom in the preview |
 | Ctrl+mouse wheel, + and - | Zoom |

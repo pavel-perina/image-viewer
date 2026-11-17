@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="560" viewBox="0 0 760 560">
+  <title>Settings — Thumbnails proposal</title>
+  <desc>Thumbnail image-size presets, an example preview, a cache limit and measured usage, and a separately confirmed clear operation. Cache figures are illustrative.</desc>
+  <defs>
+    <linearGradient id="button" x2="0" y2="1"><stop stop-color="#404040"/><stop offset="1" stop-color="#333333"/></linearGradient>
+    <linearGradient id="primary" x2="0" y2="1"><stop stop-color="#4a664f"/><stop offset="1" stop-color="#3b5440"/></linearGradient>
+    <style>text{font-family:Inter,sans-serif;font-size:13.333px;fill:#e4e4e4}.muted{fill:#ababab;font-size:12px}.heading{font-size:14.667px}.field{fill:#161616;stroke:#454545}.button{fill:url(#button);stroke:#4d4d4d}.line{stroke:#e4e4e4;stroke-opacity:.12;fill:none}</style>
+  </defs>
+  <rect width="760" height="560" fill="#222222"/>
+  <rect width="760" height="32" fill="#292929"/><text x="16" y="21">Settings</text>
+  <path d="M731 11l10 10m0-10l-10 10" stroke="#ababab" stroke-width="1.5"/>
+  <rect x="16.5" y="48.5" width="159" height="439" rx="4" fill="#161616" stroke="#9ccca4" stroke-opacity=".5"/>
+  <g transform="translate(36 63) scale(.667)" fill="none" stroke="#e4e4e4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21v-4a4 4 0 1 1 4 4h-4 M21 3a16 16 0 0 0-12.8 10.2 M21 3a16 16 0 0 1-10.2 12.8 M10.6 9a9 9 0 0 1 4.4 4.4"/></g>
+  <text x="60" y="79">Appearance</text><text x="36" y="115">Viewing</text>
+  <rect x="24.5" y="132.5" width="143" height="27" rx="4" fill="#9ccca4" fill-opacity=".28" stroke="#9ccca4" stroke-opacity=".85"/>
+  <text x="36" y="151">Thumbnails</text>
+  <text class="heading" x="192" y="69">Thumbnails</text>
+  <text class="muted" x="192" y="92">Image size and storage for the browser.</text>
+  <text x="192" y="130">Image size</text>
+  <rect class="field" x="344.5" y="110.5" width="399" height="27" rx="4"/>
+  <text x="356" y="129">164 × 164 (default)</text><path d="M721 121l4 4 4-4" stroke="#ababab" fill="none"/>
+  <text class="muted" x="192" y="163">Pictures fit inside this size; filenames and padding are extra.</text>
+  <rect x="192.5" y="180.5" width="551" height="111" rx="4" fill="#161616" stroke="#e4e4e4" stroke-opacity=".12"/>
+  <rect x="208.5" y="196.5" width="103" height="79" rx="4" fill="#9ccca4" fill-opacity=".22" stroke="#9ccca4" stroke-opacity=".85"/>
+  <rect x="217" y="204" width="86" height="47" rx="2" fill="#292929"/>
+  <path d="M221 246l22-25 17 14 16-19 23 30" stroke="#ababab" fill="none"/>
+  <text x="224" y="267">sample.jpg</text>
+  <text class="muted" x="332" y="219">Aspect ratio is preserved.</text>
+  <text class="muted" x="332" y="243">Larger sizes also suit high-DPI displays.</text>
+  <text x="192" y="330">Cache limit</text>
+  <rect class="field" x="344.5" y="310.5" width="119" height="27" rx="4"/>
+  <text x="356" y="329">512 MiB</text><path d="M445 321l4-4 4 4m-8 7l4 4 4-4" stroke="#ababab" fill="none"/>
+  <text class="muted" x="192" y="367">Used: 187 MiB · 12,640 thumbnails (example)</text>
+  <rect class="button" x="192.5" y="386.5" width="127" height="27" rx="4"/>
+  <text x="204" y="405">Clear cache…</text>
+  <text class="muted" x="192" y="440">Clearing asks first; thumbnails will be rebuilt as needed.</text>
+  <text class="muted" x="192" y="460">Cancel cannot restore a cleared cache.</text>
+  <path class="line" d="M16 504.5h728"/>
+  <rect class="button" x="16.5" y="520.5" width="151" height="27" rx="4"/><text x="28" y="539">Reset thumbnails</text>
+  <rect x="486.5" y="520.5" width="79" height="27" rx="4" fill="url(#primary)" stroke="#7ea385"/><text x="516" y="539">OK</text>
+  <rect class="button" x="574.5" y="520.5" width="79" height="27" rx="4"/><text x="591" y="539">Cancel</text>
+  <rect x="662.5" y="520.5" width="79" height="27" rx="4" fill="#292929"/><text x="681" y="539" style="fill:#696969">Apply</text>
+</svg>

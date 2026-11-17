@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="560" viewBox="0 0 760 560">
+  <title>Settings — Viewing proposal</title>
+  <desc>Transparency background, colour management, an sRGB display or chosen ICC profile, requested output depth after restart, and separate actual output.</desc>
+  <defs>
+    <linearGradient id="button" x2="0" y2="1"><stop stop-color="#404040"/><stop offset="1" stop-color="#333333"/></linearGradient>
+    <linearGradient id="primary" x2="0" y2="1"><stop stop-color="#4a664f"/><stop offset="1" stop-color="#3b5440"/></linearGradient>
+    <style>text{font-family:Inter,sans-serif;font-size:13.333px;fill:#e4e4e4}.muted{fill:#ababab;font-size:12px}.heading{font-size:14.667px}.field{fill:#161616;stroke:#454545}.button{fill:url(#button);stroke:#4d4d4d}.line{stroke:#e4e4e4;stroke-opacity:.12;fill:none}</style>
+  </defs>
+  <rect width="760" height="560" fill="#222222"/>
+  <rect width="760" height="32" fill="#292929"/><text x="16" y="21">Settings</text>
+  <path d="M731 11l10 10m0-10l-10 10" stroke="#ababab" stroke-width="1.5"/>
+  <rect x="16.5" y="48.5" width="159" height="439" rx="4" fill="#161616" stroke="#9ccca4" stroke-opacity=".5"/>
+  <g transform="translate(36 63) scale(.667)" fill="none" stroke="#e4e4e4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21v-4a4 4 0 1 1 4 4h-4 M21 3a16 16 0 0 0-12.8 10.2 M21 3a16 16 0 0 1-10.2 12.8 M10.6 9a9 9 0 0 1 4.4 4.4"/></g>
+  <text x="60" y="79">Appearance</text>
+  <rect x="24.5" y="96.5" width="143" height="27" rx="4" fill="#9ccca4" fill-opacity=".28" stroke="#9ccca4" stroke-opacity=".85"/>
+  <text x="36" y="115">Viewing</text><text x="36" y="151">Thumbnails</text>
+  <text class="heading" x="192" y="69">Viewing</text>
+  <text class="muted" x="192" y="92">Colour and transparency when displaying images.</text>
+  <text x="192" y="130">Transparency</text>
+  <rect class="field" x="344.5" y="110.5" width="399" height="27" rx="4"/><text x="356" y="129">Dark squares</text>
+  <path d="M721 121l4 4 4-4" stroke="#ababab" fill="none"/>
+  <rect x="192" y="167" width="16" height="16" rx="3" fill="#9ccca4"/><path d="M196 175l3 3 5-6" stroke="#161616" stroke-width="2" fill="none"/>
+  <text x="220" y="180">Enable colour management</text>
+  <text x="192" y="224">Display profile</text>
+  <circle cx="352" cy="219" r="7" fill="#161616" stroke="#9ccca4"/><circle cx="352" cy="219" r="3" fill="#9ccca4"/>
+  <text x="368" y="224">sRGB display</text>
+  <circle cx="352" cy="255" r="7" fill="#161616" stroke="#ababab"/><text x="368" y="260">ICC profile from file</text>
+  <rect class="field" x="344.5" y="276.5" width="295" height="27" rx="4"/><text class="muted" x="356" y="295">No custom profile selected</text>
+  <rect class="button" x="648.5" y="276.5" width="95" height="27" rx="4"/><text x="662" y="295">Choose…</text>
+  <path class="line" d="M192 331.5h552"/>
+  <text x="192" y="368">Output depth</text>
+  <rect class="field" x="344.5" y="348.5" width="143" height="27" rx="4"/><text x="356" y="367">8 bits / channel</text>
+  <path d="M466 359l4 4 4-4" stroke="#ababab" fill="none"/><text class="muted" x="504" y="367">After restart</text>
+  <text class="muted" x="192" y="404">Current output: 8 bits per channel</text>
+  <text class="muted" x="192" y="428">10-bit output also depends on the display and graphics driver.</text>
+  <path class="line" d="M16 504.5h728"/>
+  <rect class="button" x="16.5" y="520.5" width="127" height="27" rx="4"/><text x="28" y="539">Reset viewing</text>
+  <rect x="486.5" y="520.5" width="79" height="27" rx="4" fill="url(#primary)" stroke="#7ea385"/><text x="516" y="539">OK</text>
+  <rect class="button" x="574.5" y="520.5" width="79" height="27" rx="4"/><text x="591" y="539">Cancel</text>
+  <rect x="662.5" y="520.5" width="79" height="27" rx="4" fill="#292929"/><text x="681" y="539" style="fill:#696969">Apply</text>
+</svg>

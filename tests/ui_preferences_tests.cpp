@@ -36,6 +36,7 @@ const QList<Choice> choices{
     {"histogramLogScale", "InfoPanel/logScale", false, true},
     {"histogramFitRange", "InfoPanel/fitRange", false, true},
     {"thumbnailCacheMiB", "Thumbnails/cacheMiB", 512, 128},
+    {"thumbnailSize", "Thumbnails/imageSize", QSize(164, 164), QSize(320, 240)},
     {"outputBits", "View/outputBits", 8, 10},
 };
 }
@@ -97,7 +98,8 @@ TEST(Preferences, InvalidValuesAndUnchangedWritesDoNotPublishOrPersist) {
         {"hue", -1.0}, {"hue", 361.0}, {"hue", std::numeric_limits<double>::quiet_NaN()},
         {"accentChroma", -0.1}, {"surfaceChroma", std::numeric_limits<double>::infinity()},
         {"transparency", QStringLiteral("unknown")}, {"sortKey", -1}, {"sortKey", 4},
-        {"thumbnailCacheMiB", 0}, {"thumbnailCacheMiB", 65537}, {"outputBits", 9}
+        {"thumbnailCacheMiB", 0}, {"thumbnailCacheMiB", 65537}, {"outputBits", 9},
+        {"thumbnailSize", QSize(0, 120)}, {"thumbnailSize", QSize(400, -1)}, {"thumbnailSize", QSize(4096, 300)}
     };
     for (const auto& [name, value] : invalid) {
         const QMetaProperty property = preferences.metaObject()->property(preferences.metaObject()->indexOfProperty(name));

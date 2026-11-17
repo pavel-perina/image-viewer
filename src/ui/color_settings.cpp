@@ -107,19 +107,27 @@ bool ColorSettings::hasDisplayProfile() const { return target().displayProfile !
 
 QString ColorSettings::useDisplayProfile(const QUrl& file) {
     const QString path = file.toLocalFile();
-    LoadedProfile loaded = loadProfile(path);
-    if (!loaded.bytes) {
-        return loaded.problem;
-    }
+    const auto profile = readDisplayProfile(path);
+    if (!profile.bytes) return profile.problem;
+    usePreparedDisplayProfile(profile);
+    return {};
+}
+
+DisplayProfileChoice ColorSettings::readDisplayProfile(const QString& path) {
+    auto loaded = loadProfile(path);
+    return {path, std::move(loaded.name), std::move(loaded.problem), std::move(loaded.bytes)};
+}
+
+void ColorSettings::usePreparedDisplayProfile(const DisplayProfileChoice& profile) {
+    if (!profile.bytes || !profile.problem.isEmpty()) return;
     ColorTarget changedTarget = target();
-    changedTarget.displayProfile = std::move(loaded.bytes);
+    changedTarget.displayProfile = profile.bytes;
     {
         QScopedValueRollback guard(m_settingProfile, true);
-        Preferences::instance()->setDisplayProfile(path);
+        Preferences::instance()->setDisplayProfile(profile.path);
     }
-    m_profilePath = path;
-    publish(std::move(changedTarget), loaded.name);
-    return {};
+    m_profilePath = profile.path;
+    publish(std::move(changedTarget), profile.name);
 }
 
 void ColorSettings::useSrgbDisplay() {

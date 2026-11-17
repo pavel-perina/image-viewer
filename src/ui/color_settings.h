@@ -12,6 +12,14 @@ class QQmlEngine;
 
 namespace iv {
 
+// A validated profile can be loaded on a worker, then installed without UI-thread I/O.
+struct DisplayProfileChoice {
+    QString path;
+    QString name;
+    QString problem;
+    std::shared_ptr<const IccBytes> bytes;
+};
+
 // Whether colours are managed and which display they are for. One for the whole application,
 // and read from worker threads, because thumbnails are made there.
 class ColorSettings : public QObject {
@@ -35,6 +43,8 @@ public:
     void setEnabled(bool enabled);
     QString displayProfileName() const;
     bool hasDisplayProfile() const;
+    static DisplayProfileChoice readDisplayProfile(const QString& path);
+    void usePreparedDisplayProfile(const DisplayProfileChoice& profile);
 
     // Returns what is wrong with the file, or nothing if it is now in use.
     Q_INVOKABLE QString useDisplayProfile(const QUrl& file);

@@ -4,6 +4,9 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 
 ## Settings: Appearance first (2026-11-17)
 
+* Keep the application's menus text-only. Use icons inside Settings: the requested
+  Tabler brush for Appearance, image for Viewing and grid for Thumbnails. Keep their
+  SVGs under the existing Tabler MIT licence and tint them through the shared controls.
 * Build Settings page by page, beginning with the existing three palette inputs. Keep
   layout in QML and editing/persistence rules in C++. A temporary palette previews
   colours throughout the application; Apply saves a checkpoint, OK saves and closes,
@@ -17,6 +20,34 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   final-pass dithering stay enabled without preferences for their debugging switches.
 * Future thumbnail dimensions can coexist in the existing cache, whose key includes
   requested edge size. Changing size therefore needs no global invalidation.
+
+## Settings: Thumbnails and Viewing (2026-11-17)
+
+* Continue the accepted Appearance layout with separate Thumbnails and Viewing pages.
+  One C++ Settings draft owns their Apply/OK/Cancel checkpoint; switching pages keeps
+  edits, and Reset touches only its section. Appearance alone previews before Apply.
+  Each page scrolls when it exceeds the window height, with a persistent scrollbar
+  while content overflows. The shared scrollbar keeps hover-fading elsewhere.
+* Keep the current 164 × 164 image box (180 × 200 browser cell) as the default. Offer
+  160 × 120, 200 × 150, 240 × 160, 320 × 240 and 400 × 300, preserving image aspect
+  ratio. The browser adds padding/caption space and preserves selection, current image
+  and pane focus when its grid reflows. The strip builder keeps its own compact layout.
+* Keep disk thumbnails keyed by longest edge; fit returned images into both requested
+  bounds on the worker, without upscaling. Rectangles with the same longest edge can
+  share cached source pixels; neither a size change nor a theme change clears the cache.
+* Show cache usage and limit in binary units, with asynchronous measurement and clearing.
+  A clear request is tagged with its requesting window, so ordinary measurement never
+  opens a confirmation, and only the requesting window asks. Clearing is a confirmed
+  immediate action; Settings cancellation cannot restore those entries.
+* Viewing exposes transparency, CMS, sRGB/custom ICC display profile, and requested
+  8/10-bit output. Output changes require restart; show negotiated depth separately,
+  including an explicit environment override when present. Do not claim automatic
+  system-profile discovery. Other image/histogram/debug controls stay where agreed.
+  Remove the duplicate transparency, CMS/profile and clear-thumbnail-cache menu entries
+  and their obsolete main-window actions/dialogs; these choices now live in Settings.
+* Validate selected profiles on a worker, revalidate before Apply, then install prepared
+  bytes without GUI-thread disk work. Invalid/deleted profiles keep the previous choice
+  and prevent partial saves across sections. Cancelling invalidates pending callbacks.
 
 ## Structure
 * `src/core`: pure C++23 without Qt. Decoders, tile model, viewport maths, work queue.

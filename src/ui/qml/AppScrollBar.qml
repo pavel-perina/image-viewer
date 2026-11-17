@@ -4,11 +4,13 @@ import ImageViewer
 
 // Shows while the mouse is over what it scrolls, or while that moves, then fades out. It can be
 // invisible otherwise because the mouse has to cross the list to reach it, which reveals it.
+// Set autoHide to false where overflow should always be discoverable, such as Settings.
 ScrollBar {
     id: control
 
     property int thickness: 12
-    readonly property bool revealed: size < 1 && (areaHover.hovered || active || pressed || recentlyMoved.running)
+    property bool autoHide: true
+    readonly property bool revealed: size < 1 && (!autoHide || areaHover.hovered || active || pressed || recentlyMoved.running)
 
     padding: 2
     hoverEnabled: true
