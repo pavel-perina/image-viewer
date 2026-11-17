@@ -1,6 +1,7 @@
 #include "ui_test_support.h"
 
 #include <QPainter>
+#include <QSGTextureProvider>
 
 #include "core/palette.h"
 #include "ui/color_choice_model.h"
@@ -174,4 +175,39 @@ TEST(ColorChooser, AColourFieldOpensItFromItsSwatch) {
     QMetaObject::invokeMethod(dialog, "accept");
     EXPECT_EQ(root->property("kept").value<QColor>(), QColor(0, 255, 0));
     EXPECT_EQ(field->property("text").toString(), QStringLiteral("#00ff00"));
+}
+
+// Why: the texture of the colour preview's table lives on the render thread and is released
+// by a job there; a closing window may drop the job unrun, and the texture's provider used to
+// be lost with it, as the sanitizers' leak check showed for every test of the main window.
+// Input: a window with a table texture that has been drawn, then destroyed. The truth: the
+// provider is deleted, as a QPointer to it shows.
+TEST(ColorLutTexture, ItsProviderGoesWithTheWindow) {
+    QPointer<QSGTextureProvider> provider;
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import ImageViewer
+            Window {
+                width: 100; height: 100; visible: true
+                property alias lut: lut
+                ColorLutTexture { id: lut; width: 10; height: 10 }
+            }
+        )", QUrl());
+        ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+        std::unique_ptr<QObject> root(component.create());
+        auto* window = qobject_cast<QQuickWindow*>(root.get());
+        auto* lut = root->property("lut").value<QQuickItem*>();
+        QImage table(4, 1, QImage::Format_RGBA8888);
+        table.fill(Qt::gray);
+        lut->setProperty("image", table);
+        ASSERT_TRUE(QTest::qWaitForWindowExposed(window));
+        window->grabWindow();
+        provider = lut->textureProvider();
+        ASSERT_FALSE(provider.isNull());
+    }
+    QCoreApplication::processEvents();
+    EXPECT_TRUE(provider.isNull());
 }

@@ -6,6 +6,7 @@
 #include <QtGui/qrgbafloat.h>
 
 #include <algorithm>
+#include <memory>
 
 namespace iv {
 
@@ -72,17 +73,19 @@ void ColorLutTexture::releaseProvider() {
     if (!m_provider) {
         return;
     }
-    // The texture belongs to the render thread, and goes with the provider there.
+    // The texture belongs to the render thread, and goes with the provider there. A closing
+    // window may delete the job without running it, so the job owns the provider and deletes
+    // it either way; by then nothing renders, so deleting it on this thread is safe.
     class Cleanup : public QRunnable {
     public:
         explicit Cleanup(ColorLutProvider* provider) : m_provider(provider) {}
-        void run() override { delete m_provider; }
+        void run() override { m_provider.reset(); }
 
     private:
-        ColorLutProvider* m_provider;
+        std::unique_ptr<ColorLutProvider> m_provider;
     };
     if (window()) {
-        window()->scheduleRenderJob(new Cleanup(m_provider), QQuickWindow::BeforeSynchronizingStage);
+        window()->scheduleRenderJob(new Cleanup(m_provider), QQuickWindow::NoStage);
     } else {
         delete m_provider;
     }
