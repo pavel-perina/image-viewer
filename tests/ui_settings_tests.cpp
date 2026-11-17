@@ -489,8 +489,9 @@ TEST_F(SettingsWindowFixture, ProfileChooserIsOwnedBySettingsAndCancelPreservesT
     EXPECT_TRUE(iv::ColorSettings::instance()->hasDisplayProfile());
 }
 
-// Small windows must reveal overflow without hovering. The actual scrollbar must move
-// the page while the footer stays reachable, and disappear once the content fits.
+// Regressions included a left-hand dot instead of a proportional vertical thumb.
+// Check actual thumb geometry and content movement, not only the outer bar's size.
+// Settings keeps its bar visible throughout overflow, and hides it when content fits.
 TEST_F(SettingsWindowFixture, OverflowShowsAPersistentWorkingScrollbarOnEveryPage) {
     start();
     ASSERT_TRUE(window);
@@ -516,9 +517,23 @@ TEST_F(SettingsWindowFixture, OverflowShowsAPersistentWorkingScrollbarOnEveryPag
         ASSERT_GT(bar->width(), 0);
         ASSERT_GT(bar->height(), 0);
         EXPECT_FALSE(bar->property("autoHide").toBool());
+        auto* area = bar->parentItem();
+        ASSERT_TRUE(area);
+        EXPECT_EQ(bar->property("orientation").toInt(), Qt::Vertical);
+        EXPECT_NEAR(bar->x() + bar->width(), area->width(), 1);
+        EXPECT_NEAR(bar->height(), area->height(), 1);
+        const qreal contentHeight = area->property("contentHeight").toDouble();
+        ASSERT_GT(contentHeight, area->height());
+        EXPECT_NEAR(bar->property("size").toDouble(), area->height() / contentHeight, 0.01);
+        auto* thumb = bar->property("contentItem").value<QQuickItem*>();
+        ASSERT_TRUE(thumb);
+        EXPECT_NEAR(thumb->height(), bar->property("availableHeight").toDouble() * bar->property("visualSize").toDouble(), 1);
+        EXPECT_GT(thumb->height(), thumb->width() * 3) << "the handle must be a vertical thumb, not a dot";
         QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                           bar->mapToScene(QPointF(bar->width() / 2, bar->height() - 4)).toPoint());
         ASSERT_TRUE(waitUntil([&] { return bar->property("position").toDouble() > 0; }));
+        EXPECT_GT(area->property("contentY").toDouble(), 0);
+        EXPECT_NEAR(bar->property("position").toDouble(), area->property("contentY").toDouble() / contentHeight, 0.01);
         EXPECT_TRUE(bar->property("revealed").toBool());
         const auto* ok = item("settingsOkButton");
         ASSERT_TRUE(ok);
@@ -534,6 +549,31 @@ TEST_F(SettingsWindowFixture, OverflowShowsAPersistentWorkingScrollbarOnEveryPag
         }
         return true;
     }));
+}
+
+// Adjust Colours uses the same viewport and proportional bar as Settings, retaining
+// its hover/fade policy and bringing keyboard-focused fields into view.
+TEST(Settings, AdjustColoursUsesTheSharedScrollAreaWithHoverVisibility) {
+    MainFixture main(1);
+    ASSERT_TRUE(main.window);
+    main.window->resize(900, 400);
+    QTest::keyClick(main.window, Qt::Key_A);
+    auto* panel = qobject_cast<QQuickItem*>(main.find("adjustPanel"));
+    ASSERT_TRUE(panel);
+    ASSERT_TRUE(waitUntil([&] { return panel->isVisible(); }));
+    auto* area = panel->findChild<QQuickItem*>("toolPanelScroller");
+    ASSERT_TRUE(area);
+    ASSERT_TRUE(waitUntil([&] { return area->property("contentHeight").toDouble() > area->height(); }));
+    auto* bar = area->property("verticalScrollBar").value<QQuickItem*>();
+    ASSERT_TRUE(bar);
+    EXPECT_TRUE(bar->property("autoHide").toBool());
+    EXPECT_EQ(bar->property("orientation").toInt(), Qt::Vertical);
+    EXPECT_NEAR(bar->x() + bar->width(), area->width(), 1);
+    EXPECT_NEAR(bar->property("size").toDouble(), area->height() / area->property("contentHeight").toDouble(), 0.01);
+    auto* thumb = bar->property("contentItem").value<QQuickItem*>();
+    ASSERT_TRUE(thumb);
+    EXPECT_NEAR(thumb->height(), bar->property("availableHeight").toDouble() * bar->property("visualSize").toDouble(), 1);
+    EXPECT_TRUE(main.warnings.isEmpty()) << main.warnings.join('\n').toStdString();
 }
 
 // The dimensions change every live browser grid, without changing its current image,

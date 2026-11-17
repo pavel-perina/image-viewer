@@ -93,6 +93,7 @@ qt_add_qml_module(iv_ui
         qml/AppMenu.qml
         qml/AppMenuItem.qml
         qml/AppScrollBar.qml
+        qml/AppScrollArea.qml
         qml/ColorChooser.qml
         qml/ColorChooserDialog.qml
         qml/ColorField.qml

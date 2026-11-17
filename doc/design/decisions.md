@@ -26,8 +26,11 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Continue the accepted Appearance layout with separate Thumbnails and Viewing pages.
   One C++ Settings draft owns their Apply/OK/Cancel checkpoint; switching pages keeps
   edits, and Reset touches only its section. Appearance alone previews before Apply.
-  Each page scrolls when it exceeds the window height, with a persistent scrollbar
-  while content overflows. The shared scrollbar keeps hover-fading elsewhere.
+  Settings and tool panels share AppScrollArea, a Flickable with explicit content extent,
+  a fixed right-hand gutter and keyboard-focus scrolling. Settings keeps its vertical
+  scrollbar visible while content overflows and hides it when content fits; tool panels
+  retain hover fading. Validate the actual thumb's geometry and viewport/content ratio, not just its
+  containing item's bounds, to prevent a misplaced dot masquerading as a scrollbar.
 * Keep the current 164 × 164 image box (180 × 200 browser cell) as the default. Offer
   160 × 120, 200 × 150, 240 × 160, 320 × 240 and 400 × 300, preserving image aspect
   ratio. The browser adds padding/caption space and preserves selection, current image

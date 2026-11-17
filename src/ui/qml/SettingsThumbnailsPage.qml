@@ -7,8 +7,6 @@ SettingsPage {
     id: page
     required property SettingsDraft draft
     readonly property bool pendingEdits: cacheLimit.pendingEdit
-    // The cache-dialog helper is another child; only the form determines scroll extent.
-    contentHeight: form.implicitHeight
     onVisibleChanged: { if (visible) ThumbnailStore.measure() }
 
     ThumbnailCacheDialogs { id: cacheDialogs; objectName: "settingsCacheDialogs" }

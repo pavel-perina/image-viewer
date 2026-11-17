@@ -46,8 +46,10 @@ Cache clearing is the explicitly separate immediate operation.
 
 Extend the C++ draft/persistence model for validated preferences, using the existing
 Appearance session for palette preview. Keep page QML separate so SettingsDialog stays
-navigation, layout and short handlers. SettingsPage owns the shared scrolling policy:
-overflow keeps its scrollbar visible in a reserved gutter beside the controls.
+navigation, layout and short handlers. SettingsPage configures AppScrollArea, shared
+with ToolPanel: a fixed scrollbar gutter, proportional vertical thumb, and focus
+scrolling. Settings bars stay visible while content overflows and hide when content
+fits; tools fade their bars until hover or movement.
 A browser thumbnail-size preference belongs in
 Preferences; crop/dialog remembered values still do not. Reuse the existing cache,
 profile validation and file chooser rather than adding parallel implementations.
