@@ -87,13 +87,15 @@ IccBytes grayProfile(double gamma) {
     return bytes;
 }
 
+// A folder for this process, since ctest runs tests in parallel, removed when it ends.
 std::filesystem::path testFile(const char* name) {
-    static const std::filesystem::path folder = [] {
-        auto path = std::filesystem::temp_directory_path() / ("iv_color_" + std::to_string(std::random_device{}()));
-        std::filesystem::create_directories(path);
-        return path;
-    }();
-    return folder / name;
+    struct Folder {
+        std::filesystem::path path = std::filesystem::temp_directory_path() / ("iv_color_" + std::to_string(std::random_device{}()));
+        Folder() { std::filesystem::create_directories(path); }
+        ~Folder() { std::filesystem::remove_all(path); }
+    };
+    static const Folder folder;
+    return folder.path / name;
 }
 
 }  // namespace
