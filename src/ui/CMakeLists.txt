@@ -112,6 +112,7 @@ qt_add_qml_module(iv_ui
         qml/JpegMenu.qml
         qml/LevelsControl.qml
         qml/ListFrame.qml
+        qml/SelectionBackground.qml
         qml/InfoPanel.qml
         qml/Main.qml
         qml/MessageBox.qml

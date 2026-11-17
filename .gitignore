@@ -4,3 +4,10 @@ CMakeUserPresets.json
 compile_commands.json
 .cache/
 CLAUDE.local.md
+
+# Local design references and rendered comparisons; source design notes may be committed.
+/doc/design/dolphin*.png
+/doc/design/2026-11-17_appearance-comparison.md
+/doc/design/2026-11-17_appearance-comparison/
+/doc/design/2026-11-17_visual-review/
+/doc/design/local-previews/

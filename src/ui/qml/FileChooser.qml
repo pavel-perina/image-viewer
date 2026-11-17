@@ -61,6 +61,7 @@ DialogWindow {
         const type = typeOf(nameField.text)
         typeIndex = Math.max(0, Math.min(types.length - 1, mode === "save" && type >= 0 ? type : typeIndex))
         placesView.model = placeRows()
+        placesView.currentIndex = Math.max(0, placesView.model.findIndex(row => row.path === browse.directory))
         open()
     }
 
@@ -261,6 +262,7 @@ DialogWindow {
                 // The places and the folders stand on what the files do, so the three read
                 // as lists alike.
                 ListFrame {
+                    objectName: "placesFrame"
                     SplitView.preferredHeight: side.height * 0.45
                     SplitView.minimumHeight: 60
                     focused: placesView.activeFocus
@@ -269,29 +271,42 @@ DialogWindow {
                         id: placesView
                         objectName: "placesView"
                         anchors.fill: parent
-                        anchors.margins: 1
+                        anchors.margins: Theme.paneInset
+                        activeFocusOnTab: true
+                        keyNavigationEnabled: true
+                        Keys.onReturnPressed: if (currentIndex >= 0) chooser.openFolder(model[currentIndex].path)
+                        Keys.onEnterPressed: if (currentIndex >= 0) chooser.openFolder(model[currentIndex].path)
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: AppScrollBar {}
                         section.property: "section"
-                        section.delegate: Label {
+                        section.delegate: PaneHeader {
                             required property string section
                             width: ListView.view.width
-                            topPadding: 6
-                            leftPadding: 6
-                            bottomPadding: 2
                             text: section
-                            opacity: 0.6
-                            font.weight: Font.DemiBold
+                            focused: placesView.activeFocus
                         }
                         delegate: ItemDelegate {
+                            id: placeRow
+                            required property int index
                             required property var modelData
                             width: ListView.view.width
                             height: 26
                             leftPadding: 14
                             text: modelData.name
-                            highlighted: modelData.path === browse.directory
-                            onClicked: chooser.openFolder(modelData.path)
+                            highlighted: placesView.activeFocus ? index === placesView.currentIndex : modelData.path === browse.directory
+                            background: SelectionBackground {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                selected: placeRow.highlighted
+                                focused: placesView.activeFocus
+                                hovered: placeRow.hovered
+                            }
+                            onClicked: {
+                                placesView.currentIndex = index
+                                placesView.forceActiveFocus()
+                                chooser.openFolder(modelData.path)
+                            }
                             ToolTip.visible: hovered
                             ToolTip.delay: 800
                             ToolTip.text: browse.nativePath(modelData.path)
@@ -300,15 +315,30 @@ DialogWindow {
                 }
 
                 ListFrame {
+                    objectName: "chooserTreeFrame"
                     SplitView.fillHeight: true
                     SplitView.minimumHeight: 60
                     focused: treeLoader.item ? treeLoader.item.activeFocus : false
 
+                    PaneHeader {
+                        id: chooserFoldersHeader
+                        objectName: "chooserFoldersHeader"
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: Theme.paneInset
+                        text: "Directories"
+                        focused: treeLoader.item ? treeLoader.item.activeFocus : false
+                    }
+
                     // Made only while shown, as each tree watches the file system.
                     Loader {
                         id: treeLoader
-                        anchors.fill: parent
-                        anchors.margins: 1
+                        anchors.top: chooserFoldersHeader.bottom
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: Theme.paneInset
                         active: chooser.visible
                         sourceComponent: FolderTree {
                             objectName: "chooserTree"

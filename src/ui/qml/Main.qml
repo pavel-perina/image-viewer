@@ -111,6 +111,7 @@ ApplicationWindow {
         guard: window.leaveImage
         copyTakenByTool: window.probing
         toolActive: window.toolActive
+        fileKeysEnabled: window.viewing || browserPage.filesFocused
         onSaveCancelled: window.pendingLeave = null
     }
 
@@ -641,11 +642,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
             Label {
-                visible: window.activeView.imageWidth > 0
+                objectName: "statusResolution"
+                visible: window.viewing && window.activeView.imageWidth > 0
                 text: window.activeView.imageWidth + " x " + window.activeView.imageHeight
             }
             Label {
-                visible: window.activeView.imageWidth > 0
+                objectName: "statusZoom"
+                visible: window.viewing && window.activeView.imageWidth > 0
                 text: Math.round(window.activeView.zoom * 100) + "%"
             }
             Label {
@@ -653,7 +656,8 @@ ApplicationWindow {
                 text: "page " + (window.activeView.page + 1) + " / " + window.activeView.pageCount
             }
             Label {
-                visible: context.fileCount > 0
+                objectName: "statusImagePosition"
+                visible: window.viewing && context.fileCount > 0
                 text: (context.currentIndex + 1) + " / " + context.fileCount
             }
         }

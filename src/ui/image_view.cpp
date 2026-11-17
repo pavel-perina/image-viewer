@@ -749,7 +749,9 @@ struct ImageView::Impl {
         summary.clear();
         cameraSummary.clear();
         if (source) {
-            summary = QString::fromStdString(imageSummary(subimage())) + QLatin1Char(' ') + fileSummary;
+            // Keep the file date on its own metadata line rather than burying it after
+            // the dimensions, format and bit depth in the compact preview footer.
+            summary = QString::fromStdString(imageSummary(subimage())) + QLatin1Char('\n') + fileSummary;
             cameraSummary = QString::fromStdString(iv::cameraSummary(subimage().exif));
             const auto pages = std::ssize(fileSource->subimages());
             if (pages > 1) {

@@ -16,7 +16,7 @@ namespace iv {
 struct PaletteChoices {
     double hue = 150;              // degrees in Oklab: 150 a willow green, 230 a blue, 40 a rust
     double accentChroma = 0.075;   // how colourful accents are: selection, marks, the default button
-    double surfaceChroma = 0.014;  // how much the hue tints backgrounds and text; 0 is neutral gray
+    double surfaceChroma = 0;      // neutral backgrounds and text; tint remains an optional choice
 };
 
 struct PaletteRole {

@@ -1228,6 +1228,17 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 
 ## The palette is worked out from a hue
 
+* Update, 17 November 2026: surfaces and ordinary text default to neutral gray
+  (`surfaceChroma = 0`), retaining the green accent. The former tint looked gray on a
+  ThinkPad T480s but clearly green on a Dell U3818DW; zero chroma avoids depending on
+  the display making that tint subtle. Surface tint remains available through the
+  palette choices. Tool panels retain their flat treatment.
+* Thumbnail selection uses a faint accent fill and a thin accent edge instead of a
+  solid green cell, so the picture dominates. A separate neutral frame marks the current
+  image, inset when selected so both states remain visible. Losing grid focus softens
+  selection but keeps that current-image frame. Colours live in `Theme` and the shared
+  `ThumbnailCell` applies the same treatment in every thumbnail list.
+
 * `Theme`'s colours, but for those that must stay fixed, come from three choices: a hue, how
   colourful accents are, and how much the hue tints surfaces and text (`core/palette`, through
   `ThemePalette`). A palette then changes by one number, and everything bound to `Theme`
@@ -1245,6 +1256,30 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   only hands their result to QML as a map that `Theme` binds to.
 
 ## The controls have a style of their own
+
+* Update, 17 November 2026: navigation panes and file lists share rounded, inset
+  `ListFrame` surfaces. The base is darker than the window; gaps are 8 logical pixels,
+  corners 4 and content inset 4. A quiet frame separates inactive panes; the same 1 px
+  frame becomes the accent at 50% alpha while the list has keyboard focus, without
+  changing layout. Full-strength accent was too bright over a large perimeter.
+  Folder headings brighten with focus. The preview retains its neutral image surround.
+  Its footer shows image details only: the duplicate 1:1 and Fit buttons are removed,
+  since the main toolbar already applies those actions to the preview when browsing.
+  Preview zoom is shown beside its heading; resolution and file date remain in the
+  preview's details, with file size/date on a separate line so the timestamp is easy
+  to find. The current-image/total count belongs at the right of the thumbnail
+  footer, beside folder and selection totals. The app status bar keeps resolution, zoom
+  and image position in viewer mode only, avoiding duplicated or distant browser details.
+* `SelectionBackground` gives Places, directory trees, brief/details rows and thumbnails
+  the same rounded accent edge and focused/inactive distinction. Text rows use slightly
+  stronger fills than large thumbnail cells. It is shared because repeating independent
+  selection formulas had left the lists visually inconsistent.
+* A pane's frame identifies where keyboard commands act, independently of retained
+  selection or the current-image marker. In the browser, file Delete/Shift+Delete
+  shortcuts are enabled only with thumbnail focus; the folder tree handles its own
+  Delete and asks before trashing that folder. Text fields keep Delete for text editing.
+  Places is navigation-only and gains keyboard access, not directory-deletion behaviour.
+  Explicit file menu commands still act on their selection.
 
 * Buttons, check boxes, combo boxes, spin boxes, sliders, menus and tool bars are drawn by a
   Qt Quick Controls style of the program's own, `ImageViewerStyle` in `src/ui/controls`, which

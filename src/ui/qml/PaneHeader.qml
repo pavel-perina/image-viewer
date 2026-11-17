@@ -9,8 +9,10 @@ Item {
     id: header
 
     property string text
+    property string detail
     property bool collapsible: false
     property bool collapsed: false
+    property bool focused: false
     signal toggled()
 
     implicitHeight: 26
@@ -21,12 +23,25 @@ Item {
     }
     Label {
         anchors.left: parent.left
-        anchors.right: caret.visible ? caret.left : parent.right
+        anchors.right: detailLabel.visible ? detailLabel.left : caret.visible ? caret.left : parent.right
         anchors.leftMargin: 8
         anchors.rightMargin: 4
         anchors.verticalCenter: parent.verticalCenter
         text: header.text
+        color: header.focused ? Theme.text : Theme.textMuted
+        font.weight: header.focused ? Font.DemiBold : Font.Normal
         elide: Text.ElideRight
+    }
+    Label {
+        id: detailLabel
+        objectName: "paneHeaderDetail"
+        anchors.right: caret.visible ? caret.left : parent.right
+        anchors.rightMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        visible: text !== ""
+        text: header.detail
+        color: Theme.textMuted
+        font.pointSize: Theme.smallSize
     }
     Caret {
         id: caret

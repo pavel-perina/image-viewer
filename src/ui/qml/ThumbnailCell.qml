@@ -14,12 +14,23 @@ Item {
     // The thumbnail, for whoever wants a picture of it, such as a drag.
     readonly property alias thumbnailImage: thumbnailImage
 
-    Rectangle {
+    SelectionBackground {
         anchors.fill: parent
         anchors.margins: 2
-        color: !cell.selected ? "transparent" : cell.keysHere ? palette.highlight : Theme.withAlpha(palette.highlight, 0.5)
-        border.width: cell.current ? 2 : 0
-        border.color: palette.highlightedText
+        selected: cell.selected
+        focused: cell.keysHere
+        subtle: true
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        // Both states stay visible: selection outside, the current image just inside.
+        anchors.margins: cell.selected ? 5 : 2
+        visible: cell.current
+        radius: Theme.controlRadius - 1
+        color: "transparent"
+        border.width: 2
+        border.color: Theme.onImageBright
     }
 
     Item {

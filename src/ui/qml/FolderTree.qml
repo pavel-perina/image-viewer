@@ -193,8 +193,12 @@ TreeView {
             return treeModel.pathForIndex(tree.index(row, 0)) === tree.context.directory
         }
         // Paler while the keys are elsewhere, as the selected thumbnails are while the tree has them.
-        background: Rectangle {
-            color: !treeRow.highlighted ? "transparent" : tree.activeFocus ? palette.highlight : Theme.withAlpha(palette.highlight, 0.5)
+        background: SelectionBackground {
+            anchors.fill: parent
+            anchors.margins: 2
+            selected: treeRow.highlighted
+            focused: tree.activeFocus
+            hovered: treeRow.hovered
         }
         // Framed while files are dragged over it.
         Rectangle {

@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import ImageViewer
 
 // The image under the folders: a title that collapses it, the image, and a line about it.
-Rectangle {
+ListFrame {
     id: panel
 
     required property BrowseContext context
@@ -13,8 +13,6 @@ Rectangle {
     property alias collapsed: settings.previewCollapsed
     readonly property alias view: surface.view
     readonly property int headerHeight: 26
-
-    color: palette.window
 
     Settings {
         id: settings
@@ -24,6 +22,7 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: Theme.paneInset
         spacing: 0
 
         PaneHeader {
@@ -31,6 +30,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: panel.headerHeight
             text: "Preview"
+            detail: surface.view.imageWidth > 0 ? Math.round(surface.view.zoom * 100) + "%" : ""
             collapsible: true
             collapsed: panel.collapsed
             onToggled: panel.collapsed = !panel.collapsed
@@ -65,48 +65,28 @@ Rectangle {
             }
         }
 
-        RowLayout {
+        ColumnLayout {
             objectName: "previewStatus"
             Layout.fillWidth: true
             Layout.leftMargin: 6
             Layout.rightMargin: 2
             visible: !panel.collapsed
-            spacing: 4
+            spacing: 0
 
-            ColumnLayout {
+            Label {
+                objectName: "previewSummary"
                 Layout.fillWidth: true
-                spacing: 0
-                Label {
-                    objectName: "previewSummary"
-                    Layout.fillWidth: true
-                    text: surface.view.summary
-                    wrapMode: Text.Wrap
-                    font.pointSize: Theme.smallSize
-                }
-                Label {
-                    objectName: "previewCamera"
-                    Layout.fillWidth: true
-                    visible: text !== ""
-                    text: surface.view.cameraSummary
-                    wrapMode: Text.Wrap
-                    font.pointSize: Theme.smallSize
-                }
+                text: surface.view.summary
+                wrapMode: Text.Wrap
+                font.pointSize: Theme.smallSize
             }
-            ToolButton {
-                objectName: "previewActualSize"
-                Layout.alignment: Qt.AlignTop
-                text: "1:1"
-                focusPolicy: Qt.NoFocus
-                enabled: surface.view.imageWidth > 0
-                onClicked: surface.view.actualSize()
-            }
-            ToolButton {
-                objectName: "previewFit"
-                Layout.alignment: Qt.AlignTop
-                text: "Fit"
-                focusPolicy: Qt.NoFocus
-                enabled: surface.view.imageWidth > 0
-                onClicked: surface.view.fitToView()
+            Label {
+                objectName: "previewCamera"
+                Layout.fillWidth: true
+                visible: text !== ""
+                text: surface.view.cameraSummary
+                wrapMode: Text.Wrap
+                font.pointSize: Theme.smallSize
             }
         }
     }
