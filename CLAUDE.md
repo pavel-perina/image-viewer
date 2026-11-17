@@ -121,6 +121,11 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * A new library needs asking first. On Windows it goes in `conanfile.txt`; Linux uses the
   system's packages.
 
+## Rules for git
+
+* Use `--no-ff` when merging larger feature branches
+* Small changes, bugfixes allowed on main
+
 ## How to work
 
 * Design before code for anything larger than a fix: say what will be added and where it fits,
