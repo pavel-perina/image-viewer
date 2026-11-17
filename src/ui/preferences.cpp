@@ -49,15 +49,15 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
     m_impl->settings = std::move(settings);
     {
         const double value = m_impl->settings->value(QStringLiteral("Appearance/hue"), 150).toDouble();
-        if (std::isfinite(value) && value >= 0 && value <= 360) m_impl->hue = value;
+        if (validHue(value)) m_impl->hue = value;
     }
     {
         const double value = m_impl->settings->value(QStringLiteral("Appearance/accentChroma"), 0.075).toDouble();
-        if (std::isfinite(value) && value >= 0 && value <= 0.4) m_impl->accentChroma = value;
+        if (validChroma(value)) m_impl->accentChroma = value;
     }
     {
         const double value = m_impl->settings->value(QStringLiteral("Appearance/surfaceChroma"), 0).toDouble();
-        if (std::isfinite(value) && value >= 0 && value <= 0.4) m_impl->surfaceChroma = value;
+        if (validChroma(value)) m_impl->surfaceChroma = value;
     }
     {
         const bool value = m_impl->settings->value(QStringLiteral("View/keepAutoContrast"), false).toBool();
@@ -127,6 +127,9 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
 
 Preferences::~Preferences() = default;
 
+bool Preferences::validHue(double value) { return std::isfinite(value) && value >= 0 && value <= 360; }
+bool Preferences::validChroma(double value) { return std::isfinite(value) && value >= 0 && value <= 0.4; }
+
 Preferences* Preferences::instance() {
     static Preferences* const preferences = [] {
         auto* result = new Preferences(QCoreApplication::instance());
@@ -155,7 +158,7 @@ std::uint64_t Preferences::thumbnailCacheBudgetBytes() {
 double Preferences::hue() const { return m_impl->hue; }
 
 void Preferences::setHue(double value) {
-    if (!(std::isfinite(value) && value >= 0 && value <= 360)) return;
+    if (!validHue(value)) return;
     if (m_impl->hue == value) return;
     m_impl->hue = value;
     m_impl->settings->setValue(QStringLiteral("Appearance/hue"), value);
@@ -165,7 +168,7 @@ void Preferences::setHue(double value) {
 double Preferences::accentChroma() const { return m_impl->accentChroma; }
 
 void Preferences::setAccentChroma(double value) {
-    if (!(std::isfinite(value) && value >= 0 && value <= 0.4)) return;
+    if (!validChroma(value)) return;
     if (m_impl->accentChroma == value) return;
     m_impl->accentChroma = value;
     m_impl->settings->setValue(QStringLiteral("Appearance/accentChroma"), value);
@@ -175,7 +178,7 @@ void Preferences::setAccentChroma(double value) {
 double Preferences::surfaceChroma() const { return m_impl->surfaceChroma; }
 
 void Preferences::setSurfaceChroma(double value) {
-    if (!(std::isfinite(value) && value >= 0 && value <= 0.4)) return;
+    if (!validChroma(value)) return;
     if (m_impl->surfaceChroma == value) return;
     m_impl->surfaceChroma = value;
     m_impl->settings->setValue(QStringLiteral("Appearance/surfaceChroma"), value);

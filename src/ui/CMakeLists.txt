@@ -1,6 +1,8 @@
 qt_add_library(iv_ui STATIC
     app_info.cpp
     app_info.h
+    appearance_draft.cpp
+    appearance_draft.h
     annotate_overlay.cpp
     annotate_overlay.h
     browse_context.cpp
@@ -125,6 +127,7 @@ qt_add_qml_module(iv_ui
         qml/ProbePanel.qml
         qml/ResizeDialog.qml
         qml/SearchCombo.qml
+        qml/SettingsDialog.qml
         qml/StraightenPanel.qml
         qml/StripBuilderDialog.qml
         qml/ResampledView.qml

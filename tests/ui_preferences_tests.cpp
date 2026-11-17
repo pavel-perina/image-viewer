@@ -178,7 +178,7 @@ TEST(Preferences, ThemeConsumersFollowTheOwnerInBothDirections) {
     EXPECT_EQ(reloaded.hue(), 250);
     EXPECT_EQ(reloaded.surfaceChroma(), 0.02);
     // Restore the application's global palette after exercising an isolated consumer.
-    iv::ThemePalette restore;
+    iv::ThemePalette restore(*iv::Preferences::instance());
 }
 
 // Why: rendering has a thread-safe colour target, but Preferences must be its only

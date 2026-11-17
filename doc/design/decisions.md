@@ -2,6 +2,22 @@
 
 Choices made while implementing `architecture.md` and `main-window.md`.
 
+## Settings: Appearance first (2026-11-17)
+
+* Build Settings page by page, beginning with the existing three palette inputs. Keep
+  layout in QML and editing/persistence rules in C++. A temporary palette previews
+  colours throughout the application; Apply saves a checkpoint, OK saves and closes,
+  and Cancel, Escape or closing the window restores the saved palette. Reset appearance
+  changes only this section's draft, making experimentation reversible.
+* Share the runtime palette across windows and QML engines. A second Settings request
+  activates the current editor, avoiding competing previews. External saved changes
+  merge into untouched fields and survive cancellation.
+* Omit Info panel settings: its existing window/fullscreen and preview/view behaviour
+  is intentional; histogram controls stay beside the histogram. Sharp resampling and
+  final-pass dithering stay enabled without preferences for their debugging switches.
+* Future thumbnail dimensions can coexist in the existing cache, whose key includes
+  requested edge size. Changing size therefore needs no global invalidation.
+
 ## Structure
 * `src/core`: pure C++23 without Qt. Decoders, tile model, viewport maths, work queue.
   `iv_core_tests` links no Qt, so a Qt dependency entering core breaks the build.
@@ -1265,11 +1281,15 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   ThinkPad T480s but clearly green on a Dell U3818DW; zero chroma avoids depending on
   the display making that tint subtle. Surface tint remains available through the
   palette choices. Tool panels retain their flat treatment.
-* Thumbnail selection uses a faint accent fill and a thin accent edge instead of a
+* Thumbnail selection uses a translucent accent fill and a thin accent edge instead of a
   solid green cell, so the picture dominates. A separate neutral frame marks the current
   image, inset when selected so both states remain visible. Losing grid focus softens
   selection but keeps that current-image frame. Colours live in `Theme` and the shared
   `ThumbnailCell` applies the same treatment in every thumbnail list.
+  After trying configurable hues, strengthen focused and inactive selection fills and
+  edges: the earlier faint treatment was too easy to miss, especially on thumbnails.
+  Shared file/navigation rows follow the same stronger treatment. Pane-focus frames
+  retain their existing brightness; this change makes selected items easier to find.
 
 * `Theme`'s colours, but for those that must stay fixed, come from three choices: a hue, how
   colourful accents are, and how much the hue tints surfaces and text (`core/palette`, through

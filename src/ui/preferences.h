@@ -51,6 +51,8 @@ public:
     static int savedOutputBits();
     // Safe on workers and during shutdown. Initialize instance() on the GUI thread first.
     static std::uint64_t thumbnailCacheBudgetBytes();
+    static bool validHue(double value);
+    static bool validChroma(double value);
 
     double hue() const;
     void setHue(double value);

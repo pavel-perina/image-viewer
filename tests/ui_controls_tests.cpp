@@ -6,6 +6,8 @@
 // gallery saved as a picture, to look at the style.
 
 #include "ui_test_support.h"
+#include "ui/theme_palette.h"
+#include <QScopeGuard>
 
 #include <QDir>
 #include <QFontInfo>
@@ -274,11 +276,11 @@ TEST(Controls, ASliderIsFilledUpToItsHandle) {
 }
 
 // Why: a large solid selection competes with the thumbnail, and current is not the same
-// as selected. Render every combination on a neutral window: selection has a quiet fill
+// as selected. Render every combination on a neutral window: selection has a visible fill
 // and a visible edge, current keeps a bright independent frame, and loss of grid focus
 // softens selection without hiding current. Pixel differences are the visual promise;
 // the exact fill formula is deliberately not asserted.
-TEST(Controls, ThumbnailSelectionIsQuietAndCurrentRemainsDistinct) {
+TEST(Controls, ThumbnailSelectionIsVisibleAndCurrentRemainsDistinctAcrossHues) {
     QQmlEngine engine;
     QQmlComponent component(&engine);
     component.setData(R"(
@@ -300,35 +302,41 @@ TEST(Controls, ThumbnailSelectionIsQuietAndCurrentRemainsDistinct) {
     auto* cell = root->property("cell").value<QQuickItem*>();
     ASSERT_NE(cell, nullptr);
     const QColor background = window->color();
-    double focusedFill = 0;
-    for (bool focused : {true, false}) {
-        for (bool selected : {false, true}) {
-            for (bool current : {false, true}) {
-                SCOPED_TRACE(testing::Message() << "focus=" << focused << " selected=" << selected << " current=" << current);
-                cell->setProperty("keysHere", focused);
-                cell->setProperty("selected", selected);
-                cell->setProperty("current", current);
-                const QImage picture = grabIfShown(*window);
-                ASSERT_FALSE(picture.isNull());
-                const QColor fill = picture.pixelColor(90, 20);
-                const QColor outside = picture.pixelColor(2, 90);
-                const QColor currentEdge = picture.pixelColor(selected ? 5 : 2, 90);
-                if (selected) {
-                    const double strength = distance(fill, background);
-                    EXPECT_GT(strength, 5);
-                    EXPECT_LT(strength, 45) << "the picture should dominate the fill";
-                    EXPECT_GT(distance(outside, fill), 35) << "selection edge stays visible";
-                    if (!current) {
-                        if (focused) focusedFill = strength;
-                        else EXPECT_LT(strength, focusedFill);
+    auto* palette = iv::ThemePalette::instance();
+    const auto restore = qScopeGuard([palette] { palette->clearPreview(); });
+    for (const double hue : {150.0, 40.0, 230.0, 300.0}) {
+        SCOPED_TRACE(testing::Message() << "hue=" << hue);
+        palette->preview({.hue = hue});
+        double focusedFill = 0;
+        for (bool focused : {true, false}) {
+            for (bool selected : {false, true}) {
+                for (bool current : {false, true}) {
+                    SCOPED_TRACE(testing::Message() << "focus=" << focused << " selected=" << selected << " current=" << current);
+                    cell->setProperty("keysHere", focused);
+                    cell->setProperty("selected", selected);
+                    cell->setProperty("current", current);
+                    const QImage picture = grabIfShown(*window);
+                    ASSERT_FALSE(picture.isNull());
+                    const QColor fill = picture.pixelColor(90, 20);
+                    const QColor outside = picture.pixelColor(2, 90);
+                    const QColor currentEdge = picture.pixelColor(selected ? 5 : 2, 90);
+                    if (selected) {
+                        const double strength = distance(fill, background);
+                        EXPECT_GT(strength, focused ? 40 : 24) << "selected items must remain easy to find";
+                        EXPECT_LT(strength, 85) << "the picture should dominate the fill";
+                        EXPECT_GT(distance(outside, fill), 35) << "selection edge stays visible";
+                        if (!current) {
+                            if (focused) focusedFill = strength;
+                            else EXPECT_LT(strength, focusedFill);
+                        }
+                    } else {
+                        EXPECT_LT(distance(fill, background), 2);
                     }
-                } else {
-                    EXPECT_LT(distance(fill, background), 2);
-                }
-                if (current) {
-                    EXPECT_GT(distance(currentEdge, fill), 200);
-                } else if (!selected) {
-                    EXPECT_LT(distance(outside, background), 2);
+                    if (current) {
+                        EXPECT_GT(distance(currentEdge, fill), 200);
+                    } else if (!selected) {
+                        EXPECT_LT(distance(outside, background), 2);
+                    }
                 }
             }
         }

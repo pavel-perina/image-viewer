@@ -4,6 +4,11 @@
 #include <QPalette>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
+#include <optional>
+#include "core/palette.h"
+
+class QQmlEngine;
+class QJSEngine;
 
 namespace iv {
 
@@ -24,8 +29,13 @@ class ThemePalette : public QObject {
     Q_PROPERTY(QVariantMap colours READ colours NOTIFY changed)
 
 public:
-    explicit ThemePalette(QObject* parent = nullptr);
     explicit ThemePalette(Preferences& preferences, QObject* parent = nullptr);
+    static ThemePalette* instance();
+    static ThemePalette* create(QQmlEngine*, QJSEngine*);
+
+    // Runtime preview only; the saved choices remain in Preferences.
+    void preview(const PaletteChoices& choices);
+    void clearPreview();
 
     double hue() const;
     void setHue(double hue);
@@ -41,10 +51,12 @@ signals:
     void changed();
 
 private:
+    explicit ThemePalette(QObject* parent = nullptr);
     void update();
 
     Preferences* m_preferences;
     QVariantMap m_colours;
+    std::optional<PaletteChoices> m_preview;
 };
 
 }  // namespace iv

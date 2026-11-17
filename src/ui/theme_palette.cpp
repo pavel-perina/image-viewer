@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QGuiApplication>
+#include <QJSEngine>
 
 #include "ui/preferences.h"
 #include "core/palette.h"
@@ -10,6 +11,27 @@ namespace iv {
 
 ThemePalette::ThemePalette(QObject* parent) : ThemePalette(*Preferences::instance(), parent) {}
 
+ThemePalette* ThemePalette::instance() {
+    static auto* theme = new ThemePalette(QCoreApplication::instance());
+    return theme;
+}
+
+ThemePalette* ThemePalette::create(QQmlEngine*, QJSEngine*) {
+    auto* theme = instance();
+    QJSEngine::setObjectOwnership(theme, QJSEngine::CppOwnership);
+    return theme;
+}
+
+void ThemePalette::preview(const PaletteChoices& choices) {
+    m_preview = choices;
+    update();
+}
+
+void ThemePalette::clearPreview() {
+    m_preview.reset();
+    update();
+}
+
 ThemePalette::ThemePalette(Preferences& preferences, QObject* parent) : QObject(parent), m_preferences(&preferences) {
     connect(&preferences, &Preferences::hueChanged, this, &ThemePalette::update);
     connect(&preferences, &Preferences::accentChromaChanged, this, &ThemePalette::update);
@@ -17,9 +39,9 @@ ThemePalette::ThemePalette(Preferences& preferences, QObject* parent) : QObject(
     update();
 }
 
-double ThemePalette::hue() const { return m_preferences->hue(); }
-double ThemePalette::accentChroma() const { return m_preferences->accentChroma(); }
-double ThemePalette::surfaceChroma() const { return m_preferences->surfaceChroma(); }
+double ThemePalette::hue() const { return m_preview ? m_preview->hue : m_preferences->hue(); }
+double ThemePalette::accentChroma() const { return m_preview ? m_preview->accentChroma : m_preferences->accentChroma(); }
+double ThemePalette::surfaceChroma() const { return m_preview ? m_preview->surfaceChroma : m_preferences->surfaceChroma(); }
 
 void ThemePalette::setHue(double hue) {
     m_preferences->setHue(hue);

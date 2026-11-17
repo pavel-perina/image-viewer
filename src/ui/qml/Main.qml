@@ -131,6 +131,8 @@ ApplicationWindow {
         view: viewerPage.view
     }
 
+    SettingsDialog { id: settingsDialog }
+
     FrameDialog {
         id: frameDialog
         view: viewerPage.view
@@ -523,6 +525,15 @@ ApplicationWindow {
         AppMenu {
             title: "&Tools"
             AppMenuItem { action: fileActions.stripAction }
+            MenuSeparator {}
+            AppMenuItem {
+                text: "&Settings..."
+                action: Action {
+                    objectName: "settingsAction"
+                    shortcut: StandardKey.Preferences
+                    onTriggered: settingsDialog.start()
+                }
+            }
         }
         AppMenu {
             title: "&Help"
