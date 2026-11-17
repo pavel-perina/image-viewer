@@ -22,6 +22,8 @@ Item {
     // A tool in the view, such as crop or straighten, has the keys, Del among them, and the file
     // is not to change under it.
     property bool toolActive: false
+    // Menus can still act on the selection, but Delete keys need a visibly focused file pane.
+    property bool fileKeysEnabled: true
     // Runs what would change or remove the file on show, once its edits are saved or given up.
     property var guard: (proceed) => proceed()
 
@@ -268,7 +270,7 @@ Item {
     Action {
         id: trashAction
         text: "Move to &Trash"
-        shortcut: "Del"
+        shortcut: root.fileKeysEnabled ? "Del" : ""
         enabled: root.idle && root.hasTargets
         onTriggered: {
             const paths = root.targetPaths
@@ -278,7 +280,7 @@ Item {
     Action {
         id: deleteAction
         text: "&Delete Permanently..."
-        shortcut: "Shift+Del"
+        shortcut: root.fileKeysEnabled ? "Shift+Del" : ""
         enabled: root.idle && root.hasTargets
         onTriggered: {
             // Kept from now on, so the selection cannot change what the answer applies to.
@@ -707,6 +709,7 @@ Item {
 
     MessageBox {
         id: deleteDialog
+        objectName: "permanentDeleteDialog"
         kind: "warning"
         property var paths: []
         readonly property int shown: 5

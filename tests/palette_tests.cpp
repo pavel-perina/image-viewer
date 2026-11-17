@@ -75,15 +75,28 @@ TEST(Palette, NoChromaGivesGray) {
     }
 }
 
-// Why: the defaults are the look chosen, a willow green, dark and calm with a light accent;
-// this keeps them from drifting unnoticed. The values are what the rules give today.
-TEST(Palette, TheDefaultsAreTheWillowLook) {
+// Why: a subtle surface tint looks clearly green on some displays. Defaults must keep
+// backgrounds and text neutral, while green marks and actions still stand out.
+TEST(Palette, TheDefaultsKeepSurfacesNeutralAndAccentsGreen) {
     const auto palette = derivePalette({});
     const Rgba8 window = role(palette, "window");
     const Rgba8 accent = role(palette, "accent");
-    EXPECT_GT(window.g, window.r) << "a green tint";
+    for (const char* name : {"window", "base", "button", "text", "textMuted", "raised", "header",
+                             "controlTop", "controlBottom", "panel", "bubble", "badge"}) {
+        const Rgba8 colour = role(palette, name);
+        EXPECT_EQ(colour.r, colour.g) << name;
+        EXPECT_EQ(colour.g, colour.b) << name;
+    }
     EXPECT_LT(window.g, 60) << "dark";
     EXPECT_GT(accent.g, 170) << "light";
     EXPECT_GT(accent.g, accent.r);
+    EXPECT_GT(role(palette, "defaultButtonTop").g, role(palette, "defaultButtonTop").r);
     EXPECT_EQ(role(palette, "panel").a, 230) << "panels let the picture through a little";
+}
+
+// Why: neutral defaults should not remove the ability to choose tinted surfaces later.
+// Input: the former surface chroma; the window must once again carry the chosen green hue.
+TEST(Palette, SurfaceTintRemainsAnExplicitChoice) {
+    const auto palette = derivePalette({.surfaceChroma = 0.014});
+    EXPECT_GT(role(palette, "window").g, role(palette, "window").r);
 }

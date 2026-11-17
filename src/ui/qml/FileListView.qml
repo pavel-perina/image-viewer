@@ -95,6 +95,7 @@ FocusScope {
     }
 
     ListFrame {
+        objectName: "fileListFrame"
         anchors.fill: parent
         focused: list.activeFocus
     }
@@ -110,7 +111,7 @@ FocusScope {
         id: briefView
         objectName: "briefView"
         anchors.fill: parent
-        anchors.margins: 1
+        anchors.margins: Theme.paneInset
         visible: !list.details
         clip: true
         flow: GridView.FlowTopToBottom
@@ -133,7 +134,7 @@ FocusScope {
         id: detailsView
         objectName: "detailsView"
         anchors.fill: parent
-        anchors.margins: 1
+        anchors.margins: Theme.paneInset
         visible: list.details
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -198,7 +199,7 @@ FocusScope {
         }
     }
 
-    component Entry: Rectangle {
+    component Entry: Item {
         id: entry
         required property int index
         required property string name
@@ -210,7 +211,12 @@ FocusScope {
         readonly property color textColor: current && list.activeFocus ? list.palette.highlightedText : list.palette.text
 
         height: list.rowHeight
-        color: !current ? "transparent" : list.activeFocus ? list.palette.highlight : Theme.withAlpha(list.palette.highlight, 0.45)
+        SelectionBackground {
+            anchors.fill: parent
+            anchors.margins: 1
+            selected: entry.current
+            focused: list.activeFocus
+        }
 
         Row {
             anchors.fill: parent

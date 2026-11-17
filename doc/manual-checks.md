@@ -38,6 +38,15 @@ W for Windows.
 
 ## Look
 
+- [ ] L [ ] W  In the browser and file chooser, focus the folder tree, Places (chooser),
+      thumbnails, and brief/details lists in turn. Only the pane with keyboard focus has
+      the accent frame; selected rows elsewhere remain dimly visible. No pane resizes.
+- [ ] Using disposable test files only: Delete with browser tree focus asks about the
+      folder; Cancel leaves it intact. Delete with thumbnail focus trashes selected files.
+      With the path or file-name field focused it edits text. Places is navigation-only.
+- [ ] L [ ] W  At 100%, 125% and 150% scaling, list contents do not cover the rounded
+      pane corners or focus frames; scroll bars and splitter handles remain usable.
+
 - [ ] On a light desktop theme: menus, dialogs and panels stay dark, with no black text on dark.
 - [ ] Inter shows in menus and labels; no missing characters in file names with accents.
 - [ ] W  To try: small text on a screen at 100% scaling is a little soft. Two likely causes,

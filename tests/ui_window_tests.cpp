@@ -167,6 +167,34 @@ TEST(Main, LoadsWithItsFileActionsWithoutWarnings) {
     EXPECT_EQ(f.warnings, QStringList());
 }
 
+// Why: browser details belong beside their panes, while the viewer still needs them in
+// the app status bar. Input: a loaded image switched browser -> viewer -> browser;
+// the same details are visible in the app bar only in viewer mode.
+TEST(Main, ImageStatusDetailsBelongToTheViewerRatherThanDuplicatingThePreview) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    auto* preview = f.window->property("activeView").value<ImageView*>();
+    ASSERT_NE(preview, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return preview->status() == ImageView::Status::Ready; }));
+    for (const char* name : {"statusResolution", "statusZoom", "statusImagePosition"}) {
+        auto* item = qobject_cast<QQuickItem*>(f.find(name));
+        ASSERT_NE(item, nullptr);
+        EXPECT_FALSE(item->isVisible()) << name;
+    }
+    f.window->setProperty("viewing", true);
+    ASSERT_TRUE(waitUntil([&] {
+        auto* view = f.window->property("activeView").value<ImageView*>();
+        return view && view->status() == ImageView::Status::Ready;
+    }));
+    for (const char* name : {"statusResolution", "statusZoom", "statusImagePosition"}) {
+        EXPECT_TRUE(qobject_cast<QQuickItem*>(f.find(name))->isVisible()) << name;
+    }
+    f.window->setProperty("viewing", false);
+    for (const char* name : {"statusResolution", "statusZoom", "statusImagePosition"}) {
+        EXPECT_FALSE(qobject_cast<QQuickItem*>(f.find(name))->isVisible()) << name;
+    }
+}
+
 // Why: the tool bar's buttons show icons instead of words, so their names and keys must still
 // be found, in the tip, and an icon name that is not in the resources would leave a blank
 // button. Input: the whole window; the truth is the actions' names and shortcuts, with the
@@ -1105,6 +1133,125 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     EXPECT_TRUE(QFile::exists(folder + QStringLiteral("/x.jpg"))) << "Shift+Del does not delete the files of the folder";
 }
 
+// Why: retained selections in two panes must not make Delete's target ambiguous.
+// Input: a temporary folder containing one file, focus moved tree -> path -> toolbar
+// -> thumbnails. Frames must follow the keys without resizing; Delete asks
+// about the folder, edits text, does nothing, then trashes only the selected file.
+TEST(Keys, DeleteFollowsThePaneFrameAndTextEditingNeverTrashesFiles) {
+    MainFixture f(1, QStringList{QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    const QString folder = f.dir.filePath(QStringLiteral("sub"));
+    const QString file = folder + QStringLiteral("/image.jpg");
+    writeJpeg(file);
+    ASSERT_TRUE(QFile::exists(file));
+    f.context->openPath(folder);
+    ASSERT_TRUE(waitUntil([&] { return f.context->fileCount() == 1; }))
+        << "directory=" << f.context->directory().toStdString() << " files=" << f.context->fileCount()
+        << " expected=" << folder.toStdString() << " disk=" << QDir(folder).entryList(QDir::Files).join(",").toStdString()
+        << " exists=" << QFile::exists(file);
+    f.context->setCurrentIndex(0);
+    auto* tree = qobject_cast<QQuickItem*>(f.find("folderTree"));
+    auto* grid = qobject_cast<QQuickItem*>(f.find("thumbnailGrid"));
+    auto* foldersFrame = qobject_cast<QQuickItem*>(f.find("foldersFrame"));
+    auto* filesFrame = qobject_cast<QQuickItem*>(f.find("thumbnailsFrame"));
+    ASSERT_NE(tree, nullptr);
+    ASSERT_NE(grid, nullptr);
+    ASSERT_NE(foldersFrame, nullptr);
+    ASSERT_NE(filesFrame, nullptr);
+    const QSizeF size = filesFrame->size();
+    tree->forceActiveFocus();
+    EXPECT_TRUE(foldersFrame->property("focused").toBool());
+    EXPECT_FALSE(filesFrame->property("focused").toBool());
+    QTest::keyClick(f.window, Qt::Key_Delete);
+    auto* question = f.find("trashFolderDialog");
+    ASSERT_TRUE(waitUntil([&] { return question->property("opened").toBool(); }));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    ASSERT_TRUE(waitUntil([&] { return !question->property("visible").toBool(); }));
+    EXPECT_TRUE(QFile::exists(file));
+
+    QTest::keyClick(f.window, Qt::Key_L, Qt::ControlModifier);
+    ASSERT_TRUE(f.window->property("typing").toBool());
+    EXPECT_FALSE(foldersFrame->property("focused").toBool());
+    EXPECT_FALSE(filesFrame->property("focused").toBool());
+    QTest::keyClick(f.window, Qt::Key_Delete);
+    EXPECT_EQ(f.find("pathBar")->property("editText").toString(), QString());
+    EXPECT_TRUE(QFile::exists(file));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+
+    auto* toolbarButton = qobject_cast<QQuickItem*>(f.find("modeButton"));
+    ASSERT_NE(toolbarButton, nullptr);
+    toolbarButton->forceActiveFocus();
+    EXPECT_FALSE(filesFrame->property("focused").toBool());
+    QTest::keyClick(f.window, Qt::Key_Delete);
+    QTest::keyClick(f.window, Qt::Key_Delete, Qt::ShiftModifier);
+    EXPECT_TRUE(QFile::exists(file));
+    auto* permanent = f.find("permanentDeleteDialog");
+    ASSERT_NE(permanent, nullptr);
+    EXPECT_FALSE(permanent->property("opened").toBool());
+
+    grid->forceActiveFocus();
+    EXPECT_TRUE(filesFrame->property("focused").toBool());
+    EXPECT_FALSE(foldersFrame->property("focused").toBool());
+    EXPECT_EQ(filesFrame->size(), size) << "focus changes paint, not layout";
+    QTest::keyClick(f.window, Qt::Key_Delete);
+    ASSERT_TRUE(waitUntil([&] { return !QFile::exists(file); }));
+    EXPECT_TRUE(QDir(folder).exists()) << "the folder was not the target";
+    EXPECT_EQ(f.warnings, QStringList());
+}
+
+// Why: Places, Directories and both file-list modes share one focus indicator. Moving
+// the keys must light exactly that frame, keep other selections inactive, and leave
+// geometry unchanged. Places is navigation-only; Delete must not remove a file.
+TEST(FileChooser, PaneFramesFollowKeyboardFocusInPlacesTreeBriefAndDetails) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("a.jpg"));
+    auto* places = f.chooser->findChild<QQuickItem*>("placesView");
+    auto* tree = f.chooser->findChild<QQuickItem*>("chooserTree");
+    auto* files = f.item("fileList");
+    auto* placesFrame = f.chooser->findChild<QQuickItem*>("placesFrame");
+    auto* treeFrame = f.chooser->findChild<QQuickItem*>("chooserTreeFrame");
+    auto* fileFrame = files ? files->findChild<QQuickItem*>("fileListFrame") : nullptr;
+    ASSERT_NE(places, nullptr);
+    ASSERT_NE(tree, nullptr);
+    ASSERT_NE(files, nullptr);
+    ASSERT_NE(placesFrame, nullptr);
+    ASSERT_NE(treeFrame, nullptr);
+    ASSERT_NE(fileFrame, nullptr);
+    QObject* theme = f.engine.singletonInstance<QObject*>("ImageViewer", "Theme");
+    const QColor accent = theme->property("paneFocusFrame").value<QColor>();
+    const QColor quiet = theme->property("paneFrame").value<QColor>();
+    const QList<QQuickItem*> frames{placesFrame, treeFrame, fileFrame};
+    const QList<QQuickItem*> contents{places, tree, files};
+    for (int index = 0; index < contents.size(); ++index) {
+        contents[index]->forceActiveFocus();
+        QCoreApplication::processEvents();
+        const QImage picture = grabIfShown(*f.window);
+        ASSERT_FALSE(picture.isNull());
+        for (int other = 0; other < frames.size(); ++other) {
+            EXPECT_EQ(frames[other]->property("focused").toBool(), index == other);
+            const auto* border = frames[other]->property("border").value<QObject*>();
+            ASSERT_NE(border, nullptr);
+            EXPECT_EQ(border->property("color").value<QColor>(), index == other ? accent : quiet);
+            EXPECT_GT(frames[other]->property("radius").toDouble(), 0);
+            if (index == other) {
+                const QPoint edge = frames[other]->mapToScene(QPointF(0, frames[other]->height() / 2)).toPoint();
+                const QColor painted = picture.pixelColor(edge);
+                EXPECT_GT(painted.green(), painted.red()) << "the frame is visibly accented";
+                EXPECT_LT(painted.green(), theme->property("accent").value<QColor>().green() - 30)
+                    << "a large frame must be quieter than the full accent";
+            }
+        }
+        QTest::keyClick(f.window, Qt::Key_Delete);
+        EXPECT_TRUE(QFile::exists(f.dir.filePath(QStringLiteral("a.jpg"))));
+    }
+    const QSizeF before = fileFrame->size();
+    files->setProperty("details", true);
+    EXPECT_TRUE(fileFrame->property("focused").toBool());
+    EXPECT_EQ(fileFrame->size(), before);
+    f.item("nameField")->forceActiveFocus();
+    EXPECT_FALSE(fileFrame->property("focused").toBool());
+}
+
 // Why: Show Hidden Folders is one switch, under Ctrl+H, kept between sessions, which every
 // listing follows. Input: the window on a folder with a hidden subfolder. The truth is the
 // menu action, the saved setting and the browser's folder count.
@@ -1318,11 +1465,15 @@ TEST(Main, AWindowOfItsOwnHasTheThemesColours) {
     palette->setHue(250);
     QCoreApplication::processEvents();
     EXPECT_EQ(paletteColour("window"), root->property("expected").value<QColor>()) << "followed at once";
-    EXPECT_GT(paletteColour("window").blue(), paletteColour("window").green());
+    EXPECT_EQ(paletteColour("highlight"), root->property("expectedHighlight").value<QColor>()) << "accent followed at once";
+    EXPECT_GT(paletteColour("highlight").blue(), paletteColour("highlight").green());
+    EXPECT_EQ(paletteColour("window").blue(), paletteColour("window").green()) << "default surface stays neutral";
     palette->setHue(willow);
 }
 
-TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
+// Why: hue changes must reach accents immediately without tinting neutral default surfaces.
+// An explicitly chosen surface tint must still propagate to the window and reset cleanly.
+TEST(Main, ChangingTheHueRecoloursAccentsAndOnlyTintsSurfacesWhenChosen) {
     MainFixture f(0);
     ASSERT_NE(f.window, nullptr);
     auto* palette = f.engine.singletonInstance<iv::ThemePalette*>("ImageViewer", "ThemePalette");
@@ -1331,15 +1482,22 @@ TEST(Main, ChangingTheHueRecoloursTheWindowAtOnce) {
     ASSERT_NE(theme, nullptr);
     const double willow = palette->hue();
     const QColor before = theme->property("window").value<QColor>();
-    EXPECT_GT(before.green(), before.blue()) << "willow is green";
+    const QColor accentBefore = theme->property("accent").value<QColor>();
+    EXPECT_EQ(before.green(), before.blue()) << "default surfaces are neutral";
+    EXPECT_GT(accentBefore.green(), accentBefore.blue()) << "willow accent is green";
     EXPECT_EQ(f.window->color(), before) << "the window is painted in it";
 
     palette->setHue(250);
+    EXPECT_EQ(theme->property("window").value<QColor>(), before);
+    EXPECT_NE(theme->property("accent").value<QColor>(), accentBefore);
+    const double originalTint = palette->surfaceChroma();
+    palette->setSurfaceChroma(0.014);
     const QColor blue = theme->property("window").value<QColor>();
     EXPECT_GT(blue.blue(), blue.green());
     EXPECT_EQ(f.window->color(), blue) << "followed by the binding alone";
 
     palette->setHue(willow);
+    palette->setSurfaceChroma(originalTint);
     EXPECT_EQ(theme->property("window").value<QColor>(), before);
     EXPECT_EQ(f.warnings, QStringList());
 }

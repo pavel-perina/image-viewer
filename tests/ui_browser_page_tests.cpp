@@ -418,6 +418,15 @@ TEST(BrowserPage, StatusSaysWhatIsInTheFolder) {
     ASSERT_NE(status, nullptr);
     EXPECT_TRUE(status->property("text").toString().startsWith(QStringLiteral("1 directory | 4 files (")));
     EXPECT_TRUE(status->property("text").toString().contains(QStringLiteral("| 1 selected (")));
+    // Position counts the current image, independently of the number selected.
+    QQuickItem* position = findNamed(f.view.rootObject(), QStringLiteral("browserImagePosition"));
+    ASSERT_NE(position, nullptr);
+    EXPECT_EQ(position->property("text").toString(), QStringLiteral("1 / 4"));
+    f.clickFile(2, Qt::ControlModifier);
+    EXPECT_EQ(position->property("text").toString(), QStringLiteral("3 / 4"));
+    EXPECT_TRUE(status->property("text").toString().contains(QStringLiteral("| 2 selected (")));
+    f.context.clearSelection();
+    EXPECT_EQ(position->property("text").toString(), QStringLiteral("3 / 4"));
 }
 
 TEST(BrowserPage, PreviewCollapsesAndDescribesItsImage) {
@@ -429,21 +438,18 @@ TEST(BrowserPage, PreviewCollapsesAndDescribesItsImage) {
     QQuickItem* summary = findNamed(f.view.rootObject(), QStringLiteral("previewSummary"));
     ASSERT_NE(summary, nullptr);
     const QString text = summary->property("text").toString();
-    EXPECT_TRUE(text.startsWith(QStringLiteral("64x64 0.00MP 24bit JPEG "))) << text.toStdString();
-    EXPECT_TRUE(QRegularExpression(QStringLiteral(" \\d+(B|kB) \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d$")).match(text).hasMatch()) << text.toStdString();
+    EXPECT_TRUE(text.startsWith(QStringLiteral("64x64 0.00MP 24bit JPEG\n"))) << text.toStdString();
+    EXPECT_TRUE(QRegularExpression(QStringLiteral("\\n\\d+(B|kB) \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d$")).match(text).hasMatch()) << text.toStdString();
     QQuickItem* camera = findNamed(f.view.rootObject(), QStringLiteral("previewCamera"));
     ASSERT_NE(camera, nullptr);
     EXPECT_FALSE(camera->isVisible()) << "this image has no EXIF";
 
-    // The two buttons on the line.
-    QQuickItem* actual = findNamed(f.view.rootObject(), QStringLiteral("previewActualSize"));
-    QQuickItem* fit = findNamed(f.view.rootObject(), QStringLiteral("previewFit"));
-    ASSERT_NE(actual, nullptr);
-    ASSERT_NE(fit, nullptr);
-    QMetaObject::invokeMethod(fit, "clicked");
-    EXPECT_GT(preview->zoom(), 1) << "64 pixels fill the panel";
-    QMetaObject::invokeMethod(actual, "clicked");
-    EXPECT_DOUBLE_EQ(preview->zoom(), 1);
+    QQuickItem* previewHeader = findNamed(f.view.rootObject(), QStringLiteral("previewHeader"));
+    ASSERT_NE(previewHeader, nullptr);
+    preview->actualSize();
+    EXPECT_EQ(previewHeader->property("detail").toString(), QStringLiteral("100%"));
+    preview->fitToView();
+    EXPECT_EQ(previewHeader->property("detail").toString(), QString::number(std::round(preview->zoom() * 100)) + "%");
 
     // The title closes it, which leaves room for the tree and stops reading images.
     QQuickItem* header = findNamed(f.view.rootObject(), QStringLiteral("previewHeader"));

@@ -20,8 +20,8 @@ T.SplitView {
         readonly property int grabMargin: 3
         readonly property bool pressed: T.SplitHandle.pressed
         readonly property bool hovered: T.SplitHandle.hovered
-        implicitWidth: across ? 4 : control.width
-        implicitHeight: across ? control.height : 4
+        implicitWidth: across ? Theme.paneGap : control.width
+        implicitHeight: across ? control.height : Theme.paneGap
 
         containmentMask: Item {
             x: handle.across ? -handle.grabMargin : 0
@@ -31,8 +31,8 @@ T.SplitView {
         }
 
         Rectangle {
-            x: handle.across ? 1 : 0
-            y: handle.across ? 0 : 1
+            x: handle.across ? (handle.width - 2) / 2 : 0
+            y: handle.across ? 0 : (handle.height - 2) / 2
             width: handle.across ? 2 : parent.width
             height: handle.across ? parent.height : 2
             visible: handle.hovered || handle.pressed

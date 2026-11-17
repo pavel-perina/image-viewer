@@ -45,6 +45,16 @@ QtObject {
     readonly property color defaultButtonEdge: roles.defaultButtonEdge
     readonly property color hover: withAlpha(text, 0.12)
     readonly property color frame: withAlpha(text, 0.25)
+    // A thumbnail's selection is quiet beside the picture; its edge carries the accent.
+    // The neutral current-image frame is independent of selection and keyboard focus.
+    readonly property color thumbnailSelection: withAlpha(accent, 0.12)
+    readonly property color thumbnailSelectionInactive: withAlpha(accent, 0.06)
+    readonly property color selectionEdge: withAlpha(accent, 0.70)
+    readonly property color selectionEdgeInactive: withAlpha(accent, 0.40)
+    readonly property color listSelection: withAlpha(accent, 0.20)
+    readonly property color listSelectionInactive: withAlpha(accent, 0.10)
+    readonly property color paneFrame: withAlpha(text, 0.12)
+    readonly property color paneFocusFrame: withAlpha(accent, 0.50)
     readonly property color warning: "#e0a050"
     readonly property color danger: "#e06c60"
     readonly property color warningFill: "#d9992b"  // behind a white glyph
@@ -97,6 +107,8 @@ QtObject {
     readonly property int panelWidth: 280   // the tool panels beside the image
     readonly property int panelMargin: 12   // between a panel's edge and what is in it
     readonly property int panelSpacing: 8   // between a panel's rows
+    readonly property int paneGap: 8
+    readonly property int paneInset: 4  // content stays inside the rounded frame
     readonly property int controlHeight: 28 // buttons, fields, combo boxes: a multiple of 4, whole at 125%
     readonly property int controlRadius: 4  // their corners
     readonly property int controlPadding: 12  // between a control's edge and its text
