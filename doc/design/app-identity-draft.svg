@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="760" height="560" viewBox="0 0 760 560">
+  <title>Application identity — three first directions</title>
+  <desc>Unapproved naming and original vector-icon concepts: Svit, Osvit, and Pruzor. Each mark is shown large and at 16, 32 and 48 pixels on dark and light backgrounds. Names and marks can be mixed.</desc>
+  <defs>
+    <style>text{font-family:Inter,sans-serif;fill:#e4e4e4;font-size:13px}.muted{fill:#ababab;font-size:12px}.name{font-size:24px;font-weight:550}.heading{font-size:19px}</style>
+    <symbol id="svit" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <path d="M37 83V37h45" fill="none" stroke="#f3f3ec" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M91 54v37H54" fill="none" stroke="#81d8c5" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="68" cy="61" r="13" fill="#f5bd66"/>
+    </symbol>
+    <symbol id="osvit" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <rect x="25" y="27" width="61" height="60" rx="8" fill="#81d8c5"/>
+      <rect x="42" y="43" width="61" height="60" rx="8" fill="#f5bd66"/>
+      <rect x="52" y="53" width="41" height="40" rx="3" fill="#27343e"/>
+      <path d="M55 86l15-17 8 8 8-9 4 18z" fill="#f3f3ec"/>
+    </symbol>
+    <symbol id="pruzor" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <path fill="#81d8c5" fill-rule="evenodd" d="M31 31h49a23 23 0 0 1 0 46H47v23H31V31zm16 15v16h31a8 8 0 0 0 0-16H47z"/>
+      <path d="M57 93h36V72" fill="none" stroke="#f3f3ec" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+  <rect width="760" height="560" fill="#222222"/>
+  <text class="heading" x="28" y="37">A name and a mark</text>
+  <text class="muted" x="28" y="63">First directions · names and marks can be mixed · no application changes</text>
+  <path d="M253 92v390M506 92v390" stroke="#e4e4e4" stroke-opacity=".12"/>
+
+  <use xlink:href="#svit" x="63" y="100" width="128" height="128"/>
+  <use xlink:href="#osvit" x="316" y="100" width="128" height="128"/>
+  <use xlink:href="#pruzor" x="569" y="100" width="128" height="128"/>
+  <text class="name" x="127" y="267" text-anchor="middle">Svit</text>
+  <text class="name" x="380" y="267" text-anchor="middle">Osvit</text>
+  <text class="name" x="633" y="267" text-anchor="middle">Pruzor</text>
+  <text class="muted" x="127" y="293" text-anchor="middle">Light inside an open frame</text>
+  <text class="muted" x="380" y="293" text-anchor="middle">Pictures, layered and framed</text>
+  <text class="muted" x="633" y="293" text-anchor="middle">A viewing window and a P</text>
+
+  <text class="muted" x="28" y="330">Dark desktop</text>
+  <use xlink:href="#svit" transform="translate(57 354) scale(.125)"/>
+  <use xlink:href="#svit" transform="translate(93 346) scale(.25)"/>
+  <use xlink:href="#svit" transform="translate(145 338) scale(.375)"/>
+  <use xlink:href="#osvit" transform="translate(310 354) scale(.125)"/>
+  <use xlink:href="#osvit" transform="translate(346 346) scale(.25)"/>
+  <use xlink:href="#osvit" transform="translate(398 338) scale(.375)"/>
+  <use xlink:href="#pruzor" transform="translate(563 354) scale(.125)"/>
+  <use xlink:href="#pruzor" transform="translate(599 346) scale(.25)"/>
+  <use xlink:href="#pruzor" transform="translate(651 338) scale(.375)"/>
+
+  <rect x="28" y="408" width="704" height="80" rx="8" fill="#eeeeea"/>
+  <text x="42" y="428" style="fill:#555b60;font-size:11px">Light desktop</text>
+  <use xlink:href="#svit" transform="translate(57 449) scale(.125)"/>
+  <use xlink:href="#svit" transform="translate(93 441) scale(.25)"/>
+  <use xlink:href="#svit" transform="translate(145 433) scale(.375)"/>
+  <use xlink:href="#osvit" transform="translate(310 449) scale(.125)"/>
+  <use xlink:href="#osvit" transform="translate(346 441) scale(.25)"/>
+  <use xlink:href="#osvit" transform="translate(398 433) scale(.375)"/>
+  <use xlink:href="#pruzor" transform="translate(563 449) scale(.125)"/>
+  <use xlink:href="#pruzor" transform="translate(599 441) scale(.25)"/>
+  <use xlink:href="#pruzor" transform="translate(651 433) scale(.375)"/>
+  <text class="muted" x="28" y="523">Original SVG sketches · one fixed icon palette, independent of the configurable UI theme</text>
+  <text class="muted" x="28" y="544">16 / 32 / 48 px samples are scaled concepts; the chosen mark will need optical adjustments at 16 px.</text>
+</svg>

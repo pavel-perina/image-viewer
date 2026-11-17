@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Rys Frame — icon study 01</title>
+  <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e" />
+  <path d="M30 42l-4-20 23 15h30l23-15-4 20v35q0 23-34 34-34-11-34-34z" fill="#81d8c5" />
+  <path d="M26 24l-2-10m78 10 2-10" fill="none" stroke="#81d8c5" stroke-width="6" stroke-linecap="round" />
+  <rect x="43" y="50" width="42" height="36" rx="4" fill="#27343e" />
+  <circle cx="73" cy="59" r="5" fill="#f5bd66" />
+  <path d="M47 80l12-16 11 11 6-6 5 11z" fill="#f3f3ec" />
+</svg>
