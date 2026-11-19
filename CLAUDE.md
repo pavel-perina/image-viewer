@@ -24,7 +24,9 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Image model:** `image_source.h` (the interface every format implements: subimages, levels,
   tiles), `image_buffer`, `geometry`, `viewport`, `overview_source`, `whole_image_source`.
 * **Formats:** `jpeg_source`, `tiff_source`, `png_source`, `webp_source`, `avif_source`,
-  `jxl_source`. Metadata: `exif`, `xmp`, `image_details`.
+  `jxl_source`; read only, without a library: `bmp_source`, `gif_source`, `tga_source`,
+  `netpbm_source`, over `decompress` (LZW, RLE) and `byte_reader.h`. Metadata: `exif`, `xmp`,
+  `image_details`.
 * **Colour:** `color` (ICC, display transform), `color_edit` (levels, curves, cube tables),
   `oklab.h`, `histogram`, `pixel_probe`, `palette` (the interface's colours, worked out from a
   hue), `rgba.h`.

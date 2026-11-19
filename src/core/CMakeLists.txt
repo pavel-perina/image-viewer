@@ -8,6 +8,8 @@ pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET GLOBAL lcms2)
 
 add_library(iv_core STATIC
     bands.h
+    bmp_source.cpp
+    bmp_source.h
     canvas.cpp
     canvas.h
     color.cpp
@@ -18,6 +20,9 @@ add_library(iv_core STATIC
     color_edit.h
     crop.cpp
     crop.h
+    decompress.cpp
+    decompress.h
+    byte_reader.h
     disk_gate.cpp
     disk_gate.h
     document.cpp
@@ -32,6 +37,8 @@ add_library(iv_core STATIC
     fuzzy_match.h
     geometry.cpp
     geometry.h
+    gif_source.cpp
+    gif_source.h
     histogram.cpp
     histogram.h
     image_buffer.cpp
@@ -53,6 +60,10 @@ add_library(iv_core STATIC
     jpeg_transform.h
     libraries.cpp
     libraries.h
+    netpbm_source.cpp
+    netpbm_source.h
+    tga_source.cpp
+    tga_source.h
     xmp.cpp
     xmp.h
     overview_source.cpp

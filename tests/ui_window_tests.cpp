@@ -1550,6 +1550,23 @@ TEST(Main, DithersByOneStepOfTheOutputUnlessTurnedOff) {
     qunsetenv("IV_NO_DITHER");
 }
 
+// Why: the open dialog's list of image types used to be written out in QML and missed formats
+// the program had learnt to read. Input: the main window's open dialog. The truth: its image
+// types are those core reads, among them the read-only BMP, GIF, TGA and Netpbm.
+TEST(Main, TheOpenDialogOffersEveryFormatItReads) {
+    MainFixture f;
+    ASSERT_NE(f.window, nullptr);
+    auto* dialog = f.find(QStringLiteral("openDialog"));
+    ASSERT_NE(dialog, nullptr);
+    const QVariantList types = dialog->property("types").toList();
+    ASSERT_FALSE(types.isEmpty());
+    const QStringList extensions = types.first().toMap().value(QStringLiteral("extensions")).toStringList();
+    EXPECT_EQ(extensions, BrowseContext::imageExtensions());
+    for (const char* wanted : {"jpg", "bmp", "gif", "tga", "pgm", "pfm"}) {
+        EXPECT_TRUE(extensions.contains(QLatin1String(wanted))) << wanted;
+    }
+}
+
 // Why: a dialog in a window of its own is a transient child of the main window, and Qt counts
 // the main window as active while it has the keys, so the main window's shortcuts used to fire
 // too: Escape in the save dialog left the image and asked about unsaved changes, below it.

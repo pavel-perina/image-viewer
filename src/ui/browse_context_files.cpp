@@ -204,6 +204,14 @@ void BrowseContext::convertToJxl(const QStringList& paths, bool trashOriginals) 
 
 bool BrowseContext::canConvertToJxl() const { return iv::canConvertToJxl(); }
 
+QStringList BrowseContext::imageExtensions() {
+    QStringList extensions;
+    for (const std::string_view extension : supportedExtensions()) {
+        extensions << QString::fromLatin1(extension);
+    }
+    return extensions;
+}
+
 QString BrowseContext::saveFormat(const QString& path) const { return saveFormatFor(path); }
 
 QVariantList BrowseContext::saveTypes() const {
