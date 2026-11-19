@@ -23,6 +23,8 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 
 ## Settings: Thumbnails and Viewing (2026-11-17)
 
+* Keep sorting and hidden-folder controls directly in the browsing interface. Do not
+  add a Browser Settings page: these controls should remain easy to reach while browsing.
 * Continue the accepted Appearance layout with separate Thumbnails and Viewing pages.
   One C++ Settings draft owns their Apply/OK/Cancel checkpoint; switching pages keeps
   edits, and Reset touches only its section. Appearance alone previews before Apply.
