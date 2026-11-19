@@ -9,6 +9,7 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace iv {
 
@@ -94,6 +95,10 @@ std::optional<MountEntry> findMount(std::string_view mountinfo, const std::strin
 // The kind of a mounted file system: by its type for network and memory ones, otherwise unknown,
 // left to the block device.
 std::optional<DiskKind> kindOfFileSystem(std::string_view fileSystem);
+
+// The major and minor numbers of a device written "major:minor", as mountinfo gives them;
+// nothing for anything else, such as a sign, a missing part or text after the numbers.
+std::optional<std::pair<unsigned, unsigned>> parseDeviceNumbers(std::string_view device);
 
 }  // namespace detail
 

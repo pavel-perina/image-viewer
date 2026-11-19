@@ -154,7 +154,7 @@ int rowOf(int decoded, int height, bool interlaced) {
         return decoded;
     }
     constexpr std::array<std::pair<int, int>, 4> kPasses{{{0, 8}, {4, 8}, {2, 4}, {1, 2}}};
-    for (const auto [start, step] : kPasses) {
+    for (const auto& [start, step] : kPasses) {
         const int rows = start < height ? (height - start + step - 1) / step : 0;
         if (decoded < rows) {
             return start + decoded * step;

@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
+#include <charconv>
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -81,6 +81,27 @@ std::optional<MountEntry> findMount(std::string_view mountinfo, const std::strin
     return best;
 }
 
+std::optional<std::pair<unsigned, unsigned>> parseDeviceNumbers(std::string_view device) {
+    const auto colon = device.find(':');
+    if (colon == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const auto number = [](std::string_view text) -> std::optional<unsigned> {
+        unsigned value = 0;
+        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+        if (text.empty() || error != std::errc() || end != text.data() + text.size()) {
+            return std::nullopt;
+        }
+        return value;
+    };
+    const auto major = number(device.substr(0, colon));
+    const auto minor = number(device.substr(colon + 1));
+    if (!major || !minor) {
+        return std::nullopt;
+    }
+    return std::pair{*major, *minor};
+}
+
 std::optional<DiskKind> kindOfFileSystem(std::string_view fileSystem) {
     static constexpr std::array<std::string_view, 12> kNetwork{"nfs",  "nfs4", "cifs", "smb3",      "smbfs",  "9p",
                                                                "afs",  "ceph", "glusterfs", "davfs", "fuse.sshfs", "sshfs"};
@@ -142,8 +163,8 @@ DiskInfo locate(const fs::path& folder) {
     struct stat source {};
     if (mount->source.starts_with("/dev/") && stat(mount->source.c_str(), &source) == 0 && S_ISBLK(source.st_mode)) {
         info.kind = kindOfBlockDevice(major(source.st_rdev), minor(source.st_rdev));
-    } else if (unsigned major = 0, minor = 0; std::sscanf(mount->device.c_str(), "%u:%u", &major, &minor) == 2 && major != 0) {
-        info.kind = kindOfBlockDevice(major, minor);
+    } else if (const auto numbers = detail::parseDeviceNumbers(mount->device); numbers && numbers->first != 0) {
+        info.kind = kindOfBlockDevice(numbers->first, numbers->second);
     }
     return info;
 }

@@ -425,7 +425,13 @@ private:
         }
     }
 
+    // Reads and writes outside the data give 0 and change nothing. The callers already keep
+    // within directories they checked; this keeps a later caller that forgets from overrunning.
+    bool fits(std::size_t at, std::size_t count) const { return at <= m_data.size() && m_data.size() - at >= count; }
     std::uint16_t read16(std::size_t at) const {
+        if (!fits(at, 2)) {
+            return 0;
+        }
         return m_little ? static_cast<std::uint16_t>(m_data[at] | m_data[at + 1] << 8)
                         : static_cast<std::uint16_t>(m_data[at] << 8 | m_data[at + 1]);
     }
@@ -435,6 +441,9 @@ private:
         return m_little ? (low << 16 | high) : (high << 16 | low);
     }
     void write16(std::size_t at, std::uint16_t value) {
+        if (!fits(at, 2)) {
+            return;
+        }
         m_data[at + (m_little ? 0 : 1)] = static_cast<std::uint8_t>(value);
         m_data[at + (m_little ? 1 : 0)] = static_cast<std::uint8_t>(value >> 8);
     }

@@ -124,8 +124,8 @@ public:
     // afterwards, and new files in it become the selection.
     Q_INVOKABLE void trash(const QStringList& paths);
     Q_INVOKABLE void deletePermanently(const QStringList& paths);  // the caller confirms first
-    Q_INVOKABLE void copyTo(const QStringList& paths, const QString& folder, Conflict conflict);
-    Q_INVOKABLE void moveTo(const QStringList& paths, const QString& folder, Conflict conflict);
+    Q_INVOKABLE void copyTo(const QStringList& paths, const QString& folder, BrowseContext::Conflict conflict);
+    Q_INVOKABLE void moveTo(const QStringList& paths, const QString& folder, BrowseContext::Conflict conflict);
     Q_INVOKABLE int conflictCount(const QStringList& paths, const QString& folder) const;
     // These return why the name cannot be used, or an empty string if the job has started.
     Q_INVOKABLE QString rename(const QString& path, const QString& newName);
@@ -136,7 +136,7 @@ public:
     // Whether every path names a JPEG file, judging by the extension. False for none.
     Q_INVOKABLE bool allJpeg(const QStringList& paths) const;
     // Changes the files in place; the caller confirms first.
-    Q_INVOKABLE void editJpegs(const QStringList& paths, JpegOperation operation, bool trimEdges);
+    Q_INVOKABLE void editJpegs(const QStringList& paths, BrowseContext::JpegOperation operation, bool trimEdges);
     Q_INVOKABLE void convertToJxl(const QStringList& paths, bool trashOriginals);
     // "jpeg", "png", "tiff", "webp", "avif" or "jxl" for a file name to save as, or empty if
     // its extension names nothing this build can write.

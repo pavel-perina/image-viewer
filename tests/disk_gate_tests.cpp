@@ -53,6 +53,17 @@ TEST(DiskGate, KnowsNetworkAndMemoryFileSystems) {
     EXPECT_EQ(detail::kindOfFileSystem("ext4"), std::nullopt);
 }
 
+// Why: on Linux the disk's kind comes from the device numbers in mountinfo, and a parser that
+// took "-1:2" as a huge number, or "8:1x" as 8:1, would name the wrong disk. Input: well-formed
+// and malformed device fields. The truth: the numbers for the first, nothing for the rest.
+TEST(DiskGate, ReadsDeviceNumbersStrictly) {
+    EXPECT_EQ(detail::parseDeviceNumbers("8:1"), (std::pair{8U, 1U}));
+    EXPECT_EQ(detail::parseDeviceNumbers("259:12"), (std::pair{259U, 12U}));
+    for (const char* bad : {"", "8", "8:", ":1", "-1:2", "8:-1", "8:1x", " 8:1", "a:b", "99999999999:1"}) {
+        EXPECT_EQ(detail::parseDeviceNumbers(bad), std::nullopt) << bad;
+    }
+}
+
 TEST(DiskGate, LetsOneReaderAtATimeOntoASeekingDisk) {
     DiskGate gate(fixed(DiskKind::Seeking));
     std::atomic<int> inside = 0;

@@ -55,9 +55,13 @@ struct JpegError {
 
 // What longjmp has to find intact lives on the heap, as a local variable changed after setjmp
 // has no defined value afterwards.
+// What libjpeg allocates for its output, freed once: not to be copied.
 struct JpegOutput {
     unsigned char* data = nullptr;
     unsigned long size = 0;
+    JpegOutput() = default;
+    JpegOutput(const JpegOutput&) = delete;
+    JpegOutput& operator=(const JpegOutput&) = delete;
     ~JpegOutput() { std::free(data); }
 };
 

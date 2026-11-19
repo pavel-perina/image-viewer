@@ -1656,7 +1656,7 @@ void ImageView::prepareStraighten() {
                     return;
                 }
             }
-            base = shown;
+            base = std::move(shown);
         } catch (const std::bad_alloc&) {
             return;
         }

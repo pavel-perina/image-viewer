@@ -171,7 +171,8 @@ void realQuarter(benchmark::State& state) {
             state.SkipWithError(source.error());
             return;
         }
-        const auto& levels = (*source)->subimages().front().levels;
+        const std::span<const SubimageInfo> subimages = (*source)->subimages();
+        const auto& levels = subimages.front().levels;
         if (levels.size() < 3) {
             state.SkipWithError("the image has no 1/4 level");
             return;

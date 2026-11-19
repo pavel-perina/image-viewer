@@ -873,7 +873,7 @@ Bytes encodeGif(const GifOptions& o) {
     // Rows in the order stored: interlaced in four passes.
     std::vector<int> order;
     if (o.interlaced) {
-        for (const auto [start, step] : {std::pair{0, 8}, std::pair{4, 8}, std::pair{2, 4}, std::pair{1, 2}}) {
+        for (const auto& [start, step] : {std::pair{0, 8}, std::pair{4, 8}, std::pair{2, 4}, std::pair{1, 2}}) {
             for (int y = start; y < kHeight; y += step) {
                 order.push_back(y);
             }
