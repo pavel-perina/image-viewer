@@ -61,6 +61,25 @@ Window {
         }
     }
 
+    // Qt counts the window it belongs to as active while this one has the keys, so that window's
+    // shortcuts and menu keys would act from here too: Escape would leave the image under the
+    // save dialog. A modal popup over it, invisible, blocks them as long as this is shown.
+    Popup {
+        objectName: "keyBlocker"
+        // Never over this window itself, which a popup declared here falls back to.
+        readonly property Item owner: dialog.transientParent ? dialog.transientParent.contentItem : null
+        parent: owner
+        visible: dialog.visible && owner !== null && parent === owner
+        modal: true
+        dim: false
+        focus: false
+        closePolicy: Popup.NoAutoClose
+        width: 0
+        height: 0
+        padding: 0
+        background: null
+    }
+
     FocusScope {
         id: body
         anchors.fill: parent

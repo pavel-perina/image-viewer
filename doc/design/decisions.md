@@ -1430,6 +1430,14 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   editing of the path, as in the browser.
 * Its title bar is the system's. On Windows a dialog has no icon there and no taskbar button; on
   Linux the window decoration decides, and some show the program's icon on dialogs too.
+* Keys pressed in it never reach the window it belongs to. Being modal is not enough: Qt
+  matches a window's shortcuts before it delivers keys, and counts a window as active while a
+  dialog of its own has the keys, so Escape or Enter in the save dialog left the image below
+  and asked about unsaved changes there, and menu keys acted too. While it is shown, an
+  invisible modal popup lies over the window it belongs to, which Qt Quick Controls treats as
+  blocking that window's shortcuts and menu keys. It uses public behaviour only; overriding
+  Qt's shortcut matching would need private API, and gating every shortcut by hand would be
+  forgotten in the next one.
 
 ## Icons take the theme's colours
 

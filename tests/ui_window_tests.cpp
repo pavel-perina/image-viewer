@@ -1549,3 +1549,37 @@ TEST(Main, DithersByOneStepOfTheOutputUnlessTurnedOff) {
     check(0, QStringLiteral("8 bits per channel, not dithered"));
     qunsetenv("IV_NO_DITHER");
 }
+
+// Why: a dialog in a window of its own is a transient child of the main window, and Qt counts
+// the main window as active while it has the keys, so the main window's shortcuts used to fire
+// too: Escape in the save dialog left the image and asked about unsaved changes, below it.
+// Input: the large view showing an image, the save dialog open over it. The truth: Escape, Enter
+// and a menu key (F11) in the dialog reach the dialog only, the main window still shows the
+// image, and once the dialog is closed Escape works in the main window again.
+TEST(Keys, ADialogWindowKeepsItsKeysFromTheMainWindow) {
+    MainFixture f;
+    ASSERT_NE(f.window, nullptr);
+    f.context->setCurrentIndex(1);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_TRUE(f.window->property("viewing").toBool());
+    auto* dialog = qobject_cast<QQuickWindow*>(f.find(QStringLiteral("saveDialog")));
+    ASSERT_NE(dialog, nullptr);
+    QMetaObject::invokeMethod(dialog, "open");
+    ASSERT_TRUE(QTest::qWaitForWindowActive(dialog));
+    QTest::keyClick(dialog, Qt::Key_Return);
+    EXPECT_TRUE(f.window->property("viewing").toBool()) << "Enter in the dialog left the image";
+    QTest::keyClick(dialog, Qt::Key_F11);
+    EXPECT_FALSE(f.window->windowStates() & Qt::WindowFullScreen) << "a menu key in the dialog acted on the main window";
+    QTest::keyClick(dialog, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return !dialog->isVisible(); })) << "Escape closes the dialog";
+    EXPECT_TRUE(f.window->property("viewing").toBool()) << "Escape in the dialog left the image";
+    // The system gives the keys back to the main window; the offscreen platform does not.
+    auto* blocker = dialog->findChild<QObject*>(QStringLiteral("keyBlocker"));
+    ASSERT_NE(blocker, nullptr);
+    EXPECT_FALSE(blocker->property("visible").toBool()) << "the blocker goes with the dialog";
+    f.window->requestActivate();
+    ASSERT_TRUE(QTest::qWaitForWindowActive(f.window));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return !f.window->property("viewing").toBool(); }))
+        << "once the dialog is closed, the main window has its keys back";
+}
