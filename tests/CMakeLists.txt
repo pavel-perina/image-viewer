@@ -14,7 +14,9 @@ add_executable(iv_core_tests
     gray_tests.cpp
     color_edit_tests.cpp
     core_tests.cpp
+    decompress_tests.cpp
     format_tests.cpp
+    legacy_format_tests.cpp
     info_tests.cpp
     jpeg_transform_tests.cpp
     writer_tests.cpp

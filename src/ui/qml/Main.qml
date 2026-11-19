@@ -729,7 +729,7 @@ ApplicationWindow {
         id: openDialog
         objectName: "openDialog"
         title: "Open Image"
-        types: [{ label: "Images", extensions: ["jpg", "jpeg", "jpe", "jfif", "tif", "tiff", "png", "webp", "avif", "jxl"] },
+        types: [{ label: "Images", extensions: context.imageExtensions },
                 { label: "All files", extensions: [] }]
         onChosen: (path) => window.leaveImage(() => context.openPath(path))
     }

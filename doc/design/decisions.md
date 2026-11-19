@@ -100,6 +100,31 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * AV1 and JPEG XL have no flag for lossless. AVIF storing RGB directly is treated as lossless.
   JPEG XL keeping the original colour space is called "likely lossless".
 
+### Older formats, read only (2026-11-19)
+* BMP, GIF, TGA and Netpbm (PBM, PGM, PPM, PAM, PFM) are read, not written: they are met in old
+  folders and from tools, but nothing is gained by making more of them. An edit of one goes to
+  Save As, suggesting PNG, as for any format without a writer.
+* Their readers are our own, from the published specifications, with no library: the formats are
+  small and settled, and one reader each costs less than a dependency on every platform. Each
+  reads the whole file and shares the whole-picture source with PNG and the rest.
+* Their decompression is apart from the readers, in `core/decompress`: GIF's LZW, BMP's RLE4 and
+  RLE8, and the run-length packets of TGA, for other old formats (PCX, ICO) to share. A
+  bounds-checked `ByteReader` reads the headers, since hand-written parsers of old formats are
+  where damaged files crash viewers.
+* What a file says it holds is checked against what it does: alpha declared in a BMP or TGA but
+  0 throughout is taken as no alpha, as most such files mean; a palette of grays only gives a
+  gray picture. A BMP palette ends where the pixels begin, and one left out means a ramp of
+  grays, as the writers of such files intend.
+* TGA has no magic number, so it is tried only for files named `.tga` that no other format
+  claims, and only when its 18-byte header is one a TGA can have. Detection reads 18 bytes for
+  it.
+* GIF shows its first frame on the file's logical screen, transparent where the frame does not
+  reach, as browsers do rather than in the background colour the specification names. An
+  animation is marked as such, like WebP's, until animation is played.
+* PFM is taken as linear light in sRGB primaries, which is how renderers write it; the format
+  says nothing of colour. Netpbm above 8 bits gives 16-bit pictures.
+* The open dialog's types come from core's list of extensions, not a list in QML.
+
 ## Overviews
 * A flat image larger than 2048 pixels gets generated levels, down to 2048 on the long
   edge, because fit-to-window would otherwise need every tile. They are built once, by
@@ -321,7 +346,7 @@ change nothing useful. The first press of a double click does this too, for that
 * Appearance in its final form: a dark and a less dark look, an accent colour or following the
   system, with other colours derived from these, such as a darker accent or a mix. `AppScrollBar`
   and `PathBar` draw flat controls from the palette in the meantime.
-* Formats: PCX, BMP, TGA, GIF. Animation in GIF, WebP, AVIF and JPEG XL.
+* Formats: PCX. Animation in GIF, WebP, AVIF and JPEG XL.
 * Camera RAW files, first only their embedded preview and EXIF, without developing the sensor
   data. Most (DNG, CR2, NEF, ARW, ORF, PEF, SRW, RW2) are TIFF structures holding a large JPEG
   preview, which the TIFF and EXIF readers here can mostly reach, though some keep it in a

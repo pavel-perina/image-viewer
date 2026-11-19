@@ -853,6 +853,54 @@ TEST(Editing, LosslessJpegToolsWaitUntilTheEditsAreGone) {
     EXPECT_TRUE(rotate->property("enabled").toBool());
 }
 
+// Why: BMP, GIF, TGA and Netpbm are read but not written, so Save cannot put an edit back over
+// such a file; it must go to Save As, with a name in a format that can be written, rather than
+// warn of replacing a file it would then fail to write. Input: a BMP, cropped, then Save. The
+// truth: no warning of replacing it, and the chooser open with the name ending in .png.
+TEST(Editing, SavingAnEditedFileOfAReadOnlyFormatGoesToSaveAs) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("old.bmp"));
+    QImage picture(64, 48, QImage::Format_RGB32);
+    picture.fill(QColor(200, 40, 20));
+    ASSERT_TRUE(picture.save(path, "BMP"));
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        import ImageViewer
+        ApplicationWindow {
+            width: 600; height: 500; visible: true
+            property alias context: context
+            property alias actions: actions
+            property alias view: image
+            BrowseContext { id: context }
+            ImageView { id: image; anchors.fill: parent; source: context.currentPath }
+            FileActions { id: actions; context: context; viewing: true; editView: image }
+        }
+    )", QUrl());
+    ASSERT_TRUE(component.isReady()) << component.errorString().toStdString();
+    std::unique_ptr<QObject> root(component.create());
+    auto* context = root->property("context").value<BrowseContext*>();
+    auto* actions = root->property("actions").value<QObject*>();
+    auto* image = root->property("view").value<ImageView*>();
+    context->openPath(path);
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageHeight() == 48; }));
+    image->crop(QRect(0, 0, 16, 24));
+    ASSERT_TRUE(settled(image));
+    auto* save = actions->property("saveAction").value<QObject*>();
+    ASSERT_TRUE(save->property("enabled").toBool());
+    auto* overwrite = actions->findChild<QObject*>(QStringLiteral("overwriteDialog"));
+    auto* chooser = actions->findChild<QObject*>(QStringLiteral("saveDialog"));
+    ASSERT_NE(overwrite, nullptr);
+    ASSERT_NE(chooser, nullptr);
+    QMetaObject::invokeMethod(save, "trigger");
+    ASSERT_TRUE(waitUntil([&] { return chooser->property("visible").toBool(); }));
+    EXPECT_FALSE(overwrite->property("opened").toBool());
+    EXPECT_EQ(chooser->property("lastFileName").toString(), QStringLiteral("old.png"));
+    QMetaObject::invokeMethod(chooser, "close");
+}
+
 TEST(Editing, SaveOverwritesTheFileAfterAWarning) {
     QTemporaryDir dir;
     const QString path = writeTurnedJpeg(dir);

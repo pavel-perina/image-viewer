@@ -44,6 +44,8 @@ class BrowseContext : public QObject {
     // "13 directories | 311 files (500 MB) | 1 selected (780 kB)"
     Q_PROPERTY(QString summary READ summary NOTIFY summaryChanged)
     Q_PROPERTY(bool canConvertToJxl READ canConvertToJxl CONSTANT)
+    // The extensions of every format this build reads, without dots, for choosers of files.
+    Q_PROPERTY(QStringList imageExtensions READ imageExtensions CONSTANT)
 
 public:
     enum SortKey { SortByName, SortByDate, SortBySize, SortByType };
@@ -148,6 +150,7 @@ public:
     Q_INVOKABLE void saveAs(const QString& source, int page, const QString& target, const QVariantMap& options,
                             const QVariant& edited = {});
     bool canConvertToJxl() const;
+    static QStringList imageExtensions();
     Q_INVOKABLE void cancelJob();  // stops before the next file
 
     Q_INVOKABLE bool isFolder(const QString& path) const;

@@ -30,8 +30,8 @@ constexpr int kRefreshDelayMs = 200;  // copying many files changes the director
 
 QStringList imageNameFilters() {
     QStringList filters;
-    for (const std::string_view extension : supportedExtensions()) {
-        filters << QStringLiteral("*.") + QString::fromLatin1(extension);
+    for (const QString& extension : BrowseContext::imageExtensions()) {
+        filters << QStringLiteral("*.") + extension;
     }
     return filters;
 }

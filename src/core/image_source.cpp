@@ -1,15 +1,22 @@
 #include "core/image_source.h"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstring>
 #include <fstream>
 #include <new>
+#include <string>
+#include <string_view>
 
 #ifdef IV_HAVE_AVIF
 #include "core/avif_source.h"
 #endif
+#include "core/bmp_source.h"
 #include "core/file_io.h"
+#include "core/gif_source.h"
 #include "core/jpeg_source.h"
+#include "core/netpbm_source.h"
 #ifdef IV_HAVE_JXL
 #include "core/jxl_source.h"
 #endif
@@ -17,6 +24,7 @@
 #ifdef IV_HAVE_PNG
 #include "core/png_source.h"
 #endif
+#include "core/tga_source.h"
 #include "core/tiff_source.h"
 #ifdef IV_HAVE_WEBP
 #include "core/webp_source.h"
@@ -24,10 +32,20 @@
 
 namespace iv {
 
+namespace {
+
+bool hasExtension(const std::filesystem::path& path, std::string_view wanted) {
+    std::string extension = path.extension().string();
+    std::ranges::transform(extension, extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return extension.size() == wanted.size() + 1 && std::string_view(extension).substr(1) == wanted;
+}
+
+}  // namespace
+
 Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path& path, ReadPriority priority,
                                                      std::stop_token stop) {
-    // Only the header: a TIFF can be far larger than memory.
-    std::array<std::uint8_t, 16> header{};
+    // Only the header: a TIFF can be far larger than memory. 18 bytes is TGA's, the longest.
+    std::array<std::uint8_t, 18> header{};
     {
         std::ifstream file(path, std::ios::binary);
         if (!file) {
@@ -45,6 +63,15 @@ Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path
         Opener opener = nullptr;
         if (isJpeg(header)) {
             opener = openJpegSource;
+        }
+        if (isBmp(header)) {
+            opener = openBmpSource;
+        }
+        if (isNetpbm(header)) {
+            opener = openNetpbmSource;
+        }
+        if (isGif(header)) {
+            opener = openGifSource;
         }
 #ifdef IV_HAVE_PNG
         if (isPng(header)) {
@@ -66,6 +93,10 @@ Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path
             opener = openJxlSource;
         }
 #endif
+        // TGA has no magic number: only a file named so that no other format claims.
+        if (!opener && isTga(header) && hasExtension(path, "tga")) {
+            opener = openTgaSource;
+        }
         if (opener) {
             auto pass = DiskGate::global().enter(path, priority, stop);
             if (!pass) {
@@ -87,7 +118,8 @@ Result<std::shared_ptr<ImageSource>> openImageSource(const std::filesystem::path
 
 std::span<const std::string_view> supportedExtensions() {
     static const std::vector<std::string_view> kExtensions{
-        "jpg", "jpeg", "jpe", "jfif", "tif", "tiff",
+        "jpg", "jpeg", "jpe", "jfif", "tif", "tiff", "bmp", "dib",
+        "pbm", "pgm", "ppm", "pnm", "pam", "pfm", "tga", "gif",
 #ifdef IV_HAVE_PNG
         "png",
 #endif
