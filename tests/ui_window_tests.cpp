@@ -1583,3 +1583,27 @@ TEST(Keys, ADialogWindowKeepsItsKeysFromTheMainWindow) {
     EXPECT_TRUE(waitUntil([&] { return !f.window->property("viewing").toBool(); }))
         << "once the dialog is closed, the main window has its keys back";
 }
+
+// Why: while adjusting, "before" is the picture as it was before the colour preview, and a
+// second view holds it. Apply closed the panel but left the split and that picture, which was
+// then neither the original nor the result; Cancel already ended it.
+// Input: a picture in Adjust, with a change and before and after shown, then Apply. The truth:
+// the comparison ends, the second view lets go of its picture, and the change is applied.
+TEST(Compare, ApplyingAnAdjustmentEndsBeforeAndAfter) {
+    QTemporaryDir dir;
+    const QString a = writeGradient(dir, QStringLiteral("a.jpg"), 400, 300, false);
+    ComparePage f(a);
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    ASSERT_EQ(f.page->property("tool").toString(), QStringLiteral("adjust"));
+    f.page->findChild<QObject*>(QStringLiteral("adjustPanel"))->setProperty("midtones", 1.5);
+    QMetaObject::invokeMethod(f.page, "toggleBeforeAfter");
+    ASSERT_EQ(f.comparing(), QStringLiteral("edit"));
+    ASSERT_TRUE(waitUntil([&] { return f.active(); }));
+
+    QMetaObject::invokeMethod(f.page, "applyTool");
+    EXPECT_EQ(f.page->property("tool").toString(), QString());
+    EXPECT_EQ(f.comparing(), QString()) << "the split went with the panel";
+    EXPECT_EQ(f.other->status(), iv::ImageView::Status::Null) << "and the picture it held";
+    EXPECT_TRUE(waitUntil([&] { return f.image->modified(); })) << "the change is applied";
+}

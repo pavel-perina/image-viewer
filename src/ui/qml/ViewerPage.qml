@@ -131,6 +131,10 @@ Rectangle {
     }
 
     function applyAdjust() {
+        // Before was the picture before the preview, which applying makes neither the original
+        // nor the result; the second view lets go of it, as on Cancel.
+        if (comparing === "edit")
+            stopCompare()
         drop("adjust")
         if (adjustPanel.changes)
             adjustPanel.apply()

@@ -606,7 +606,9 @@ change nothing useful. The first press of a double click does this too, for that
 * Before is the file's page without edits, read from the same decoded source as the view
   (`ImageView.showPictureOf`), so nothing is read again. While adjusting colours it is the
   picture without the preview instead, which is always the same size and is what the sliders
-  change; after applying, the comparison goes on against the result. Cancelling ends it.
+  change. Applying ends it, as cancelling does: it went on against the result before, with a
+  before that was then neither the original nor the result, held in memory by the second view,
+  and the split staying once the panel had closed looked like a leftover.
 * Pictures of different sizes are refused with a message, as cropping, resizing or
   straightening make them, and so are two files of different sizes. Comparing ends on another
   image, and when Crop or Straighten starts. It is not a tool, so it works with Adjust Colours.
