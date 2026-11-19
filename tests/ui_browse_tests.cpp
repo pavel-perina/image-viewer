@@ -204,6 +204,32 @@ TEST(ThumbnailProvider, MakesTheRequestedSize) {
     EXPECT_EQ(factory->textureSize(), QSize(164, 82));
 }
 
+// Rectangular presets must bound portrait pictures by height and landscape pictures by
+// width. Requests with a shared longest edge may reuse the cached source independently.
+TEST(ThumbnailProvider, RectangularBoundsFitPortraitAndLandscapePicturesWithoutUpscaling) {
+    QTemporaryDir dir;
+    iv::ThumbnailProvider provider;
+    const auto request = [&](const QString& path, QSize bounds) {
+        std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(path), bounds));
+        QSignalSpy finished(response.get(), &QQuickImageResponse::finished);
+        EXPECT_TRUE(waitUntil([&] { return !finished.isEmpty() || !response->errorString().isEmpty(); }));
+        EXPECT_TRUE(response->errorString().isEmpty());
+        std::unique_ptr<QQuickTextureFactory> factory(response->textureFactory());
+        return factory ? factory->textureSize() : QSize();
+    };
+    const QString portrait = dir.filePath("portrait.jpg");
+    const QString landscape = dir.filePath("landscape.jpg");
+    const QString small = dir.filePath("small.jpg");
+    writeJpeg(portrait, {.width = 500, .height = 1000});
+    writeJpeg(landscape, {.width = 1000, .height = 500});
+    writeJpeg(small, {.width = 32, .height = 16});
+    EXPECT_EQ(request(portrait, QSize(320, 240)), QSize(120, 240));
+    EXPECT_EQ(request(portrait, QSize(320, 320)), QSize(160, 320));
+    EXPECT_EQ(request(landscape, QSize(320, 240)), QSize(320, 160));
+    EXPECT_EQ(request(landscape, QSize(240, 320)), QSize(240, 120));
+    EXPECT_EQ(request(small, QSize(320, 240)), QSize(32, 16));
+}
+
 TEST(ThumbnailProvider, ReportsUnreadableFiles) {
     iv::ThumbnailProvider provider;
     std::unique_ptr<QQuickImageResponse> response(provider.requestImageResponse(thumbnailId(QStringLiteral("/does/not/exist.jpg")), {}));
@@ -722,6 +748,32 @@ TEST(ThumbnailStore, MeasuresAndClearsTheThumbnailsOnDisk) {
     ASSERT_TRUE(waitUntil([&] { return !cleared.isEmpty(); }));
     EXPECT_TRUE(cleared.takeFirst().at(0).toBool());
     EXPECT_EQ(measure().value(1).toDouble(), 0);
+}
+
+// Ordinary usage reads must never request confirmation. Only explicitly tagged owners
+// receive a clear request; deleting an owner while a read is pending cancels that prompt.
+TEST(ThumbnailStore, UsageMeasurementAndClearRequestsHaveSeparateOwners) {
+    iv::ThumbnailStore store;
+    QSignalSpy measured(&store, &iv::ThumbnailStore::measured);
+    QSignalSpy requests(&store, &iv::ThumbnailStore::clearRequested);
+    store.measure();
+    ASSERT_TRUE(waitUntil([&] { return !store.busy(); }));
+    EXPECT_FALSE(measured.isEmpty());
+    EXPECT_TRUE(store.measuredOnce());
+    EXPECT_TRUE(requests.isEmpty());
+    QObject first, second;
+    store.requestClear(&first);
+    store.requestClear(&second);
+    ASSERT_TRUE(waitUntil([&] { return requests.size() == 2; }));
+    EXPECT_EQ(requests[0][0].value<QObject*>(), &first);
+    EXPECT_EQ(requests[1][0].value<QObject*>(), &second);
+    requests.clear();
+    {
+        QObject temporary;
+        store.requestClear(&temporary);
+    }
+    ASSERT_TRUE(waitUntil([&] { return !store.busy(); }));
+    EXPECT_TRUE(requests.isEmpty());
 }
 
 TEST(FolderListing, ListsFoldersFirstNaturallyAndFiltersAndSorts) {

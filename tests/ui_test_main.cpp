@@ -3,6 +3,7 @@
 #include <QQuickStyle>
 
 #include "ui/program_font.h"
+#include "ui/preferences.h"
 
 Q_IMPORT_QML_PLUGIN(ImageViewerPlugin)
 Q_IMPORT_QML_PLUGIN(ImageViewerStylePlugin)
@@ -36,6 +37,7 @@ int main(int argc, char** argv) {
     const QString organization = QStringLiteral("ImageViewerTests");
 #endif
     QCoreApplication::setOrganizationName(organization);
+    iv::Preferences::instance();  // GUI-thread initialization before thumbnail workers start
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

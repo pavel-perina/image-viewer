@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Rys Lynx — icon study 01</title>
+  <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e" />
+  <path d="M28 59L24 26l23 12q17-7 34 0l23-12-4 33q5 26-18 40l-18 10-18-10Q23 85 28 59z" fill="#f5bd66" />
+  <path d="M26 28l-2-13m78 13 2-13" stroke="#f5bd66" stroke-width="7" stroke-linecap="round" />
+  <path d="M32 37l12 6-10 7zm64 0-12 6 10 7z" fill="#27343e" />
+  <path d="M35 61q12-9 23 2-11 13-23-2zm58 0q-12-9-23 2 11 13 23-2z" fill="#27343e" />
+  <circle cx="48" cy="62" r="3" fill="#f3f3ec" />
+  <circle cx="80" cy="62" r="3" fill="#f3f3ec" />
+  <path d="M47 80q17-16 34 0l-7 11-10 5-10-5z" fill="#f3f3ec" />
+  <path d="M57 77h14l-7 8zm7 7v7" fill="#27343e" stroke="#27343e" stroke-width="3" stroke-linejoin="round" />
+</svg>

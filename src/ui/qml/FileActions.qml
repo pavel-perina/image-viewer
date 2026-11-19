@@ -149,8 +149,8 @@ Item {
 
     function editJpegsNow(action, operation) {
         const paths = targetPaths
-        if (!settings.askBeforeEditing) {
-            context.editJpegs(paths, operation, settings.trimEdges)
+        if (!Preferences.askBeforeEditing) {
+            context.editJpegs(paths, operation, Preferences.trimEdges)
             return
         }
         editDialog.paths = paths
@@ -252,9 +252,6 @@ Item {
         id: settings
         category: "FileOperations"
         property var recentFolders: []
-        property bool askBeforeEditing: true
-        property bool trimEdges: false
-        property bool trashAfterJxl: false
     }
 
     Action {
@@ -394,15 +391,15 @@ Item {
         id: trimEdgesAction
         text: "&Trim Edges When Needed"
         checkable: true
-        checked: settings.trimEdges
-        onToggled: settings.trimEdges = checked
+        checked: Preferences.trimEdges
+        onToggled: Preferences.trimEdges = checked
     }
     Action {
         id: askBeforeEditingAction
         text: "&Ask Before Changing Files"
         checkable: true
-        checked: settings.askBeforeEditing
-        onToggled: settings.askBeforeEditing = checked
+        checked: Preferences.askBeforeEditing
+        onToggled: Preferences.askBeforeEditing = checked
     }
     Action {
         id: convertToJxlAction
@@ -739,8 +736,8 @@ Item {
             CheckBox {
                 objectName: "trimEdgesCheck"
                 text: "Trim edges that cannot be turned, up to 15 pixels"
-                checked: settings.trimEdges
-                onToggled: settings.trimEdges = checked
+                checked: Preferences.trimEdges
+                onToggled: Preferences.trimEdges = checked
             },
             CheckBox {
                 id: dontAskCheck
@@ -751,8 +748,8 @@ Item {
         onOpened: dontAskCheck.checked = false
         onAccepted: {
             if (dontAskCheck.checked)
-                settings.askBeforeEditing = false
-            root.context.editJpegs(paths, operation, settings.trimEdges)
+                Preferences.askBeforeEditing = false
+            root.context.editJpegs(paths, operation, Preferences.trimEdges)
         }
     }
 
@@ -760,25 +757,25 @@ Item {
         id: jxlDialog
         objectName: "jxlDialog"
         property var paths: []
-        kind: settings.trashAfterJxl ? "warning" : "question"
+        kind: Preferences.trashAfterJxl ? "warning" : "question"
         title: "Convert to JPEG XL"
         readonly property bool one: paths.length === 1
         text: "Convert " + root.fileCountText(paths, "JPEG files") + " to JPEG XL? "
               + (one ? "The picture is repacked without loss, and the new file is checked to give back the original exactly."
                      : "The pictures are repacked without loss, and each new file is checked to give back its original exactly.")
               + "\n\n"
-              + (settings.trashAfterJxl ? (one ? "The original then goes to the trash." : "Each original then goes to the trash.")
+              + (Preferences.trashAfterJxl ? (one ? "The original then goes to the trash." : "Each original then goes to the trash.")
                                         : (one ? "The original is kept." : "The originals are kept."))
         standardButtons: Dialog.Ok | Dialog.Cancel
         extras: [
             CheckBox {
                 objectName: "trashOriginalsCheck"
                 text: "Move the originals to the trash"
-                checked: settings.trashAfterJxl
-                onToggled: settings.trashAfterJxl = checked
+                checked: Preferences.trashAfterJxl
+                onToggled: Preferences.trashAfterJxl = checked
             }
         ]
-        onAccepted: root.context.convertToJxl(paths, settings.trashAfterJxl)
+        onAccepted: root.context.convertToJxl(paths, Preferences.trashAfterJxl)
     }
 
     MessageBox {

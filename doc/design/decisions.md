@@ -2,6 +2,58 @@
 
 Choices made while implementing `architecture.md` and `main-window.md`.
 
+## Settings: Appearance first (2026-11-17)
+
+* Keep the application's menus text-only. Use icons inside Settings: the requested
+  Tabler brush for Appearance, image for Viewing and grid for Thumbnails. Keep their
+  SVGs under the existing Tabler MIT licence and tint them through the shared controls.
+* Build Settings page by page, beginning with the existing three palette inputs. Keep
+  layout in QML and editing/persistence rules in C++. A temporary palette previews
+  colours throughout the application; Apply saves a checkpoint, OK saves and closes,
+  and Cancel, Escape or closing the window restores the saved palette. Reset appearance
+  changes only this section's draft, making experimentation reversible.
+* Share the runtime palette across windows and QML engines. A second Settings request
+  activates the current editor, avoiding competing previews. External saved changes
+  merge into untouched fields and survive cancellation.
+* Omit Info panel settings: its existing window/fullscreen and preview/view behaviour
+  is intentional; histogram controls stay beside the histogram. Sharp resampling and
+  final-pass dithering stay enabled without preferences for their debugging switches.
+* Future thumbnail dimensions can coexist in the existing cache, whose key includes
+  requested edge size. Changing size therefore needs no global invalidation.
+
+## Settings: Thumbnails and Viewing (2026-11-17)
+
+* Keep sorting and hidden-folder controls directly in the browsing interface. Do not
+  add a Browser Settings page: these controls should remain easy to reach while browsing.
+* Continue the accepted Appearance layout with separate Thumbnails and Viewing pages.
+  One C++ Settings draft owns their Apply/OK/Cancel checkpoint; switching pages keeps
+  edits, and Reset touches only its section. Appearance alone previews before Apply.
+  Settings and tool panels share AppScrollArea, a Flickable with explicit content extent,
+  a fixed right-hand gutter and keyboard-focus scrolling. Settings keeps its vertical
+  scrollbar visible while content overflows and hides it when content fits; tool panels
+  retain hover fading. Validate the actual thumb's geometry and viewport/content ratio, not just its
+  containing item's bounds, to prevent a misplaced dot masquerading as a scrollbar.
+* Keep the current 164 × 164 image box (180 × 200 browser cell) as the default. Offer
+  160 × 120, 200 × 150, 240 × 160, 320 × 240 and 400 × 300, preserving image aspect
+  ratio. The browser adds padding/caption space and preserves selection, current image
+  and pane focus when its grid reflows. The strip builder keeps its own compact layout.
+* Keep disk thumbnails keyed by longest edge; fit returned images into both requested
+  bounds on the worker, without upscaling. Rectangles with the same longest edge can
+  share cached source pixels; neither a size change nor a theme change clears the cache.
+* Show cache usage and limit in binary units, with asynchronous measurement and clearing.
+  A clear request is tagged with its requesting window, so ordinary measurement never
+  opens a confirmation, and only the requesting window asks. Clearing is a confirmed
+  immediate action; Settings cancellation cannot restore those entries.
+* Viewing exposes transparency, CMS, sRGB/custom ICC display profile, and requested
+  8/10-bit output. Output changes require restart; show negotiated depth separately,
+  including an explicit environment override when present. Do not claim automatic
+  system-profile discovery. Other image/histogram/debug controls stay where agreed.
+  Remove the duplicate transparency, CMS/profile and clear-thumbnail-cache menu entries
+  and their obsolete main-window actions/dialogs; these choices now live in Settings.
+* Validate selected profiles on a worker, revalidate before Apply, then install prepared
+  bytes without GUI-thread disk work. Invalid/deleted profiles keep the previous choice
+  and prevent partial saves across sections. Cancelling invalidates pending callbacks.
+
 ## Structure
 * `src/core`: pure C++23 without Qt. Decoders, tile model, viewport maths, work queue.
   `iv_core_tests` links no Qt, so a Qt dependency entering core breaks the build.
@@ -1226,6 +1278,38 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
 * Without git, as in an unpacked archive, it says "unknown".
 * The project version stays in `CMakeLists.txt` for the installer's file name.
 
+## Preferences have one owner; remembered state stays local
+
+* `Preferences` in UI C++ owns typed application preferences and their `QSettings` keys.
+  QML engines share one process-wide instance. Tests may construct an isolated INI-backed
+  instance. Setters reject out-of-range values and notify only real changes; reading an
+  invalid stored value uses the default without rewriting the file.
+* Existing keys and defaults are retained: `View/{keepAutoContrast,showHiddenFolders,
+  transparency}`, `Color/{enabled,displayProfile}`, `Browser/{sortKey,sortDescending}`,
+  `FileOperations/{askBeforeEditing,trimEdges,trashAfterJxl}`, and
+  `InfoPanel/{panelPinned,panelAnimated,logScale,fitRange}`. These are preferences, not
+  a second copy of the state of the current folder, zoom or edit document.
+* Theme choices were not persisted before: new `Appearance/{hue,accentChroma,surfaceChroma}`
+  keys default to 150 degrees, 0.075 and 0. `ThemePalette` derives colours from this owner;
+  its existing setters forward there. `ColorSettings` retains profile validation and the
+  thread-safe rendering target, but no longer writes settings independently.
+* `Thumbnails/cacheMiB` is new, defaulting to the existing 512 MiB budget. Workers use an
+  atomic snapshot and adjust the existing cache's budget on their next cache operation,
+  including measurement, rather than replacing a cache pointer or doing disk work on
+  the GUI thread. Cache size is limited to 1–65536 MiB.
+* `View/outputBits` is new, default 8. It is a startup request, with `IV_OUTPUT_BITS`
+  retaining precedence (including its existing invalid-value fallback to 8). Actual
+  negotiated depth remains a separate `DisplayOutput` value; changing the preference
+  does not claim that a live window changed its pixel format.
+* A preferred browser sort initializes a new main-window context. Menu sorting updates
+  that context and the saved default, without changing another existing context.
+  Info-panel and animation properties bind to preferences by default; an embedded view
+  may override them locally without saving a second copy.
+* Crop/Resize/Frame choices, dialog geometry, chooser state, favorites and recent-folder
+  history remain with their existing owners. `ViewSettings` now contains only derived
+  backdrop/output values. The Settings dialog and its draft/live-preview rollback are
+  a later step; the persistent owner is not the dialog's draft.
+
 ## The palette is worked out from a hue
 
 * Update, 17 November 2026: surfaces and ordinary text default to neutral gray
@@ -1233,11 +1317,15 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   ThinkPad T480s but clearly green on a Dell U3818DW; zero chroma avoids depending on
   the display making that tint subtle. Surface tint remains available through the
   palette choices. Tool panels retain their flat treatment.
-* Thumbnail selection uses a faint accent fill and a thin accent edge instead of a
+* Thumbnail selection uses a translucent accent fill and a thin accent edge instead of a
   solid green cell, so the picture dominates. A separate neutral frame marks the current
   image, inset when selected so both states remain visible. Losing grid focus softens
   selection but keeps that current-image frame. Colours live in `Theme` and the shared
   `ThumbnailCell` applies the same treatment in every thumbnail list.
+  After trying configurable hues, strengthen focused and inactive selection fills and
+  edges: the earlier faint treatment was too easy to miss, especially on thumbnails.
+  Shared file/navigation rows follow the same stronger treatment. Pane-focus frames
+  retain their existing brightness; this change makes selected items easier to find.
 
 * `Theme`'s colours, but for those that must stay fixed, come from three choices: a hue, how
   colourful accents are, and how much the hue tints surfaces and text (`core/palette`, through

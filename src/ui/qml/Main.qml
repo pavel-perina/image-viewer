@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 
-import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -98,7 +97,7 @@ ApplicationWindow {
     // Created here rather than in C++, so a tab can later own one context and its pages.
     BrowseContext {
         id: context
-        showHiddenFolders: ViewSettings.showHiddenFolders
+        showHiddenFolders: Preferences.showHiddenFolders
         onEmptied: window.viewing = false
     }
 
@@ -132,6 +131,8 @@ ApplicationWindow {
         view: viewerPage.view
     }
 
+    SettingsDialog { id: settingsDialog }
+
     FrameDialog {
         id: frameDialog
         view: viewerPage.view
@@ -156,21 +157,13 @@ ApplicationWindow {
         onRejected: window.pendingLeave = null
     }
 
-    Settings {
-        id: browserSettings
-        category: "Browser"
-        property int sortKey: BrowseContext.SortByName
-        property bool sortDescending: false
-    }
-
     ActionGroup { id: sortGroup }
-    ActionGroup { id: transparencyGroup }
 
     // Opening a file goes straight to the large view; opening a directory shows the browser.
     Component.onCompleted: {
         DisplayOutput.watch(window)  // what the window shows, for the dither and About
-        context.sortKey = browserSettings.sortKey
-        context.sortDescending = browserSettings.sortDescending
+        context.sortKey = Preferences.sortKey
+        context.sortDescending = Preferences.sortDescending
         context.openPath(initialPath)
         window.viewing = context.currentPath !== ""
         Qt.callLater(window.focusPage)
@@ -192,7 +185,7 @@ ApplicationWindow {
     }
 
     function sortBy(key) {
-        browserSettings.sortKey = key
+        Preferences.sortKey = key
         context.sortKey = key
     }
 
@@ -353,7 +346,7 @@ ApplicationWindow {
         // For this image and the next ones, until turned off: kept between sessions.
         onTriggered: {
             window.activeView.autoContrast = checked
-            ViewSettings.keepAutoContrast = checked
+            Preferences.keepAutoContrast = checked
         }
     }
     Action {
@@ -361,16 +354,8 @@ ApplicationWindow {
         text: "Show &Hidden Folders"
         shortcut: "Ctrl+H"
         checkable: true
-        checked: ViewSettings.showHiddenFolders
-        onTriggered: ViewSettings.showHiddenFolders = checked
-    }
-    Action {
-        id: colorManagedAction
-        text: "&Colour Management"
-        shortcut: "C"
-        checkable: true
-        checked: ColorSettings.enabled
-        onTriggered: ColorSettings.enabled = checked
+        checked: Preferences.showHiddenFolders
+        onTriggered: Preferences.showHiddenFolders = checked
     }
     Action {
         id: infoAction
@@ -379,14 +364,14 @@ ApplicationWindow {
         checkable: true
         enabled: window.viewing && window.visibility !== Window.FullScreen
         checked: viewerPage.panelPinned
-        onTriggered: viewerPage.panelPinned = checked
+        onTriggered: Preferences.panelPinned = checked
     }
     Action {
         id: animatePanelAction
         text: "Animate Info Panel"
         checkable: true
         checked: viewerPage.panelAnimated
-        onTriggered: viewerPage.panelAnimated = checked
+        onTriggered: Preferences.panelAnimated = checked
     }
     Action { id: zoomInAction; text: "Zoom In"; shortcut: "+"; onTriggered: window.activeView.zoomIn() }
     Action { id: zoomOutAction; text: "Zoom Out"; shortcut: "-"; onTriggered: window.activeView.zoomOut() }
@@ -481,7 +466,7 @@ ApplicationWindow {
                     checkable: true
                     checked: context.sortDescending
                     onTriggered: {
-                        browserSettings.sortDescending = checked
+                        Preferences.sortDescending = checked
                         context.sortDescending = checked
                     }
                 }
@@ -502,18 +487,6 @@ ApplicationWindow {
             AppMenuItem { action: fitAction }
             AppMenuItem { action: actualSizeAction }
             AppMenuItem { action: autoContrastAction }
-            AppMenu {
-                title: "&Transparency"
-                Action { text: "&Dark Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "dark"; onTriggered: ViewSettings.transparency = "dark" }
-                Action { text: "&Light Squares"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "light"; onTriggered: ViewSettings.transparency = "light" }
-                Action { text: "&Gray"; checkable: true; ActionGroup.group: transparencyGroup; checked: ViewSettings.transparency === "plain"; onTriggered: ViewSettings.transparency = "plain" }
-            }
-            MenuSeparator {}
-            AppMenuItem { action: colorManagedAction }
-            AppMenuItem { text: "Display &Profile: " + ColorSettings.displayProfileName + "..."; onTriggered: displayProfileDialog.start("", "") }
-            AppMenuItem { text: "Use s&RGB Display"; enabled: ColorSettings.hasDisplayProfile; onTriggered: ColorSettings.useSrgbDisplay() }
-            MenuSeparator {}
-            AppMenuItem { text: "Clear &Thumbnail Cache..."; onTriggered: ThumbnailStore.measure() }
             MenuSeparator {}
             AppMenuItem { action: infoAction }
             AppMenuItem { action: animatePanelAction }
@@ -531,6 +504,15 @@ ApplicationWindow {
         AppMenu {
             title: "&Tools"
             AppMenuItem { action: fileActions.stripAction }
+            MenuSeparator {}
+            AppMenuItem {
+                text: "&Settings..."
+                action: Action {
+                    objectName: "settingsAction"
+                    shortcut: StandardKey.Preferences
+                    onTriggered: settingsDialog.start()
+                }
+            }
         }
         AppMenu {
             title: "&Help"
@@ -744,75 +726,12 @@ ApplicationWindow {
     }
 
     FileChooser {
-        id: displayProfileDialog
-        title: "Choose Display Profile"
-        types: [{ label: "ICC profiles", extensions: ["icc", "icm"] }, { label: "All files", extensions: [] }]
-        onChosen: (path) => {
-            const problem = ColorSettings.useDisplayProfile(urlOf(path))
-            if (problem) {
-                profileProblemDialog.text = problem
-                profileProblemDialog.open()
-            }
-        }
-    }
-
-    MessageBox {
-        id: profileProblemDialog
-        kind: "error"
-        title: "Cannot Use This Profile"
-        standardButtons: Dialog.Ok
-    }
-
-    FileChooser {
         id: openDialog
         objectName: "openDialog"
         title: "Open Image"
         types: [{ label: "Images", extensions: ["jpg", "jpeg", "jpe", "jfif", "tif", "tiff", "png", "webp", "avif", "jxl"] },
                 { label: "All files", extensions: [] }]
         onChosen: (path) => window.leaveImage(() => context.openPath(path))
-    }
-
-    // Asks first with what there is, as clearing makes every folder slow to show once more.
-    Connections {
-        target: ThumbnailStore
-        function onMeasured(available, count, bytes) {
-            if (!available) {
-                clearCacheResult.kind = "error"
-                clearCacheResult.text = "The thumbnail cache cannot be opened, perhaps because another copy of the program is using it."
-                clearCacheResult.open()
-            } else if (count === 0) {
-                clearCacheResult.kind = "info"
-                clearCacheResult.text = "There are no stored thumbnails."
-                clearCacheResult.open()
-            } else {
-                clearCacheDialog.text = "Remove all " + count.toLocaleString(Qt.locale(), "f", 0) + " stored thumbnails ("
-                        + context.dataSizeText(bytes) + ")? They are made again when their folders are shown."
-                clearCacheDialog.open()
-            }
-        }
-        function onCleared(done) {
-            if (!done) {
-                clearCacheResult.kind = "error"
-                clearCacheResult.text = "The thumbnails could not be removed."
-                clearCacheResult.open()
-            }
-        }
-    }
-
-    MessageBox {
-        id: clearCacheDialog
-        objectName: "clearCacheDialog"
-        kind: "question"
-        title: "Clear Thumbnail Cache"
-        standardButtons: Dialog.Yes | Dialog.No
-        onAccepted: ThumbnailStore.clear()
-    }
-
-    MessageBox {
-        id: clearCacheResult
-        objectName: "clearCacheResult"
-        title: "Clear Thumbnail Cache"
-        standardButtons: Dialog.Ok
     }
 
     AboutDialog {

@@ -35,6 +35,8 @@ public:
     std::optional<ImageBuffer> find(const Key& key);
     void store(const Key& key, const ImageBuffer& thumbnail);  // expects Bgrx8
     void trim();
+    // Changes the budget and trims if necessary. Safe from a worker like other cache calls.
+    void setMaxBytes(std::uint64_t maxBytes);
 
     struct Usage {
         std::uint64_t count = 0;

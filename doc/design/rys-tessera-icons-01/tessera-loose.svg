@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Tessera Loose — icon study 01</title>
+  <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e" />
+  <rect x="27" y="27" width="32" height="32" rx="5" fill="#81d8c5" />
+  <rect x="68" y="27" width="32" height="32" rx="5" fill="#f3f3ec" />
+  <rect x="27" y="68" width="32" height="32" rx="5" fill="#8ab8d6" />
+  <rect x="68" y="68" width="32" height="32" rx="5" fill="#f5bd66" transform="rotate(-13 84 84)" />
+</svg>

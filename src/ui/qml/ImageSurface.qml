@@ -47,7 +47,7 @@ Item {
                     anchors.fill: parent
                     clip: true
                     resampling: surface.sharp
-                    keepAutoContrast: ViewSettings.keepAutoContrast
+                    keepAutoContrast: Preferences.keepAutoContrast
                     backdropFirst: ViewSettings.backdropFirst
                     backdropSecond: ViewSettings.backdropSecond
                 }

@@ -2,37 +2,62 @@
 
 #include <QColor>
 #include <QGuiApplication>
+#include <QJSEngine>
+
+#include "ui/preferences.h"
+#include "core/palette.h"
 
 namespace iv {
 
-ThemePalette::ThemePalette(QObject* parent) : QObject(parent) {
+ThemePalette::ThemePalette(QObject* parent) : ThemePalette(*Preferences::instance(), parent) {}
+
+ThemePalette* ThemePalette::instance() {
+    static auto* theme = new ThemePalette(QCoreApplication::instance());
+    return theme;
+}
+
+ThemePalette* ThemePalette::create(QQmlEngine*, QJSEngine*) {
+    auto* theme = instance();
+    QJSEngine::setObjectOwnership(theme, QJSEngine::CppOwnership);
+    return theme;
+}
+
+void ThemePalette::preview(const PaletteChoices& choices) {
+    m_preview = choices;
     update();
 }
 
+void ThemePalette::clearPreview() {
+    m_preview.reset();
+    update();
+}
+
+ThemePalette::ThemePalette(Preferences& preferences, QObject* parent) : QObject(parent), m_preferences(&preferences) {
+    connect(&preferences, &Preferences::hueChanged, this, &ThemePalette::update);
+    connect(&preferences, &Preferences::accentChromaChanged, this, &ThemePalette::update);
+    connect(&preferences, &Preferences::surfaceChromaChanged, this, &ThemePalette::update);
+    update();
+}
+
+double ThemePalette::hue() const { return m_preview ? m_preview->hue : m_preferences->hue(); }
+double ThemePalette::accentChroma() const { return m_preview ? m_preview->accentChroma : m_preferences->accentChroma(); }
+double ThemePalette::surfaceChroma() const { return m_preview ? m_preview->surfaceChroma : m_preferences->surfaceChroma(); }
+
 void ThemePalette::setHue(double hue) {
-    if (hue != m_choices.hue) {
-        m_choices.hue = hue;
-        update();
-    }
+    m_preferences->setHue(hue);
 }
 
 void ThemePalette::setAccentChroma(double chroma) {
-    if (chroma != m_choices.accentChroma) {
-        m_choices.accentChroma = chroma;
-        update();
-    }
+    m_preferences->setAccentChroma(chroma);
 }
 
 void ThemePalette::setSurfaceChroma(double chroma) {
-    if (chroma != m_choices.surfaceChroma) {
-        m_choices.surfaceChroma = chroma;
-        update();
-    }
+    m_preferences->setSurfaceChroma(chroma);
 }
 
 void ThemePalette::update() {
     m_colours.clear();
-    for (const PaletteRole& role : derivePalette(m_choices)) {
+    for (const PaletteRole& role : derivePalette({.hue = hue(), .accentChroma = accentChroma(), .surfaceChroma = surfaceChroma()})) {
         m_colours.insert(QString::fromUtf8(role.name.data(), static_cast<qsizetype>(role.name.size())),
                          QColor(role.colour.r, role.colour.g, role.colour.b, role.colour.a));
     }

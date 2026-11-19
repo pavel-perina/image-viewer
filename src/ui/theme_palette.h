@@ -4,10 +4,15 @@
 #include <QPalette>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
-
+#include <optional>
 #include "core/palette.h"
 
+class QQmlEngine;
+class QJSEngine;
+
 namespace iv {
+
+class Preferences;
 
 // The choices a palette is worked out from (core/palette.h), and the colours they give, for
 // Theme to bind to. Changing a choice changes every colour bound to it, at once. The roles Qt's
@@ -24,13 +29,19 @@ class ThemePalette : public QObject {
     Q_PROPERTY(QVariantMap colours READ colours NOTIFY changed)
 
 public:
-    explicit ThemePalette(QObject* parent = nullptr);
+    explicit ThemePalette(Preferences& preferences, QObject* parent = nullptr);
+    static ThemePalette* instance();
+    static ThemePalette* create(QQmlEngine*, QJSEngine*);
 
-    double hue() const { return m_choices.hue; }
+    // Runtime preview only; the saved choices remain in Preferences.
+    void preview(const PaletteChoices& choices);
+    void clearPreview();
+
+    double hue() const;
     void setHue(double hue);
-    double accentChroma() const { return m_choices.accentChroma; }
+    double accentChroma() const;
     void setAccentChroma(double chroma);
-    double surfaceChroma() const { return m_choices.surfaceChroma; }
+    double surfaceChroma() const;
     void setSurfaceChroma(double chroma);
     QVariantMap colours() const { return m_colours; }
     // The palette of Qt's roles (window, base, highlight, ...) from the colours.
@@ -40,10 +51,12 @@ signals:
     void changed();
 
 private:
+    explicit ThemePalette(QObject* parent = nullptr);
     void update();
 
-    PaletteChoices m_choices;
+    Preferences* m_preferences;
     QVariantMap m_colours;
+    std::optional<PaletteChoices> m_preview;
 };
 
 }  // namespace iv

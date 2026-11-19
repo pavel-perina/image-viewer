@@ -22,7 +22,7 @@ Fullscreen window
 * Mouse right - image info (exif, file details, histogram)
 * Mouse left - fast toolbar with icon, label, keyboard shortcut
   - actions such as resize, crop, annotate, rotate 90deg, flip, horizon line & perspective
-* Mouse top - image strip
+* Mouse top - image strip - based on thumbnail model
 * Unlike faststone image viewer, this window should have fullscreen optional (f11)
   and i would not strictly limit it to a fullscreen window, rather something
   that has fullscreen and large view mode, fullscreen is limiting in FastStone image viewer

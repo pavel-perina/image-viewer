@@ -17,6 +17,7 @@
 #include "core/thumbnail_cache.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
+#include "ui/preferences.h"
 #include "ui/qimage_bridge.h"
 
 namespace iv {
@@ -27,20 +28,28 @@ constexpr int kDefaultEdge = 256;
 // Below every other kind of work, so opening an image is never held up by thumbnails.
 constexpr int kBasePriority = -1'000'000'000;
 
-// Enough for about 50 000 thumbnails at the size the browser shows them.
-constexpr std::uint64_t kCacheBytes = 512ull * 1024 * 1024;
-
 class ThumbnailResponse final : public QQuickImageResponse {
 public:
-    ThumbnailResponse(const QString& path, int priority, int edge) : m_link(std::make_shared<Link>()) {
+    ThumbnailResponse(const QString& path, int priority, int edge, QSize bounds) : m_link(std::make_shared<Link>()) {
         m_link->response = this;
         m_task = WorkQueue::global().submit(
             group(), priority,
-            [link = m_link, edge, file = QFileInfo(path).filesystemFilePath()](std::stop_token stop) {
+            [link = m_link, edge, bounds, file = QFileInfo(path).filesystemFilePath()](std::stop_token stop) {
                 auto thumbnail = makeCachedThumbnail(ThumbnailProvider::diskCache(), file, edge, stop, ColorSettings::target());
+                QImage image;
+                QString error;
+                if (thumbnail) {
+                    image = toQImage(*thumbnail);
+                    if (bounds.width() > 0 && bounds.height() > 0 &&
+                        (image.width() > bounds.width() || image.height() > bounds.height())) {
+                        image = image.scaled(bounds, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                    }
+                } else {
+                    error = QString::fromStdString(thumbnail.error());
+                }
                 const std::scoped_lock lock(link->mutex);
                 if (link->response) {
-                    link->response->complete(thumbnail);
+                    link->response->finish(image, error);
                 }
             });
     }
@@ -77,14 +86,6 @@ private:
         return id;
     }
 
-    void complete(const Result<ImageBuffer>& thumbnail) {
-        if (thumbnail) {
-            finish(toQImage(*thumbnail), QString());
-        } else {
-            finish(QImage(), QString::fromStdString(thumbnail.error()));
-        }
-    }
-
     // Call with the link's mutex held. Only the first result counts.
     void finish(const QImage& image, const QString& error) {
         if (m_finished) {
@@ -117,7 +118,7 @@ QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, 
     const QString path = QString::fromUtf8(QByteArray::fromHex(id.section(QLatin1Char('/'), 0, 0).toLatin1()));
     const int requested = std::max(requestedSize.width(), requestedSize.height());
     const int edge = requested > 0 ? requested : kDefaultEdge;
-    return new ThumbnailResponse(path, kBasePriority + sequence.fetch_add(1, std::memory_order_relaxed), edge);
+    return new ThumbnailResponse(path, kBasePriority + sequence.fetch_add(1, std::memory_order_relaxed), edge, requestedSize);
 }
 
 ThumbnailCache* ThumbnailProvider::diskCache() {
@@ -126,8 +127,9 @@ ThumbnailCache* ThumbnailProvider::diskCache() {
         if (folder.isEmpty() || !QDir().mkpath(folder)) {
             return nullptr;
         }
-        return ThumbnailCache::open(QFileInfo(folder + QStringLiteral("/thumbnails.db")).filesystemFilePath(), kCacheBytes);
+        return ThumbnailCache::open(QFileInfo(folder + QStringLiteral("/thumbnails.db")).filesystemFilePath(), Preferences::thumbnailCacheBudgetBytes());
     }();
+    if (cache) cache->setMaxBytes(Preferences::thumbnailCacheBudgetBytes());
     return cache.get();
 }
 

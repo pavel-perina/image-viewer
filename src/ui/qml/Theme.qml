@@ -45,14 +45,14 @@ QtObject {
     readonly property color defaultButtonEdge: roles.defaultButtonEdge
     readonly property color hover: withAlpha(text, 0.12)
     readonly property color frame: withAlpha(text, 0.25)
-    // A thumbnail's selection is quiet beside the picture; its edge carries the accent.
+    // Visible even after focus moves away; keep thumbnails softer than compact rows.
     // The neutral current-image frame is independent of selection and keyboard focus.
-    readonly property color thumbnailSelection: withAlpha(accent, 0.12)
-    readonly property color thumbnailSelectionInactive: withAlpha(accent, 0.06)
-    readonly property color selectionEdge: withAlpha(accent, 0.70)
-    readonly property color selectionEdgeInactive: withAlpha(accent, 0.40)
-    readonly property color listSelection: withAlpha(accent, 0.20)
-    readonly property color listSelectionInactive: withAlpha(accent, 0.10)
+    readonly property color thumbnailSelection: withAlpha(accent, 0.22)
+    readonly property color thumbnailSelectionInactive: withAlpha(accent, 0.14)
+    readonly property color selectionEdge: withAlpha(accent, 0.85)
+    readonly property color selectionEdgeInactive: withAlpha(accent, 0.60)
+    readonly property color listSelection: withAlpha(accent, 0.28)
+    readonly property color listSelectionInactive: withAlpha(accent, 0.18)
     readonly property color paneFrame: withAlpha(text, 0.12)
     readonly property color paneFocusFrame: withAlpha(accent, 0.50)
     readonly property color warning: "#e0a050"

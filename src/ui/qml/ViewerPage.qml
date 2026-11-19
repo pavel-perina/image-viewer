@@ -1,4 +1,3 @@
-import QtCore
 import QtQuick
 import QtQuick.Controls
 import ImageViewer
@@ -15,8 +14,9 @@ Rectangle {
     // Runs what would leave an edited image once its changes are saved or given up.
     property var guard: (proceed) => proceed()
     readonly property alias view: surface.view
-    property alias panelPinned: settings.panelPinned
-    property alias panelAnimated: settings.panelAnimated
+    // A view may override these for an embedded view or a test; defaults follow preferences.
+    property bool panelPinned: Preferences.panelPinned
+    property bool panelAnimated: Preferences.panelAnimated
     // Always on in the program; off only to compare with bilinear, as the GPU tests do.
     property bool sharpResampling: true
     property bool panelRevealed: false
@@ -426,15 +426,6 @@ Rectangle {
             if (index !== page.context.currentIndex)
                 page.guard(() => page.context.setCurrentIndex(index))
         }
-    }
-
-    Settings {
-        id: settings
-        category: "InfoPanel"
-        property bool panelPinned: false
-        property bool panelAnimated: true
-        property alias logScale: panel.logScale
-        property alias fitRange: panel.fitRange
     }
 
     readonly property int edgeMargin: 12

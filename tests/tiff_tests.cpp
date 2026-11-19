@@ -826,6 +826,21 @@ TEST(ThumbnailCache, KeepsPixelsBetweenRuns) {
     EXPECT_NEAR(static_cast<int>(reinterpret_cast<const std::uint8_t*>(found->row(5))[20]), 123, 1);
 }
 
+// Why: a preference change must resize the existing cache, not replace a pointer used
+// by workers. Lowering the budget evicts entries; raising it lets the same cache store again.
+TEST(ThumbnailCache, ChangingTheBudgetTrimsWithoutReopeningTheCache) {
+    TempDir dir;
+    const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);
+    ASSERT_TRUE(cache);
+    cache->store(cacheKey(), flatImage({20, 10}, 123));
+    ASSERT_GT(cache->usage().bytes, 0u);
+    cache->setMaxBytes(0);
+    EXPECT_EQ(cache->usage().count, 0u);
+    cache->setMaxBytes(1 << 20);
+    cache->store(cacheKey("/new.png"), flatImage({20, 10}, 80));
+    EXPECT_TRUE(cache->find(cacheKey("/new.png")));
+}
+
 TEST(ThumbnailCache, MissesWhenAnythingItDependsOnDiffers) {
     TempDir dir;
     const auto cache = ThumbnailCache::open(dir.file("c.db"), 1 << 20);

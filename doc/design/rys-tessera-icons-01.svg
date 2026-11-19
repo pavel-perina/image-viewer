@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="760" height="560" viewBox="0 0 760 560">
+  <title>Rys and Tessera — icon studies 01</title>
+  <desc>Six original SVG app-icon concepts. Rys: a lynx face, a watchful eye, and a lynx-shaped picture frame. Tessera: a loose mosaic tile, an inlaid image, and a T assembled from tiles. Large samples on dark and 16, 24, 32 pixel samples on light.</desc>
+  <defs>
+    <style>text{font-family:Inter,sans-serif;fill:#e4e4e4;font-size:13px}.title{font-size:19px}.section{font-size:12px;font-weight:600;letter-spacing:2px}.caption{font-size:13px}.muted{fill:#ababab;font-size:11px}</style>
+    <clipPath id="inlay-clip"><rect x="26" y="26" width="76" height="76" rx="9"/></clipPath>
+    <symbol id="rys-lynx" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <path d="M28 59L24 26l23 12q17-7 34 0l23-12-4 33q5 26-18 40l-18 10-18-10Q23 85 28 59z" fill="#f5bd66"/>
+      <path d="M26 28l-2-13m78 13 2-13" stroke="#f5bd66" stroke-width="7" stroke-linecap="round"/>
+      <path d="M32 37l12 6-10 7zm64 0-12 6 10 7z" fill="#27343e"/>
+      <path d="M35 61q12-9 23 2-11 13-23-2zm58 0q-12-9-23 2 11 13 23-2z" fill="#27343e"/>
+      <circle cx="48" cy="62" r="3" fill="#f3f3ec"/><circle cx="80" cy="62" r="3" fill="#f3f3ec"/>
+      <path d="M47 80q17-16 34 0l-7 11-10 5-10-5z" fill="#f3f3ec"/>
+      <path d="M57 77h14l-7 8zm7 7v7" fill="#27343e" stroke="#27343e" stroke-width="3" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="rys-eye" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <path d="M28 77V30l19 15h34l19-15v47M46 96l18 10 18-10" fill="none" stroke="#81d8c5" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M30 73q34-38 68 0-34 38-68 0z" fill="#f3f3ec"/>
+      <circle cx="64" cy="73" r="15" fill="#f5bd66"/>
+      <ellipse cx="64" cy="73" rx="4" ry="12" fill="#27343e"/>
+    </symbol>
+    <symbol id="rys-frame" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <path d="M30 42l-4-20 23 15h30l23-15-4 20v35q0 23-34 34-34-11-34-34z" fill="#81d8c5"/>
+      <path d="M26 24l-2-10m78 10 2-10" fill="none" stroke="#81d8c5" stroke-width="6" stroke-linecap="round"/>
+      <rect x="43" y="50" width="42" height="36" rx="4" fill="#27343e"/>
+      <circle cx="73" cy="59" r="5" fill="#f5bd66"/>
+      <path d="M47 80l12-16 11 11 6-6 5 11z" fill="#f3f3ec"/>
+    </symbol>
+    <symbol id="tessera-loose" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <rect x="27" y="27" width="32" height="32" rx="5" fill="#81d8c5"/>
+      <rect x="68" y="27" width="32" height="32" rx="5" fill="#f3f3ec"/>
+      <rect x="27" y="68" width="32" height="32" rx="5" fill="#8ab8d6"/>
+      <rect x="68" y="68" width="32" height="32" rx="5" fill="#f5bd66" transform="rotate(-13 84 84)"/>
+    </symbol>
+    <symbol id="tessera-inlay" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <g clip-path="url(#inlay-clip)">
+        <rect x="26" y="26" width="76" height="76" fill="#8ab8d6"/>
+        <path d="M26 26h44L26 70z" fill="#81d8c5"/>
+        <path d="M40 102l62-62v62z" fill="#f5bd66"/>
+        <path d="M26 70l44-44M40 102l62-62" fill="none" stroke="#27343e" stroke-width="8"/>
+      </g>
+    </symbol>
+    <symbol id="tessera-letter" viewBox="0 0 128 128">
+      <rect x="4" y="4" width="120" height="120" rx="27" fill="#27343e"/>
+      <rect x="28" y="28" width="72" height="24" rx="5" fill="#f3f3ec"/>
+      <rect x="52" y="60" width="24" height="24" rx="4" fill="#81d8c5"/>
+      <rect x="52" y="92" width="24" height="16" rx="4" fill="#f5bd66"/>
+    </symbol>
+  </defs>
+  <rect width="760" height="560" fill="#222222"/>
+  <text class="title" x="24" y="30">Rys × Tessera</text>
+  <text class="muted" x="24" y="51">Original vector studies · 96 px on dark, 16 / 24 / 32 px on light · all marks can be refined independently</text>
+  <text class="section" x="24" y="76">RYS</text>
+  <path d="M253 88v166M506 88v166M24 277h712M253 322v166M506 322v166" stroke="#e4e4e4" stroke-opacity=".12"/>
+  <use xlink:href="#rys-lynx" transform="translate(78 85) scale(.75)"/>
+  <use xlink:href="#rys-eye" transform="translate(331 85) scale(.75)"/>
+  <use xlink:href="#rys-frame" transform="translate(584 85) scale(.75)"/>
+  <text class="caption" x="126" y="199" text-anchor="middle">R1 · Lynx</text>
+  <text class="caption" x="379" y="199" text-anchor="middle">R2 · Watchful</text>
+  <text class="caption" x="632" y="199" text-anchor="middle">R3 · Earframe</text>
+  <rect x="24" y="211" width="712" height="46" rx="6" fill="#eeeee8"/>
+  <use xlink:href="#rys-lynx" transform="translate(78 226) scale(.125)"/>
+  <use xlink:href="#rys-lynx" transform="translate(111 222) scale(.1875)"/>
+  <use xlink:href="#rys-lynx" transform="translate(152 218) scale(.25)"/>
+  <use xlink:href="#rys-eye" transform="translate(331 226) scale(.125)"/>
+  <use xlink:href="#rys-eye" transform="translate(364 222) scale(.1875)"/>
+  <use xlink:href="#rys-eye" transform="translate(405 218) scale(.25)"/>
+  <use xlink:href="#rys-frame" transform="translate(584 226) scale(.125)"/>
+  <use xlink:href="#rys-frame" transform="translate(617 222) scale(.1875)"/>
+  <use xlink:href="#rys-frame" transform="translate(658 218) scale(.25)"/>
+
+  <text class="section" x="24" y="310">TESSERA</text>
+  <use xlink:href="#tessera-loose" transform="translate(78 319) scale(.75)"/>
+  <use xlink:href="#tessera-inlay" transform="translate(331 319) scale(.75)"/>
+  <use xlink:href="#tessera-letter" transform="translate(584 319) scale(.75)"/>
+  <text class="caption" x="126" y="433" text-anchor="middle">T1 · Loose tile</text>
+  <text class="caption" x="379" y="433" text-anchor="middle">T2 · Inlay</text>
+  <text class="caption" x="632" y="433" text-anchor="middle">T3 · Tilemark</text>
+  <rect x="24" y="445" width="712" height="46" rx="6" fill="#eeeee8"/>
+  <use xlink:href="#tessera-loose" transform="translate(78 460) scale(.125)"/>
+  <use xlink:href="#tessera-loose" transform="translate(111 456) scale(.1875)"/>
+  <use xlink:href="#tessera-loose" transform="translate(152 452) scale(.25)"/>
+  <use xlink:href="#tessera-inlay" transform="translate(331 460) scale(.125)"/>
+  <use xlink:href="#tessera-inlay" transform="translate(364 456) scale(.1875)"/>
+  <use xlink:href="#tessera-inlay" transform="translate(405 452) scale(.25)"/>
+  <use xlink:href="#tessera-letter" transform="translate(584 460) scale(.125)"/>
+  <use xlink:href="#tessera-letter" transform="translate(617 456) scale(.1875)"/>
+  <use xlink:href="#tessera-letter" transform="translate(658 452) scale(.25)"/>
+  <text class="muted" x="24" y="520">Rys: character, vision, framing. Tessera: mosaic, composition, a name mark.</text>
+  <text class="muted" x="24" y="540">Fixed icon colours, independent of the UI theme. Drafts only; the application and earlier studies are untouched.</text>
+</svg>

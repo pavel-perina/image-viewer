@@ -13,6 +13,8 @@ SpinBox {
     property real realTo: 100
     property real realStepSize: 0.1
     readonly property real factor: Math.pow(10, decimals)
+    readonly property bool pendingEdit: contentItem && contentItem.activeFocus && contentItem.acceptableInput
+                                       && valueFromText(contentItem.text, locale) !== value
 
     // The value changed by the person, not by a binding.
     signal realValueModified(real value)
