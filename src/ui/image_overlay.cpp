@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QQuickWindow>
 
+#include <algorithm>
 #include <cmath>
 
 namespace iv {
@@ -62,6 +63,25 @@ void ImageOverlay::strokeLine(QPainter* painter, QPointF a, QPointF b, const QCo
     painter->drawLine(a, b);
     painter->setPen(QPen(colour, stroke.chosen ? 2.5 : 1.5, stroke.dashed ? Qt::DashLine : Qt::SolidLine, Qt::FlatCap));
     painter->drawLine(a, b);
+}
+
+void ImageOverlay::drawFrame(QPainter* painter, const QRectF& imageRect) const {
+    constexpr double kSmallestFrame = 7;  // in item units
+    const QPointF a = toItem({imageRect.left(), imageRect.top()});
+    const QPointF b = toItem({imageRect.right(), imageRect.bottom()});
+    const QPointF centre = (a + b) / 2;
+    const double width = std::max(kSmallestFrame, b.x() - a.x());
+    const double height = std::max(kSmallestFrame, b.y() - a.y());
+    const QRectF frame(snapped(centre.x() - width / 2), snapped(centre.y() - height / 2), snapped(width), snapped(height));
+    const double line = devicePixel();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setBrush(Qt::NoBrush);
+    painter->setPen(QPen(style().line(), line));
+    painter->drawRect(frame.adjusted(-line, -line, 0, 0));
+    painter->setPen(QPen(style().outline(), line));
+    painter->drawRect(frame.adjusted(-2 * line, -2 * line, line, line));
+    painter->restore();
 }
 
 void ImageOverlay::drawGrip(QPainter* painter, QPointF at, const QColor& colour, Grip grip) const {

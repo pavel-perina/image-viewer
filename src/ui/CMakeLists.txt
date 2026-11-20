@@ -52,6 +52,8 @@ qt_add_library(iv_ui STATIC
     overlay_style.h
     probe_overlay.cpp
     probe_overlay.h
+    gray_pick_overlay.cpp
+    gray_pick_overlay.h
     hidden_folders.h
     program_font.cpp
     program_font.h
@@ -144,6 +146,7 @@ qt_add_qml_module(iv_ui
         qml/ThumbnailCell.qml
         qml/Screens.qml
         qml/ToolPanel.qml
+        qml/ToolSection.qml
         qml/ViewSettings.qml
         qml/ViewerPage.qml
 )

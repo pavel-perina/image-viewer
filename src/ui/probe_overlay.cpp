@@ -1,7 +1,6 @@
 #include "ui/probe_overlay.h"
 
 #include <QKeyEvent>
-#include <QPainter>
 
 #include <algorithm>
 #include <cmath>
@@ -9,8 +8,6 @@
 namespace iv {
 
 namespace {
-
-constexpr double kSmallestFrame = 7;  // in item units, for a pixel shown smaller than that
 
 QPoint positionOf(const QVariantMap& pixel) {
     return {pixel.value(QStringLiteral("x")).toInt(), pixel.value(QStringLiteral("y")).toInt()};
@@ -99,20 +96,7 @@ void ProbeOverlay::paint(QPainter* painter) {
         return;
     }
     const QPoint at = positionOf(m_pixel);
-    const QPointF a = toItem({double(at.x()), double(at.y())});
-    const QPointF b = toItem({at.x() + 1.0, at.y() + 1.0});
-    const double size = std::max(kSmallestFrame, b.x() - a.x());
-    const QRectF frame(snapped((a.x() + b.x() - size) / 2), snapped((a.y() + b.y() - size) / 2), snapped(size), snapped(size));
-
-    // Light around the pixel and dark around that, each a device pixel wide, outside the
-    // pixel itself so that its colour stays in view.
-    const double line = devicePixel();
-    painter->setRenderHint(QPainter::Antialiasing, false);
-    painter->setBrush(Qt::NoBrush);
-    painter->setPen(QPen(style().line(), line));
-    painter->drawRect(frame.adjusted(-line, -line, 0, 0));
-    painter->setPen(QPen(style().outline(), line));
-    painter->drawRect(frame.adjusted(-2 * line, -2 * line, line, line));
+    drawFrame(painter, QRectF(at.x(), at.y(), 1, 1));
 }
 
 }  // namespace iv

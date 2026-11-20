@@ -32,6 +32,9 @@ ShaderEffect {
     property real gamutMap: view.colorPreviewGamutMap ? 1 : 0
     property vector4d domainMin: view.colorPreviewDomainMin
     property vector4d domainMax: view.colorPreviewDomainMax
+    property matrix4x4 whiteMatrix: view.colorPreviewWhiteMatrix
+    property vector4d luminance: view.colorPreviewLuminance
+    property real useWhite: view.colorPreviewWhite ? 1 : 0
     property real adjust: adjusting ? 1 : 0
     property real ditherStep: ViewSettings.ditherStep
 

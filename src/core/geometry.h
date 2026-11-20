@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 namespace iv {
 
 struct Size {
@@ -24,6 +26,21 @@ struct RectD {
     double height = 0;
     bool operator==(const RectD&) const = default;
 };
+
+// A 3 x 3 matrix, row by row, for linear maps such as those between colour spaces. Homography
+// keeps its own type for points, with the same arithmetic.
+struct Matrix3 {
+    std::array<double, 9> m{1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+    Matrix3 inverse() const;
+    Matrix3 operator*(const Matrix3& other) const;
+    std::array<double, 3> operator*(const std::array<double, 3>& v) const;
+    bool operator==(const Matrix3&) const = default;
+};
+
+// The same for plain arrays, row by row; a singular matrix gives infinities.
+std::array<double, 9> inverse3(const std::array<double, 9>& a);
+std::array<double, 9> multiply3(const std::array<double, 9>& a, const std::array<double, 9>& b);
 
 // x' = a*x + c*y + tx, y' = b*x + d*y + ty
 struct Affine {

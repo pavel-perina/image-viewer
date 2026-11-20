@@ -10,6 +10,7 @@
 #include <QVariant>
 #include <QVariantMap>
 #include <QUrl>
+#include <QMatrix4x4>
 #include <QVector4D>
 #include <QImage>
 #include <QtQml/qqmlregistration.h>
@@ -92,6 +93,12 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(bool colorPreviewGamutMap READ colorPreviewGamutMap NOTIFY colorPreviewChanged)
     Q_PROPERTY(QVector4D colorPreviewDomainMin READ colorPreviewDomainMin NOTIFY colorPreviewChanged)
     Q_PROPERTY(QVector4D colorPreviewDomainMax READ colorPreviewDomainMax NOTIFY colorPreviewChanged)
+    // White balance in the preview: the matrix on linear RGB as the shader sees it, the screen's
+    // when the picture is converted for it, identity when off; and the luminance weights of that
+    // RGB, for fitting by chroma.
+    Q_PROPERTY(bool colorPreviewWhite READ colorPreviewWhite NOTIFY colorPreviewChanged)
+    Q_PROPERTY(QMatrix4x4 colorPreviewWhiteMatrix READ colorPreviewWhiteMatrix NOTIFY colorPreviewChanged)
+    Q_PROPERTY(QVector4D colorPreviewLuminance READ colorPreviewLuminance NOTIFY colorPreviewChanged)
     // The name of the loaded .cube file, empty without one.
     Q_PROPERTY(QString colorCubeName READ colorCubeName NOTIFY colorPreviewChanged)
     // Another view that zooms and scrolls with this one while both show pictures of the same size,
@@ -159,6 +166,9 @@ public:
     bool colorPreviewGamutMap() const;
     QVector4D colorPreviewDomainMin() const;
     QVector4D colorPreviewDomainMax() const;
+    bool colorPreviewWhite() const;
+    QMatrix4x4 colorPreviewWhiteMatrix() const;
+    QVector4D colorPreviewLuminance() const;
     QString colorCubeName() const;
     ImageView* linkedView() const;
     void setLinkedView(ImageView* view);
@@ -204,12 +214,14 @@ public:
     // what is under them. A large part comes smaller, to be drawn stretched. Null until
     // drawReady.
     QImage drawPreview(const Shape& shape, QRect* where) const;
-    // Colour adjustment, from a map in which every key is optional. Levels: black and white, from
+    // Colour adjustment, from a map in which every key is optional. White balance first:
+    // temperature in kelvins, 6500 leaving it, and tint from -100 to 100, 0 leaving it, in the
+    // picture's own RGB. Levels: black and white, from
     // 0 to 1 of the samples as stored, gamma above 1 lightening their midtones, and outBlack and
     // outWhite, the range they map to. In Oklab, keeping colours: brightness added to lightness,
     // contrast scaling it about the middle, lightness a gamma for it, and saturation scaling
     // chroma, 1 leaving it; gamutMap, true unless given, fits colours beyond the range by
-    // chroma instead of clipping them. A loaded cube comes last. previewColors shows them by the shader until
+    // chroma instead of clipping them. A loaded cube comes last, unless cube is false. previewColors shows them by the shader until
     // endColorPreview or another picture is shown; adjustColors applies them, and the preview
     // stays until the result replaces it.
     Q_INVOKABLE void previewColors(const QVariantMap& settings);
@@ -234,6 +246,11 @@ public:
     // probed: x and y as shown, hex, values and fractions as stored, depth, srgbHex and
     // srgbValues when the colour profile makes them differ, and color for a swatch.
     Q_INVOKABLE void probe(QPointF point);
+    // Finds the white balance that makes a rectangle of the image as shown neutral, from its
+    // mean colour in the picture as it is now, before any colour preview, and reports it with
+    // grayPicked: temperature and tint, clamped when the colour lay beyond their range, or
+    // error saying why the patch was refused.
+    Q_INVOKABLE void pickGray(QRectF rect);
 
     // Straightening the image as shown, as if the camera had been turned. prepareStraighten reads
     // a reduced copy for previews and finding lines, and reports straightenReady; until then
@@ -272,6 +289,7 @@ signals:
     void colorPreviewChanged();
     void linkedViewChanged();
     void probed(const QVariantMap& pixel);
+    void grayPicked(const QVariantMap& result);
     void straightenReady();
     void drawReady();
     void navigateRequested(int steps);  // positive towards the next image

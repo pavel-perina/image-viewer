@@ -137,32 +137,9 @@ PointD Homography::apply(PointD p) const {
     return {(m[0] * p.x + m[1] * p.y + m[2]) / w, (m[3] * p.x + m[4] * p.y + m[5]) / w};
 }
 
-Homography Homography::inverse() const {
-    const auto& a = m;
-    Homography r;
-    r.m = {a[4] * a[8] - a[5] * a[7], a[2] * a[7] - a[1] * a[8], a[1] * a[5] - a[2] * a[4],
-           a[5] * a[6] - a[3] * a[8], a[0] * a[8] - a[2] * a[6], a[2] * a[3] - a[0] * a[5],
-           a[3] * a[7] - a[4] * a[6], a[1] * a[6] - a[0] * a[7], a[0] * a[4] - a[1] * a[3]};
-    const double det = a[0] * r.m[0] + a[1] * r.m[3] + a[2] * r.m[6];
-    for (double& v : r.m) {
-        v /= det;
-    }
-    return r;
-}
+Homography Homography::inverse() const { return {inverse3(m)}; }
 
-Homography Homography::operator*(const Homography& other) const {
-    Homography r;
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
-            double sum = 0;
-            for (int k = 0; k < 3; ++k) {
-                sum += m[static_cast<std::size_t>(i * 3 + k)] * other.m[static_cast<std::size_t>(k * 3 + j)];
-            }
-            r.m[static_cast<std::size_t>(i * 3 + j)] = sum;
-        }
-    }
-    return r;
-}
+Homography Homography::operator*(const Homography& other) const { return {multiply3(m, other.m)}; }
 
 double focalPixels(Size image, double focal35mm) {
     return focal35mm / k35mmDiagonal * std::hypot(image.width, image.height);

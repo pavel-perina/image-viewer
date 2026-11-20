@@ -1077,9 +1077,71 @@ Left out for now:
 
 ### Colour adjustment
 * Edit > Adjust Colours (A) is one edit, `ColorEdit` in `core/color_edit.h`, with stages in a
-  fixed order: a tone curve on the samples as stored, the same for R, G and B (levels: input
+  fixed order: white balance in linear light; a tone curve on the samples as stored, the same for R, G and B (levels: input
   black and white, gamma, and the output range, which can lift black to gray); a lightness curve
   and a chroma gain in Oklab; a colour cube; then encoding back.
+* The panel is in sections stacked in the order the stages run, so that reading order is
+  processing order: White balance, Levels, Lightness and colour in Oklab, Colour table. No tabs,
+  which would hide the order. Each section's caption is a `PaneHeader`, as the browser's panes
+  have, through `ToolSection`: a click folds it; a mark in the accent says it is in use, also
+  when folded; Reset resets that section alone; and a box switches it off while keeping its
+  values, to see whether it helps. A section switched off gives the values that change nothing,
+  in the preview and in what Apply applies. Which sections are folded is remembered as tool
+  state, not a preference; switching off is not, as it is a way of comparing.
+* White balance (`core/white_balance.h`) is for rendered pictures, whose original light cannot
+  be recovered from their pixels. So its controls say what white the picture is to be taken as
+  having and correct that to neutral, as raw editors' controls read: Temperature in kelvins,
+  6500 K leaving the picture alone, lower (tungsten) making it bluer and higher warmer; Tint
+  from -100 to 100, 0 leaving it, positive making it more magenta, which corrects green light.
+  Together they name one white point: a temperature on the Planckian locus, by Krystek's
+  approximation, which holds to 15000 K, and a tint perpendicular to it in CIE 1960 uv, 100
+  being 0.02 there.
+* The slider shows kelvins but moves evenly in mireds, a million over kelvins, because the eye
+  sees about the same change for each mired anywhere on the scale: 2000 K at the left, 15000 K
+  at the right, 6500 K a fifth of the way from the right. It steps by 50 K. Typing a number is
+  left out for now: Adjust has no fields, so that Enter always applies.
+* The source white is placed relative to the picture's own white, moved by as much as the
+  temperature and tint move a white from 6500 K and tint 0. So 6500 K and tint 0 are exactly
+  the identity (D65 lies a little off the locus, so a plain point on it would not be).
+* It works in the picture's own RGB: the RGB to XYZ matrix comes from its profile when that is
+  a matrix-shaper profile, as most are, else from sRGB, which is also what a picture without a
+  profile is. ICC keeps a profile's colorants adapted to D50; they are referred back to D65 by
+  the profile's own adaptation matrix (`chad`), or Bradford's from D50 for a profile without
+  one, so that an sRGB profile, which most camera JPEGs carry, means what sRGB means. Read at
+  D50, the warm end moved the white beyond the colours that exist, and the picture went blue,
+  then black, then yellow. The matrix is a value in the edit, not a reference to the picture,
+  so a batch can repeat the edit and take each picture's own. The Oklab stages still assume
+  sRGB, and every stage decodes with the sRGB curve, so for a profile with another curve, such
+  as Adobe RGB's gamma, the preview is a level or two off what applying gives.
+* The correction scales R, G and B of that RGB in linear light so that the source white becomes
+  neutral, as raw converters scale a camera's channels, rather than adapting across cone
+  responses (Bradford), which was the first plan. Adaptation is the better model of the eye for
+  small changes, but far from 6500 K it sends ordinary colours, and even grays, to negative
+  channels: at 3000 K a plain green had negative red, and clipping or fitting then lost the
+  colours. Scaling channels keeps every colour with no negative channel without one, at any
+  temperature, and a picked patch still becomes exactly neutral. A white at the edge of the
+  gamut has its smallest channel taken as at least 2 % of its largest, so the gain is large
+  but finite.
+* The gains are normalised so that a neutral keeps its luminance: white balance changes the
+  colour, not the brightness. With Bradford a gray at 2000 K came out half as bright again.
+* Colours white balance pushes beyond the range of an integer image are fitted, when fitting
+  is on, by moving them towards the gray of their own luminance in the picture's RGB until
+  they fit: it keeps luminance and loses saturation, works in any primaries, and needs no
+  search. Otherwise they are clipped. Floats keep them.
+* The preview's shader sees the picture converted for the screen when it has a profile that
+  differs, so it is given the correction carried over into the screen's RGB (the display
+  profile's matrix, or sRGB). Given the picture's own, a picked patch only came close to gray.
+* Pick Gray: a click averages a square patch centred on the pixel, 1, 5, 11 or 21 pixels across
+  (5 by default, remembered), as one pixel is shifted by noise and JPEG blocks; a drag averages
+  the rectangle. The mean is taken in linear light, weighted by alpha, from the picture as it
+  enters Adjust: the preview is the shader's, so the settings and a look cannot sway it, and
+  picking the same place twice gives the same values. Patches mostly transparent, nearly black
+  or mostly clipped are refused, with the reason, and clipped pixels are left out of the rest.
+  The temperature is found by searching the locus in mireds, the tint by projecting onto its
+  normal there; a white beyond the range is set to the nearest values, with a word saying so.
+  The patch is outlined by `GrayPickOverlay`; the probe stays a reader of one pixel.
+* Automatic white balance is left for later: simple estimates each fail on some scenes, and a
+  suggestion that sets the controls, never applied unasked, is the form it would take.
 * Levels are set as in other editors: handles on a gray gradient under the histogram of the
   picture as it was, black, gamma and white for the input and two more for the output range.
   Gamma applies between the two linear maps, on the input range scaled to 0 to 1, so it does

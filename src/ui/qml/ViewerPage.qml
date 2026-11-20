@@ -351,6 +351,19 @@ Rectangle {
         onPicked: (pixel) => probePanel.remember(pixel)
     }
 
+    // Picking something neutral for the white balance of Adjust.
+    GrayPickOverlay {
+        id: grayPick
+        objectName: "grayPick"
+        anchors.fill: surface
+        view: surface.view
+        style: overlayStyle
+        visible: page.adjusting && adjustPanel.picking
+        enabled: visible
+        patchSize: adjustPanel.patchSize
+        onVisibleChanged: if (!visible) clear()
+    }
+
     OverlayStyle {
         id: overlayStyle
         line: Theme.toolLine
