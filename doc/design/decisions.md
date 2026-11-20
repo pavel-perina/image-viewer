@@ -289,6 +289,12 @@ change nothing useful. The first press of a double click does this too, for that
   text, which the program hardly has. The variable file has no hinting, which may look soft at
   small sizes on Windows at 100% scaling; hinted static files would be the fix. The tests use
   the same font, at 10 points.
+* All text is drawn by the platform's own rasteriser (`QQuickWindow::NativeTextRendering`, set
+  with the font): hinted, and with ClearType on Windows. Qt Quick's default draws labels from
+  distance fields, which scale smoothly but are greyscale and soft at these sizes, while text
+  fields and what QPainter draws were already native, so a window mixed sharp and soft text,
+  most visibly on Windows. Nothing in the program scales text by animation, which is what
+  distance fields are for.
 
 * `Theme` also holds the sizes that pages share: the heading and caption text sizes, the
   monospace family, and the tool panels' width, margin and row spacing. A number that lays
