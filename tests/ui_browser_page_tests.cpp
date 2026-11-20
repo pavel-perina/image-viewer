@@ -483,6 +483,7 @@ TEST(BrowserPage, TheFoldersAndThePreviewHaveCaptionsThatStartAtOnePlace) {
     EXPECT_EQ(words(folders)->property("text").toString(), QStringLiteral("Folders"));
     EXPECT_EQ(words(folders)->mapToScene(QPointF()).x(), words(preview)->mapToScene(QPointF()).x());
     EXPECT_FALSE(folders->property("collapsible").toBool());
+    EXPECT_FALSE(preview->property("banded").toBool()) << "bands are for the sections of tools";
     EXPECT_TRUE(preview->property("collapsible").toBool());
 }
 

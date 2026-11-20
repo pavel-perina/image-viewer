@@ -6,9 +6,10 @@ import ImageViewer
 // The caption over a pane of the browser (Folders, Preview) or a section of a tool's panel, so
 // that they read alike. One that can be collapsed has its caret at the right, out of the
 // caption's way, so that captions start at one place whether they collapse or not; a click
-// anywhere on it collapses or opens. A section may also show that it is in use, by a mark in the
-// accent that stays when collapsed, have a box that turns it on and off while keeping its
-// values, and a Reset while in use.
+// anywhere on it collapses or opens. A section may also have a box that turns it on and off
+// while keeping its values, and the arrow that resets values elsewhere, enabled while the
+// section is in use, which so shows it in use when folded too; and stand on a band, raised a
+// little from the panel, so that sections read apart from their controls.
 Item {
     id: header
 
@@ -20,8 +21,10 @@ Item {
     property bool inUse: false
     property bool switchable: false
     property bool on: true
+    property bool switchEnabled: true
     property string switchTip
     property bool resettable: false
+    property bool banded: false
     signal toggled()
     signal switched(bool on)
     signal resetRequested()
@@ -29,20 +32,20 @@ Item {
     implicitHeight: 26
 
     Rectangle {
+        objectName: "paneHeaderBand"
         anchors.fill: parent
-        color: header.collapsible && hover.hovered ? Theme.hover : "transparent"
+        visible: header.banded
+        radius: Theme.controlRadius
+        gradient: Gradient {
+            GradientStop { position: 0; color: Theme.surfaceTop }
+            GradientStop { position: 1; color: Theme.surfaceBottom }
+        }
+        border.color: Theme.paneFrame
     }
     Rectangle {
-        objectName: "paneHeaderInUse"
-        visible: header.inUse
-        anchors.left: parent.left
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
-        width: 3
-        radius: 1
-        color: Theme.accent
+        anchors.fill: parent
+        radius: header.banded ? Theme.controlRadius : 0
+        color: header.collapsible && hover.hovered ? Theme.hover : "transparent"
     }
     RowLayout {
         anchors.fill: parent
@@ -53,6 +56,7 @@ Item {
         CheckBox {
             objectName: "paneHeaderSwitch"
             visible: header.switchable
+            enabled: header.switchEnabled
             focusPolicy: Qt.NoFocus
             padding: 2
             checked: header.on
@@ -66,7 +70,8 @@ Item {
             Layout.fillWidth: true
             text: header.text
             color: header.focused ? Theme.text : Theme.textMuted
-            font.weight: header.focused ? Font.DemiBold : Font.Normal
+            // On a band the caption stands out already; bold would shout.
+            font.weight: header.banded ? Font.Medium : header.focused ? Font.DemiBold : Font.Normal
             elide: Text.ElideRight
         }
         Label {
@@ -77,15 +82,15 @@ Item {
             color: Theme.textMuted
             font.pointSize: Theme.smallSize
         }
-        ToolButton {
+        IconButton {
             objectName: "paneHeaderReset"
-            visible: header.resettable && header.inUse
+            visible: header.resettable
+            enabled: header.inUse
             focusPolicy: Qt.NoFocus
-            Layout.preferredHeight: header.height - 4
+            iconName: "edit-reset"
+            iconSize: 16
             padding: 2
-            horizontalPadding: 6
-            text: "Reset"
-            font.pointSize: Theme.smallSize
+            text: "Reset " + header.text
             onClicked: header.resetRequested()
         }
         Caret {

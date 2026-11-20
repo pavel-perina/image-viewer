@@ -1089,11 +1089,17 @@ Left out for now:
 * The panel is in sections stacked in the order the stages run, so that reading order is
   processing order: White balance, Levels, Lightness and colour in Oklab, Colour table. No tabs,
   which would hide the order. Each section's caption is a `PaneHeader`, as the browser's panes
-  have, through `ToolSection`: a click folds it; a mark in the accent says it is in use, also
-  when folded; Reset resets that section alone; and a box switches it off while keeping its
-  values, to see whether it helps. A section switched off gives the values that change nothing,
-  in the preview and in what Apply applies. Which sections are folded is remembered as tool
-  state, not a preference; switching off is not, as it is a way of comparing.
+  have, through `ToolSection`: a click folds it; an arrow resets that section alone, and is
+  enabled only while the section is in use, so it shows that also when folded (a mark in the
+  accent beside it said the same thing twice and drew the eye); and a box switches it off while keeping its
+  values, to see whether it helps; its controls then show their values greyed, rather than
+  folding away, as they are what is being compared. A section switched off gives the values that
+  change nothing, in the preview and in what Apply applies. Which sections are folded is
+  remembered as tool state, not a preference; switching off is not, as it is a way of comparing.
+  The caption stands on a band in the colours of a card, raised a little from the panel, so that
+  sections read apart from their controls; the browser's captions have none. A section that
+  does not apply to what is open (white balance and the colour table on a gray picture) keeps a
+  caption that folds and says why, with its box and controls disabled.
 * White balance (`core/white_balance.h`) is for rendered pictures, whose original light cannot
   be recovered from their pixels. So its controls say what white the picture is to be taken as
   having and correct that to neutral, as raw editors' controls read: Temperature in kelvins,

@@ -1576,20 +1576,21 @@ TEST(Adjust, SectionsShowWhatIsInUseResetAloneAndSwitchOff) {
         ASSERT_TRUE(settled(f.image));
         QMetaObject::invokeMethod(f.page, "startAdjust");
         waitUntil([] { return false; }, 300);  // the panel slides in
-        QQuickItem* mark = f.in("adjustOklabHeader", "paneHeaderInUse");
-        QQuickItem* levelsMark = f.in("adjustLevelsHeader", "paneHeaderInUse");
+        // The caption's reset arrow is what shows a section in use, folded or not.
+        QQuickItem* mark = f.in("adjustOklabHeader", "paneHeaderReset");
+        QQuickItem* levelsMark = f.in("adjustLevelsHeader", "paneHeaderReset");
         ASSERT_NE(mark, nullptr);
-        EXPECT_FALSE(mark->isVisible());
+        EXPECT_FALSE(mark->isEnabled());
 
         f.panel->setProperty("saturation", 50);
         f.panel->setProperty("black", 40);
-        EXPECT_TRUE(mark->isVisible());
-        EXPECT_TRUE(levelsMark->isVisible());
+        EXPECT_TRUE(mark->isEnabled());
+        EXPECT_TRUE(levelsMark->isEnabled());
         EXPECT_DOUBLE_EQ(f.image->colorPreviewChroma(), 0.5);
 
         f.click(f.in("adjustOklabHeader", "paneHeaderText"));
         EXPECT_FALSE(f.named("adjustSaturation")->isVisible()) << "folded";
-        EXPECT_TRUE(mark->isVisible()) << "in use shows when folded too";
+        EXPECT_TRUE(mark->isVisible() && mark->isEnabled()) << "in use shows when folded too";
 
         f.click(f.in("adjustOklabHeader", "paneHeaderSwitch"));
         EXPECT_FALSE(f.panel->property("oklabOn").toBool());
@@ -1601,7 +1602,7 @@ TEST(Adjust, SectionsShowWhatIsInUseResetAloneAndSwitchOff) {
 
         f.click(f.in("adjustOklabHeader", "paneHeaderReset"));
         EXPECT_DOUBLE_EQ(f.panel->property("saturation").toDouble(), 100);
-        EXPECT_FALSE(mark->isVisible());
+        EXPECT_FALSE(mark->isEnabled());
         EXPECT_DOUBLE_EQ(f.panel->property("black").toDouble(), 40) << "levels are another section";
         QMetaObject::invokeMethod(f.page, "cancelAdjust");
     }

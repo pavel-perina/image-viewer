@@ -13,6 +13,7 @@ Where the build differs from what follows:
 * The temperature cannot be typed yet: Adjust has no fields, so that Enter always applies.
 * The patch is outlined once picked and while dragging, not under the hovering mouse.
 * The colour table's Clear is the section's Reset.
+* In use is shown by the section's reset arrow being enabled, not by a mark in the accent.
 
 ## 1. The panel in sections
 
