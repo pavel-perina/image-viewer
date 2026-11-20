@@ -2,10 +2,12 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
 
+#include "core/geometry.h"
 #include "core/image_buffer.h"
 
 namespace iv {
@@ -25,6 +27,19 @@ struct RgbPrimaries {
 
 inline constexpr RgbPrimaries kSrgbPrimaries{{0.64, 0.33}, {0.30, 0.60}, {0.15, 0.06}, {0.3127, 0.3290}};
 inline constexpr RgbPrimaries kAdobeRgbPrimaries{{0.64, 0.33}, {0.21, 0.71}, {0.15, 0.06}, {0.3127, 0.3290}};
+
+// From linear RGB of those primaries to XYZ, white at Y = 1.
+Matrix3 rgbToXyz(const RgbPrimaries& primaries);
+
+// The same from an RGB matrix-shaper profile, as most are, referred to D65 like the above: ICC
+// keeps the colorants adapted to D50, which is undone by the profile's own adaptation matrix,
+// or by Bradford's from D50 to D65 for a profile without one. So an sRGB profile gives what
+// sRGB's primaries give. Empty for a profile of another kind, or one that cannot be read.
+std::optional<Matrix3> profileRgbToXyz(std::span<const std::uint8_t> profile);
+
+// Chromatic adaptation of XYZ from one white to another by the Bradford matrix, as ICC
+// profiles and Little CMS use.
+Matrix3 bradfordAdaptation(const std::array<double, 3>& fromWhite, const std::array<double, 3>& toWhite);
 
 // A gamma of 0 selects the sRGB curve. Empty if the values cannot make a profile.
 IccBytes makeRgbProfile(const std::string& name, const RgbPrimaries& primaries, double gamma);

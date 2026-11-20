@@ -231,6 +231,28 @@ void throughOklab(std::vector<float>& samples, int channels, bool clip, OklabPla
     }
 }
 
+// White balance on R, G, B samples as stored: decoded, through the matrix, and encoded again.
+// Integer formats have what leaves the range fitted by chroma when gamutMap is on, and clipped
+// in linear light otherwise, as the preview does; floats keep it.
+void balanceWhite(std::vector<float>& samples, const Matrix3& matrix, const std::array<double, 3>& luminance, bool clip,
+                  bool gamutMap) {
+    for (std::size_t i = 0; i < samples.size(); i += 3) {
+        float* p = &samples[i];
+        std::array<double, 3> rgb = matrix * std::array<double, 3>{srgbDecode(p[0]), srgbDecode(p[1]), srgbDecode(p[2])};
+        if (clip && gamutMap) {
+            rgb = fitByChroma(rgb, luminance);
+        }
+        if (clip) {
+            for (double& c : rgb) {
+                c = std::clamp(c, 0.0, 1.0);
+            }
+        }
+        p[0] = static_cast<float>(srgbEncode(rgb[0]));
+        p[1] = static_cast<float>(srgbEncode(rgb[1]));
+        p[2] = static_cast<float>(srgbEncode(rgb[2]));
+    }
+}
+
 std::string_view trimmed(std::string_view text) {
     const auto first = text.find_first_not_of(" \t\r");
     if (first == std::string_view::npos) {
@@ -468,7 +490,7 @@ Result<ColorCube> parseCube(std::string_view text) {
 
 bool ColorEdit::operator==(const ColorEdit& other) const {
     const bool sameCube = cube == other.cube || (cube && other.cube && *cube == *other.cube);
-    return sameCube && tone == other.tone && lightness == other.lightness && chroma == other.chroma &&
+    return sameCube && whiteBalance == other.whiteBalance && workingSpace == other.workingSpace && tone == other.tone && lightness == other.lightness && chroma == other.chroma &&
            gamutMap == other.gamutMap;
 }
 
@@ -478,11 +500,14 @@ ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const s
     if (edit.isIdentity() || (gray && edit.tone.isIdentity() && edit.lightness.isIdentity())) {
         return source;
     }
+    const bool balance = !gray && !edit.whiteBalance.isIdentity();
     const int channels = channelsOf(format);
     const bool clip = format != PixelFormat::Rgba32F && format != PixelFormat::Gray32F;
     const bool oklab = gray ? !edit.lightness.isIdentity() : edit.usesOklab();
     const ColorCube* cube = gray ? nullptr : edit.cube.get();
     const ImageBuffer target = ImageBuffer::create(source.size(), format).withAlpha(source.hasAlpha());  // alpha is copied as it is
+    const Matrix3 white = balance ? whiteBalanceMatrix(edit.whiteBalance, edit.workingSpace) : Matrix3{};
+    const std::array<double, 3> luminance{edit.workingSpace.m[3], edit.workingSpace.m[4], edit.workingSpace.m[5]};
     const int width = source.width();
     std::atomic<bool> stopped = false;
     inBands(source.height(), width, [&](int firstRow, int endRow) {
@@ -498,6 +523,9 @@ ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const s
             samples.resize(rowSamples * static_cast<std::size_t>(rows));
             for (int r = 0; r < rows; ++r) {
                 readRow(source, y + r, samples.data() + rowSamples * static_cast<std::size_t>(r));
+            }
+            if (balance) {
+                balanceWhite(samples, white, luminance, clip, edit.gamutMap);
             }
             if (!edit.tone.isIdentity()) {
                 for (float& sample : samples) {

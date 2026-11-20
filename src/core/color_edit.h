@@ -6,8 +6,10 @@
 #include <string_view>
 #include <vector>
 
+#include "core/color.h"
 #include "core/image_buffer.h"
 #include "core/image_source.h"
+#include "core/white_balance.h"
 
 namespace iv {
 
@@ -53,12 +55,17 @@ ColorCube identityCube(int size);
 Result<ColorCube> parseCube(std::string_view text);
 
 // Colour and tone changes of a picture, as one edit. The stages run in a fixed order, each off
-// unless set: a curve on the samples as stored, the same for R, G and B; then in Oklab, a curve on
-// lightness and a gain on chroma; then a cube on the result as stored. The Oklab stages work on
-// planes of a band of rows at a time, which is where changes that look at neighbouring pixels,
-// such as noise reduction on lightness or chroma, are meant to go.
+// unless set: white balance in linear light of the picture's own RGB; a curve on the samples as
+// stored, the same for R, G and B; then in Oklab, a curve on lightness and a gain on chroma;
+// then a cube on the result as stored. The Oklab stages work on planes of a band of rows at a
+// time, which is where changes that look at neighbouring pixels, such as local contrast, are
+// meant to go.
 // Gray pictures take the curves only: chroma and the cube would make colour out of them.
 struct ColorEdit {
+    WhiteBalance whiteBalance;
+    // The picture's RGB to XYZ, which white balance works in: from its profile, else sRGB. A
+    // value, not a reference to the picture, so the edit can be repeated on another.
+    Matrix3 workingSpace = rgbToXyz(kSrgbPrimaries);
     Curve tone;
     Curve lightness;
     double chroma = 1;
@@ -68,7 +75,7 @@ struct ColorEdit {
     bool gamutMap = true;
     std::shared_ptr<const ColorCube> cube;
 
-    bool isIdentity() const { return tone.isIdentity() && lightness.isIdentity() && chroma == 1 && !cube; }
+    bool isIdentity() const { return whiteBalance.isIdentity() && tone.isIdentity() && lightness.isIdentity() && chroma == 1 && !cube; }
     bool usesOklab() const { return !lightness.isIdentity() || chroma != 1; }
     bool operator==(const ColorEdit& other) const;
 };

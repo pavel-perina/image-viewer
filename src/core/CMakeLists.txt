@@ -17,6 +17,7 @@ add_library(iv_core STATIC
     color_choice.cpp
     color_choice.h
     color_edit.cpp
+    white_balance.cpp
     color_edit.h
     crop.cpp
     crop.h

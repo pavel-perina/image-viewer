@@ -13,6 +13,7 @@ add_executable(iv_core_tests
     perspective_tests.cpp
     gray_tests.cpp
     color_edit_tests.cpp
+    white_balance_tests.cpp
     core_tests.cpp
     decompress_tests.cpp
     format_tests.cpp

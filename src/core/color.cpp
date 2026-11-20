@@ -177,6 +177,61 @@ struct CacheEntry {
 
 }  // namespace
 
+Matrix3 rgbToXyz(const RgbPrimaries& p) {
+    const auto xyz = [](const Chromaticity& c) { return std::array<double, 3>{c.x / c.y, 1, (1 - c.x - c.y) / c.y}; };
+    const auto r = xyz(p.red);
+    const auto g = xyz(p.green);
+    const auto b = xyz(p.blue);
+    const Matrix3 columns{{r[0], g[0], b[0], r[1], g[1], b[1], r[2], g[2], b[2]}};
+    // Each primary scaled so that together they make the white.
+    const auto scale = columns.inverse() * xyz(p.white);
+    Matrix3 m = columns;
+    for (std::size_t row = 0; row < 3; ++row) {
+        for (std::size_t col = 0; col < 3; ++col) {
+            m.m[row * 3 + col] *= scale[col];
+        }
+    }
+    return m;
+}
+
+std::optional<Matrix3> profileRgbToXyz(std::span<const std::uint8_t> bytes) {
+    const Profile profile = openProfile(bytes);
+    if (!profile || cmsGetColorSpace(profile.get()) != cmsSigRgbData || !cmsIsMatrixShaper(profile.get())) {
+        return std::nullopt;
+    }
+    const auto* r = static_cast<const cmsCIEXYZ*>(cmsReadTag(profile.get(), cmsSigRedColorantTag));
+    const auto* g = static_cast<const cmsCIEXYZ*>(cmsReadTag(profile.get(), cmsSigGreenColorantTag));
+    const auto* b = static_cast<const cmsCIEXYZ*>(cmsReadTag(profile.get(), cmsSigBlueColorantTag));
+    if (!r || !g || !b) {
+        return std::nullopt;
+    }
+    const Matrix3 d50{{r->X, g->X, b->X, r->Y, g->Y, b->Y, r->Z, g->Z, b->Z}};
+    // The profile's adaptation from its own white to D50, undone; else Bradford to D65.
+    Matrix3 back = bradfordAdaptation({0.9642, 1.0, 0.8249}, {0.95047, 1.0, 1.08883});
+    // Read as nine numbers, row by row.
+    if (const auto* chad = static_cast<const cmsFloat64Number*>(cmsReadTag(profile.get(), cmsSigChromaticAdaptationTag))) {
+        Matrix3 toD50;
+        std::copy_n(chad, 9, toD50.m.begin());
+        if (std::isfinite(toD50.inverse().m[0])) {
+            back = toD50.inverse();
+        }
+    }
+    const Matrix3 m = back * d50;
+    const auto white = m * std::array<double, 3>{1, 1, 1};
+    if (!(white[1] > 0) || !std::isfinite(m.inverse().m[0])) {
+        return std::nullopt;
+    }
+    return m;
+}
+
+Matrix3 bradfordAdaptation(const std::array<double, 3>& fromWhite, const std::array<double, 3>& toWhite) {
+    constexpr Matrix3 kBradford{{0.8951, 0.2664, -0.1614, -0.7502, 1.7135, 0.0367, 0.0389, -0.0685, 1.0296}};
+    const auto from = kBradford * fromWhite;
+    const auto to = kBradford * toWhite;
+    const Matrix3 scale{{to[0] / from[0], 0, 0, 0, to[1] / from[1], 0, 0, 0, to[2] / from[2]}};
+    return kBradford.inverse() * scale * kBradford;
+}
+
 IccBytes makeRgbProfile(const std::string& name, const RgbPrimaries& p, double gamma) {
     quietenLcms();
     const cmsCIExyY white{p.white.x, p.white.y, 1.0};
