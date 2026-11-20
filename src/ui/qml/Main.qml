@@ -302,6 +302,42 @@ ApplicationWindow {
         enabled: window.canEdit && !window.toolActive
         onTriggered: window.startTool(() => frameDialog.open())
     }
+    // Quarter turns and mirroring, as edits: they move the pixels exactly.
+    Action {
+        id: rotateClockwiseAction
+        objectName: "rotateClockwiseAction"
+        text: "Rotate 90° &Clockwise"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.rotate(1))
+    }
+    Action {
+        id: rotateAnticlockwiseAction
+        objectName: "rotateAnticlockwiseAction"
+        text: "Rotate 90° &Anticlockwise"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.rotate(-1))
+    }
+    Action {
+        id: rotate180Action
+        objectName: "rotate180Action"
+        text: "Rotate &180°"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.rotate(2))
+    }
+    Action {
+        id: flipHorizontalAction
+        objectName: "flipHorizontalAction"
+        text: "Flip &Horizontally"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.flip(true))
+    }
+    Action {
+        id: flipVerticalAction
+        objectName: "flipVerticalAction"
+        text: "Flip &Vertically"
+        enabled: window.canEdit && !window.toolActive
+        onTriggered: window.startTool(() => viewerPage.view.flip(false))
+    }
     // Gray by the weights JPEG uses for Y, or by the lightness of Oklab with no chroma.
     Action {
         id: grayLumaAction
@@ -431,6 +467,16 @@ ApplicationWindow {
             MenuSeparator {}
             AppMenuItem { action: cropAction }
             AppMenuItem { action: straightenAction }
+            AppMenu {
+                title: "R&otate and Flip"
+                enabled: window.canEdit && !window.toolActive
+                AppMenuItem { action: rotateClockwiseAction }
+                AppMenuItem { action: rotateAnticlockwiseAction }
+                AppMenuItem { action: rotate180Action }
+                MenuSeparator {}
+                AppMenuItem { action: flipHorizontalAction }
+                AppMenuItem { action: flipVerticalAction }
+            }
             AppMenuItem { action: annotateAction }
             AppMenuItem { action: resizeAction }
             AppMenuItem { action: frameAction }
@@ -558,6 +604,8 @@ ApplicationWindow {
             ToolSeparator { visible: window.viewing }
             IconButton { objectName: "cropButton"; action: cropAction; iconName: "transform-crop"; visible: window.viewing }
             IconButton { objectName: "straightenButton"; action: straightenAction; iconName: "straighten"; visible: window.viewing }
+            IconButton { objectName: "rotateAnticlockwiseButton"; action: rotateAnticlockwiseAction; iconName: "object-rotate-left"; visible: window.viewing }
+            IconButton { objectName: "rotateClockwiseButton"; action: rotateClockwiseAction; iconName: "object-rotate-right"; visible: window.viewing }
             IconButton { objectName: "annotateButton"; action: annotateAction; iconName: "annotate"; visible: window.viewing }
             IconButton { objectName: "resizeButton"; action: resizeAction; iconName: "image-resize"; visible: window.viewing }
             IconButton { objectName: "adjustButton"; action: adjustAction; iconName: "adjust-colours"; visible: window.viewing }

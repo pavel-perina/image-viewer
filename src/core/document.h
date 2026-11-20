@@ -75,7 +75,16 @@ struct FrameEdit {
     bool operator==(const FrameEdit&) const = default;
 };
 
-using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit, DrawEdit, FrameEdit>;
+// Turns the picture by quarter turns or mirrors it, moving its pixels exactly, so that depth,
+// alpha and colour profile stay as they were. A quarter turn swaps width and height. Any
+// orientation works; the editor uses Rotate90CW, Rotate270CW, Rotate180, MirrorHorizontal and
+// MirrorVertical.
+struct RotateFlipEdit {
+    Orientation orientation = Orientation::Normal;
+    bool operator==(const RotateFlipEdit&) const = default;
+};
+
+using Edit = std::variant<CropEdit, ResizeEdit, TiltEdit, GrayEdit, ColorEdit, DrawEdit, FrameEdit, RotateFlipEdit>;
 
 // Whether a subimage can be edited, and if not, why. It is held whole in memory, so it has to
 // be small enough to be saved whole.

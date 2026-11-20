@@ -1195,7 +1195,7 @@ ImageBuffer toDisplayWide(const ImageBuffer& source, DisplayRange range, const C
     return transform && !stretchedFloat ? transform->applyWide(target) : target;
 }
 
-ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation) {
+ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation, const std::stop_token& stop) {
     if (orientation == Orientation::Normal) {
         return source;
     }
@@ -1203,6 +1203,9 @@ ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation)
     const Affine transform = displayFromStored(source.size(), orientation);
     const auto pixelBytes = static_cast<std::size_t>(bytesPerPixel(source.format()));
     for (int y = 0; y < source.height(); ++y) {
+        if (stop.stop_requested()) {
+            return {};
+        }
         const std::byte* in = source.row(y);
         for (int x = 0; x < source.width(); ++x, in += pixelBytes) {
             double outX = 0;

@@ -1454,6 +1454,31 @@ void ImageView::grayscale(int method) {
     d.showEdit();
 }
 
+void ImageView::rotate(int quarterTurns) {
+    switch (((quarterTurns % 4) + 4) % 4) {
+    case 1: applyRotateFlip(Orientation::Rotate90CW); break;
+    case 2: applyRotateFlip(Orientation::Rotate180); break;
+    case 3: applyRotateFlip(Orientation::Rotate270CW); break;
+    default: break;  // a whole turn changes nothing
+    }
+}
+
+void ImageView::flip(bool horizontal) {
+    applyRotateFlip(horizontal ? Orientation::MirrorHorizontal : Orientation::MirrorVertical);
+}
+
+void ImageView::applyRotateFlip(Orientation orientation) {
+    Impl& d = *m_impl;
+    if (!editable() || d.status != Status::Ready) {
+        return;
+    }
+    if (!d.edit) {
+        d.edit.emplace(d.fileSource, d.filePage);
+    }
+    d.edit->apply(RotateFlipEdit{orientation});
+    d.showEdit();
+}
+
 void ImageView::draw(const std::vector<Shape>& shapes) {
     Impl& d = *m_impl;
     if (!editable() || d.status != Status::Ready || shapes.empty()) {

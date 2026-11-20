@@ -29,7 +29,8 @@ Size sizeAfter(Size before, const Edit& edit) {
                                  [&](const GrayEdit&) { return before; },
                                  [&](const ColorEdit&) { return before; },
                                  [&](const DrawEdit&) { return before; },
-                                 [&](const FrameEdit& frame) { return framedSize(before, frame.look); }},
+                                 [&](const FrameEdit& frame) { return framedSize(before, frame.look); },
+                                 [&](const RotateFlipEdit& turn) { return displaySize(before, turn.orientation); }},
                       edit);
 }
 
@@ -100,7 +101,8 @@ ImageBuffer applyEdit(const ImageBuffer& pixels, const Edit& edit, const std::st
                                  [&](const GrayEdit& gray) { return toGray(pixels, gray.method, stop); },
                                  [&](const ColorEdit& color) { return applyColor(pixels, color, stop); },
                                  [&](const DrawEdit& drawn) { return draw(pixels, drawn); },
-                                 [&](const FrameEdit& frame) { return framed(pixels, frame.look); }},
+                                 [&](const FrameEdit& frame) { return framed(pixels, frame.look); },
+                                 [&](const RotateFlipEdit& turn) { return applyOrientation(pixels, turn.orientation, stop); }},
                       edit);
 }
 

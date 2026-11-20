@@ -1,9 +1,15 @@
+#include <array>
 #include <cstdlib>
+#include <filesystem>
+#include <functional>
+#include <random>
 
 #include <gtest/gtest.h>
 
 #include "core/document.h"
+#include "core/image_writer.h"
 #include "core/jpeg_source.h"
+#include "core/save_image.h"
 #include "core/whole_image_source.h"
 #include "test_jpeg.h"
 
@@ -434,4 +440,168 @@ TEST(Document, AFrameGrowsThePictureAndDecidesItsAlpha) {
     gray.apply(FrameEdit{look});
     EXPECT_EQ(gray.source()->subimages()[0].format, PixelFormat::Bgrx8);
     EXPECT_EQ(pixelsOf(gray).format(), PixelFormat::Bgrx8);
+}
+
+namespace {
+
+// 3 x 2, 16 bits with alpha, every sample different: red (y * 3 + x + 1) * 1000, alpha 60000 - the
+// same, so a pixel that lands in the wrong place, or loses depth or alpha, shows.
+constexpr Size kSmall{3, 2};
+std::uint16_t redAt(int x, int y) { return static_cast<std::uint16_t>((y * kSmall.width + x + 1) * 1000); }
+
+std::shared_ptr<ImageSource> numberedSource() {
+    SubimageInfo info;
+    info.format = PixelFormat::Rgba16;
+    info.alpha = true;
+    info.iccProfile = {1, 2, 3, 4};
+    return makeWholeImageSource(info, kSmall, [](const std::stop_token&) -> Result<ImageBuffer> {
+        const ImageBuffer image = ImageBuffer::create(kSmall, PixelFormat::Rgba16);
+        for (int y = 0; y < kSmall.height; ++y) {
+            auto* p = reinterpret_cast<std::uint16_t*>(image.row(y));
+            for (int x = 0; x < kSmall.width; ++x, p += 4) {
+                p[0] = redAt(x, y), p[1] = 7, p[2] = 9, p[3] = static_cast<std::uint16_t>(60000 - redAt(x, y));
+            }
+        }
+        return image.withAlpha(true);
+    });
+}
+
+std::array<std::uint16_t, 4> sampleAt(const ImageBuffer& image, int x, int y) {
+    const auto* p = reinterpret_cast<const std::uint16_t*>(image.row(y)) + static_cast<std::size_t>(x) * 4;
+    return {p[0], p[1], p[2], p[3]};
+}
+
+}  // namespace
+
+// Why: rotating and flipping move pixels, never resample them, so nothing of the picture may be
+// lost. Input: a 3 x 2 picture, 16 bits with alpha and a profile, each pixel numbered, under each
+// of the five operations. The truth: for every pixel of the result, the source pixel the
+// operation's definition names (a clockwise turn puts the bottom left at the top left), the size
+// swapped by quarter turns, and format, alpha and profile kept.
+TEST(Document, RotatingAndFlippingMovePixelsExactly) {
+    struct Case {
+        Orientation orientation;
+        Size size;
+        // The source pixel a result pixel X, Y comes from.
+        std::function<std::pair<int, int>(int x, int y)> from;
+    };
+    const int w = kSmall.width;
+    const int h = kSmall.height;
+    const Case cases[] = {
+        {Orientation::Rotate90CW, {h, w}, [=](int x, int y) { return std::pair{y, h - 1 - x}; }},
+        {Orientation::Rotate270CW, {h, w}, [=](int x, int y) { return std::pair{w - 1 - y, x}; }},
+        {Orientation::Rotate180, {w, h}, [=](int x, int y) { return std::pair{w - 1 - x, h - 1 - y}; }},
+        {Orientation::MirrorHorizontal, {w, h}, [=](int x, int y) { return std::pair{w - 1 - x, y}; }},
+        {Orientation::MirrorVertical, {w, h}, [=](int x, int y) { return std::pair{x, h - 1 - y}; }},
+    };
+    for (const Case& c : cases) {
+        Document document(numberedSource(), 0);
+        document.apply(RotateFlipEdit{c.orientation});
+        EXPECT_EQ(document.size(), c.size);
+        const auto source = document.source();
+        const SubimageInfo& info = source->subimages()[0];
+        EXPECT_EQ(info.format, PixelFormat::Rgba16);
+        EXPECT_TRUE(info.alpha);
+        EXPECT_EQ(info.iccProfile, (std::vector<std::uint8_t>{1, 2, 3, 4}));
+        const ImageBuffer pixels = pixelsOf(document);
+        ASSERT_EQ(pixels.size(), c.size);
+        EXPECT_TRUE(pixels.hasAlpha());
+        for (int y = 0; y < c.size.height; ++y) {
+            for (int x = 0; x < c.size.width; ++x) {
+                const auto [fx, fy] = c.from(x, y);
+                const auto sample = sampleAt(pixels, x, y);
+                EXPECT_EQ(sample[0], redAt(fx, fy)) << static_cast<int>(c.orientation) << " at " << x << "," << y;
+                EXPECT_EQ(sample[3], 60000 - redAt(fx, fy));
+            }
+        }
+    }
+}
+
+// Why: the operations undo one another as their names promise, which a mistake in one of them
+// would break. Input: four clockwise turns; a clockwise and an anticlockwise one; two flips of each
+// kind; two half turns; a half turn against both flips. The truth: the picture as it was.
+TEST(Document, TurnsAndFlipsCancelAsTheyShould) {
+    using O = Orientation;
+    const std::vector<std::vector<O>> sequences{
+        {O::Rotate90CW, O::Rotate90CW, O::Rotate90CW, O::Rotate90CW},
+        {O::Rotate90CW, O::Rotate270CW},
+        {O::MirrorHorizontal, O::MirrorHorizontal},
+        {O::MirrorVertical, O::MirrorVertical},
+        {O::Rotate180, O::Rotate180},
+        {O::Rotate180, O::MirrorHorizontal, O::MirrorVertical},
+    };
+    for (const auto& sequence : sequences) {
+        Document document(numberedSource(), 0);
+        for (const O o : sequence) {
+            document.apply(RotateFlipEdit{o});
+        }
+        EXPECT_EQ(document.size(), kSmall);
+        const ImageBuffer pixels = pixelsOf(document);
+        for (int y = 0; y < kSmall.height; ++y) {
+            for (int x = 0; x < kSmall.width; ++x) {
+                EXPECT_EQ(sampleAt(pixels, x, y)[0], redAt(x, y)) << sequence.size() << " at " << x << "," << y;
+            }
+        }
+    }
+}
+
+// Why: a turn applies to the upright picture after the edits before it, and the edits after it
+// use its coordinates; undo and redo step over it like any edit. Input: a JPEG turned upright by
+// EXIF (40 x 80, red above blue), turned clockwise, then its left half cropped. The truth: 80 x 40
+// with red on the right after the turn, all blue after the crop, and each undo and redo giving
+// back the size before it.
+TEST(Document, ATurnComposesWithOtherEditsAndUndoes) {
+    Document document(turnedJpeg(), 0);
+    document.apply(RotateFlipEdit{Orientation::Rotate90CW});
+    EXPECT_TRUE(document.modified());
+    EXPECT_EQ(document.size(), (Size{80, 40}));
+    ImageBuffer pixels = pixelsOf(document);
+    EXPECT_TRUE(isRed(pixels, 70, 20)) << "the top went to the right";
+    EXPECT_TRUE(isBlue(pixels, 10, 20));
+
+    document.apply(CropEdit{{0, 0, 40, 40}});
+    pixels = pixelsOf(document);
+    EXPECT_TRUE(isBlue(pixels, 0, 0));
+    EXPECT_TRUE(isBlue(pixels, 39, 39));
+
+    document.undo();
+    EXPECT_EQ(document.size(), (Size{80, 40}));
+    document.undo();
+    EXPECT_EQ(document.size(), (Size{40, 80}));
+    EXPECT_FALSE(document.modified());
+    document.redo();
+    EXPECT_EQ(document.size(), (Size{80, 40}));
+}
+
+// Why: a turned picture is saved upright, and must not keep the EXIF orientation of the original,
+// or every viewer would turn it a second time. Input: the EXIF-turned JPEG turned clockwise,
+// saved as TIFF and opened again. The truth: 80 x 40, red on the right, no orientation left.
+TEST(Document, ATurnedPictureIsSavedAsShown) {
+    Document document(turnedJpeg(), 0);
+    document.apply(RotateFlipEdit{Orientation::Rotate90CW});
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / ("iv_turned_" + std::to_string(std::random_device{}()) + ".tif");
+    const auto saved = saveSubimage(*document.source(), 0, path, TiffWriteOptions{}, SaveOptions{}, false);
+    ASSERT_TRUE(saved) << saved.error();
+    auto reopened = openImageSource(path);
+    std::filesystem::remove(path);
+    ASSERT_TRUE(reopened) << reopened.error();
+    const SubimageInfo& info = (*reopened)->subimages()[0];
+    EXPECT_EQ(info.orientation, Orientation::Normal);
+    EXPECT_EQ(info.levels.front().size, (Size{80, 40}));
+    auto pixels = readLevel(**reopened, 0, 0, {});
+    ASSERT_TRUE(pixels);
+    EXPECT_TRUE(isRed(*pixels, 70, 20));
+    EXPECT_TRUE(isBlue(*pixels, 10, 20));
+}
+
+// Why: turning a large picture runs on a worker that may be told to stop, for instance when
+// another image is opened, and should stop between rows rather than finish. Input: a stop
+// requested before turning. The truth: an empty buffer, as other operations give when stopped.
+TEST(Document, TurningStopsWhenAsked) {
+    const ImageBuffer image = ImageBuffer::create({64, 64}, PixelFormat::Bgrx8);
+    std::stop_source stop;
+    stop.request_stop();
+    EXPECT_TRUE(applyOrientation(image, Orientation::Rotate90CW, stop.get_token()).isNull());
+    EXPECT_FALSE(applyOrientation(image, Orientation::Rotate90CW).isNull());
 }

@@ -39,5 +39,12 @@ Tests cover exact pixels and dimensions for all five operations, preserved alpha
 EXIF-upright inputs, edit composition and Undo/Redo, and a saved/reopened result. UI
 tests cover the actions from both browser and viewer, edit gating, and toolbar icons.
 
+## Batch operations
+
+The edit holds only an orientation, with no reference to the picture it was made on, so it can
+be part of the batch operations planned later: the same turn or flip applied to every chosen
+picture, alone or with other edits such as resize. For JPEGs, a batch made only of turns, flips
+and crops could use the lossless JPEG tools instead of encoding again.
+
 Browser sorting and hidden-folder controls remain in the main browsing interface;
 they do not need a Settings page.

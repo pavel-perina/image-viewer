@@ -951,6 +951,23 @@ the question before leaving an edited image. Still planned lists the rest.
 * The same Oklab conversion is meant for a later lightness, chroma and hue adjustment, of which
   grayscale is chroma at zero.
 
+### Rotate and flip
+* Quarter turns, a half turn and flips both ways are edits like the others, from Edit > Rotate and
+  Flip, with the two quarter turns also on the tool bar, as `doc/design/rotate-flip-editor.md`
+  proposed. They apply at once, with no panel, since undo is the way back.
+* They move pixels exactly, through the `applyOrientation` that already turns EXIF-oriented
+  pictures upright, so depth, alpha and the colour profile stay. One edit holds an orientation,
+  so any of the eight would work; the editor offers five.
+* They apply to the picture after the edits before them, and the tools after them work in the
+  turned picture's coordinates. A saved picture is upright, with its EXIF orientation reset.
+* JPEG is saved through the encoder, as after any edit. The lossless JPEG tools stay what they
+  are: file operations on the coefficients.
+* An edit is a value with no reference to the picture, so the same turn or flip can be applied
+  to many pictures by the batch operations planned later; for JPEGs a batch could choose the
+  lossless tools instead.
+* The menu says "Anticlockwise", as the interface's English is British. No shortcuts yet: they
+  wait for the wider scheme, and Ctrl+R stays Resize.
+
 ### Still planned
 * A document is a base image, an edit list, an optional file path and an unsaved flag.
 * The edit list is the first thing to build for editing, before any individual tool.
@@ -960,7 +977,8 @@ the question before leaving an edited image. Still planned lists the rest.
 * Snapshots are named points in the list. "Unmodified" and "last saved" are two of them.
 * Some operations carry their own pixels, such as a pasted layer. These pixels count
   towards the memory limit.
-* If the list holds only rotate, flip and crop, saving a JPEG stays lossless.
+* If the list holds only rotate, flip and crop, saving a JPEG could stay lossless. Not done:
+  edited JPEGs are encoded again; see "Rotate and flip".
 * An edited image is an `ImageSource` wrapping the base, so views work unchanged.
 * The same edit list can drive batch tools and "repeat last edit".
 * Images must fit in memory to be edited at first. Gigapixel TIFFs stay view and export
@@ -1239,8 +1257,6 @@ a shared component, before a second copy; the dialog, its list and saving.
   cannot show what the sliders ask, keeping its room so the dialog does not change height.
 
 ## Known limitations
-* Rotating by 90 degrees and flipping exist only as the lossless JPEG tools, which change files
-  rather than the image being edited.
 * An image that changes on disk while shown is not reloaded, including one replaced by a copy.
   Its thumbnail does update. The lossless JPEG tools are the exception, as they say which files
   they changed.

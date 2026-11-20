@@ -17,6 +17,7 @@
 #include <array>
 #include <memory>
 
+#include "core/geometry.h"
 #include "core/perspective.h"
 #include "core/shapes.h"
 
@@ -188,6 +189,10 @@ public:
     Q_INVOKABLE void frameImage(const QVariantMap& look);
     // Turns the picture gray: 0 weighs R, G and B as JPEG does, 1 keeps Oklab lightness.
     Q_INVOKABLE void grayscale(int method);
+    // Turns the picture by quarter turns, clockwise for positive numbers, or mirrors it left to
+    // right (horizontal) or top to bottom, as one edit that moves the pixels exactly.
+    Q_INVOKABLE void rotate(int quarterTurns);
+    Q_INVOKABLE void flip(bool horizontal);
     // Burns annotation shapes into the picture, as one edit.
     void draw(const std::vector<Shape>& shapes);
     // Before drawing: reads the picture at full size in the background and reports drawReady,
@@ -283,6 +288,8 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
+    void applyRotateFlip(Orientation orientation);
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

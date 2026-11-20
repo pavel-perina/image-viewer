@@ -757,6 +757,39 @@ TEST(Editing, GrayscaleKeepsTheSizeAndUndoes) {
     }
 }
 
+// Why: rotating and flipping are edits like the others: the view shows the result at once,
+// marks it modified and undoes it. Input: a JPEG shown 32 x 64 (stored 64 x 32, turned by EXIF),
+// turned each way, by half a turn, by a whole one, and flipped both ways. The truth: quarter
+// turns swap the size, the rest keep it, every one but the whole turn marks the image modified,
+// and undo brings back the size and the unmodified state.
+TEST(Editing, RotatingAndFlippingTurnTheImageAndUndo) {
+    QTemporaryDir dir;
+    ViewFixture f;
+    ASSERT_TRUE(f.load(writeTurnedJpeg(dir)));
+    ASSERT_EQ(f.view->imageWidth(), 32);
+    ASSERT_EQ(f.view->imageHeight(), 64);
+    const std::vector<std::pair<std::function<void()>, QSize>> cases{
+        {[&] { f.view->rotate(1); }, QSize(64, 32)},
+        {[&] { f.view->rotate(-1); }, QSize(64, 32)},
+        {[&] { f.view->rotate(2); }, QSize(32, 64)},
+        {[&] { f.view->flip(true); }, QSize(32, 64)},
+        {[&] { f.view->flip(false); }, QSize(32, 64)},
+    };
+    for (const auto& [apply, size] : cases) {
+        apply();
+        ASSERT_TRUE(settled(f.view));
+        EXPECT_TRUE(f.view->modified());
+        EXPECT_EQ(QSize(f.view->imageWidth(), f.view->imageHeight()), size);
+        f.view->undo();
+        ASSERT_TRUE(settled(f.view));
+        EXPECT_FALSE(f.view->modified());
+        EXPECT_EQ(f.view->imageHeight(), 64);
+    }
+    f.view->rotate(4);
+    ASSERT_TRUE(settled(f.view));
+    EXPECT_FALSE(f.view->modified()) << "a whole turn is no edit";
+}
+
 TEST(Editing, TheResizeDialogKeepsTheRatioOrFillsAnother) {
     QTemporaryDir dir;
     const QString path = writeTurnedJpeg(dir);

@@ -215,6 +215,8 @@ TEST(Main, ToolBarButtonsShowIconsAndNameThemselvesInTheirTips) {
         {QStringLiteral("autoContrastButton"), QStringLiteral("Auto Contrast")},
         {QStringLiteral("cropButton"), QStringLiteral("Crop (X)")},
         {QStringLiteral("straightenButton"), QStringLiteral("Straighten (S)")},
+        {QStringLiteral("rotateAnticlockwiseButton"), QStringLiteral("Rotate 90° Anticlockwise")},
+        {QStringLiteral("rotateClockwiseButton"), QStringLiteral("Rotate 90° Clockwise")},
         {QStringLiteral("annotateButton"), QStringLiteral("Annotate (D)")},
         {QStringLiteral("resizeButton"), QStringLiteral("Resize (Ctrl+R)")},
         {QStringLiteral("adjustButton"), QStringLiteral("Adjust Colours (A)")},
@@ -535,6 +537,46 @@ TEST(Main, StraightenFromTheBrowserOpensTheImageFirst) {
     ASSERT_TRUE(waitUntil([&] { return window->property("straightening").toBool(); }));
     EXPECT_TRUE(image->source().endsWith(QStringLiteral("tilted2.jpg")));
     EXPECT_EQ(image->status(), ImageView::Status::Ready);
+}
+
+// Why: like Crop and Straighten, rotating from the browser opens the one chosen picture in the
+// viewer and turns it there; with two chosen, or while a tool is at work, there is nothing it
+// could turn. Input: a folder of two JPEGs, both chosen, then one, then Rotate 90° Clockwise, then
+// Crop started. The truth: nothing happens with two; with one the viewer opens on it, turned
+// (32 x 64 becomes 64 x 32) and modified; all five commands are off while cropping.
+TEST(Main, RotateFromTheBrowserOpensTheImageAndTurnsIt) {
+    MainFixture f([](const QTemporaryDir& dir) {
+        writeTurnedJpeg(dir, QStringLiteral("a.jpg"));
+        writeTurnedJpeg(dir, QStringLiteral("b.jpg"));
+    }, QString());
+    ASSERT_NE(f.window, nullptr);
+    QQuickWindow* window = f.window;
+    BrowseContext* context = f.context;
+    ASSERT_TRUE(waitUntil([&] { return context->fileCount() == 2; }));
+    QObject* rotate = f.find(QStringLiteral("rotateClockwiseAction"));
+    ASSERT_NE(rotate, nullptr);
+
+    context->selectAll();
+    EXPECT_FALSE(rotate->property("enabled").toBool()) << "two chosen";
+
+    context->clickFile(1, false, false);
+    ASSERT_TRUE(rotate->property("enabled").toBool());
+    QMetaObject::invokeMethod(rotate, "trigger");
+    EXPECT_TRUE(window->property("viewing").toBool());
+    auto* image = window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->modified(); }));
+    EXPECT_TRUE(image->source().endsWith(QStringLiteral("b.jpg")));
+    EXPECT_EQ(QSize(image->imageWidth(), image->imageHeight()), QSize(64, 32));
+
+    QTest::keyClick(window, Qt::Key_X);
+    ASSERT_TRUE(waitUntil([&] { return window->property("cropping").toBool(); }));
+    for (const char* name : {"rotateClockwiseAction", "rotateAnticlockwiseAction", "rotate180Action", "flipHorizontalAction",
+                             "flipVerticalAction"}) {
+        QObject* action = f.find(QLatin1String(name));
+        ASSERT_NE(action, nullptr) << name;
+        EXPECT_FALSE(action->property("enabled").toBool()) << name << " while cropping";
+    }
+    EXPECT_EQ(f.warnings, QStringList());
 }
 
 TEST(Main, DeleteWhileStraighteningRemovesTheLineNotTheFile) {

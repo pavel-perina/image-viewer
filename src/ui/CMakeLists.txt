@@ -185,6 +185,8 @@ set(iv_icons
     "tabler/contrast.svg=auto-contrast"
     "tabler/crop.svg=transform-crop"
     "tabler/perspective.svg=straighten"
+    "tabler/rotate.svg=object-rotate-left"
+    "tabler/rotate-clockwise.svg=object-rotate-right"
     "tabler/pencil.svg=annotate"
     "tabler/dimensions.svg=image-resize"
     "tabler/adjustments-horizontal.svg=adjust-colours"

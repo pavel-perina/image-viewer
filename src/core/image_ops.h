@@ -65,9 +65,10 @@ enum class GrayMethod { Luma, Lightness };
 // are returned as they are. A stop request gives up between rows and returns an empty buffer.
 ImageBuffer toGray(const ImageBuffer& source, GrayMethod method, const std::stop_token& stop = {});
 
-// The pixels turned and mirrored the way an orientation shows them, with alpha if they had it.
-// Normal returns the same buffer.
-ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation);
+// The pixels turned and mirrored the way an orientation shows them, exactly, with alpha if they
+// had it. Normal returns the same buffer. A stop request gives up between rows and returns an
+// empty buffer.
+ImageBuffer applyOrientation(const ImageBuffer& source, Orientation orientation, const std::stop_token& stop = {});
 
 // A picture with alpha as it looks on a mid gray background, where both dark and light
 // content stay visible: a copy, opaque and without alpha. A picture without alpha is returned
