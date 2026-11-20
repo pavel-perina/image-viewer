@@ -48,6 +48,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **Viewing:** `image_view` (the tiled view item; also the entry point for edits),
   `edited_image`, `color_settings`, `color_lut`, `histogram_view`, `display_output` (the
   window's bits per channel, 10 when asked for, and whether the last pass dithers).
+* **Controls:** `slider_scale` (how a slider spreads values: even, mireds, logarithmic).
 * **Look:** `theme_palette` (the palette's choices and colours, for `Theme`), `themed_icon`
   (an icon from `assets/icons` in the theme's colours).
 * **Settings:** `preferences` (typed, application-wide user choices and their persistence;
@@ -69,7 +70,7 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   it), `SearchCombo` (a combo box with
   fzf-style search, over `fuzzy_list_model`), `ToolPanel` (the base of every tool's panel:
   heading, rows, Cancel and Apply), `ToolSection` (a folding section of a tool's panel, over
-  `PaneHeader`), `Theme` (every colour, and the sizes pages share).
+  `PaneHeader`), `SliderRow` (a value: name, number box, slider over `slider_scale`, reset), `Theme` (every colour, and the sizes pages share).
 
 ## Build and test
 

@@ -2,6 +2,7 @@
 
 #include "core/oklab.h"
 #include "core/white_balance.h"
+#include "ui/slider_scale.h"
 
 #include <QMatrix4x4>
 #include <QVector3D>
@@ -1608,6 +1609,41 @@ TEST(Adjust, SectionsShowWhatIsInUseResetAloneAndSwitchOff) {
     EXPECT_TRUE(again.named("adjustOklabHeader")->property("collapsed").toBool());
     EXPECT_FALSE(again.named("adjustLevelsHeader")->property("collapsed").toBool());
     again.click(again.in("adjustOklabHeader", "paneHeaderText"));  // as the other tests expect it
+}
+
+// Why: a slider should make about the same change for the same distance everywhere: the
+// temperature evenly in mireds, so the warm end, where most corrections are, is not squeezed,
+// and an exponent evenly either side of 1. Input: the scales' ends, middles and values beyond
+// them. The truth: 2000 K and 15000 K at the ends, the middle at the mean of their mireds (3529
+// K, to the step of 50 K: 3550), 6500 K about a fifth from the right; an exponent of 1 halfway
+// from 1/4 to 4; values beyond the ends kept at them.
+TEST(SliderScale, SpreadsValuesEvenlyAsItsKindSays) {
+    iv::SliderScale temperature;
+    temperature.setKind(iv::SliderScale::Kind::Reciprocal);
+    temperature.setFrom(2000);
+    temperature.setTo(15000);
+    temperature.setStep(50);
+    EXPECT_EQ(temperature.valueAt(0), 2000);
+    EXPECT_EQ(temperature.valueAt(1), 15000);
+    EXPECT_EQ(temperature.valueAt(0.5), 3550);
+    EXPECT_NEAR(temperature.positionOf(6500), 0.8, 0.01);
+    EXPECT_EQ(temperature.positionOf(1000), 0);
+    EXPECT_EQ(temperature.valueAt(2), 15000);
+
+    iv::SliderScale power;
+    power.setKind(iv::SliderScale::Kind::Logarithmic);
+    power.setFrom(0.25);
+    power.setTo(4);
+    power.setStep(0.01);
+    EXPECT_DOUBLE_EQ(power.positionOf(1), 0.5);
+    EXPECT_DOUBLE_EQ(power.valueAt(0.75), 2);
+
+    iv::SliderScale even;
+    even.setFrom(-50);
+    even.setTo(50);
+    even.setStep(1);
+    EXPECT_DOUBLE_EQ(even.positionOf(0), 0.5);
+    EXPECT_EQ(even.valueAt(0.123), -38);
 }
 
 // Why: the temperature shows kelvins but moves evenly in mireds, so the warm end, where most

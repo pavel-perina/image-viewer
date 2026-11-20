@@ -9,6 +9,7 @@ ToolButton {
     id: button
 
     property string iconName  // as listed in src/ui/CMakeLists.txt, such as "zoom-in"
+    property int iconSize: Theme.toolIconSize
     // Set it to say more than the name.
     property string tip: {
         const name = text.replace("&", "").replace(/\.\.\.$/, "")
@@ -20,8 +21,8 @@ ToolButton {
     contentItem: ThemedIcon {
         objectName: "icon"
         name: button.iconName
-        implicitWidth: Theme.toolIconSize
-        implicitHeight: Theme.toolIconSize
+        implicitWidth: button.iconSize
+        implicitHeight: button.iconSize
         ink: button.enabled ? button.palette.buttonText : Theme.textDisabled
         accent: button.enabled ? Theme.accent : Theme.textDisabled
     }
