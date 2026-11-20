@@ -2,6 +2,7 @@
 
 #include "core/oklab.h"
 #include "core/white_balance.h"
+#include "ui/slider_scale.h"
 
 #include <QMatrix4x4>
 #include <QVector3D>
@@ -1278,6 +1279,16 @@ TEST(Adjust, AGrayPictureTakesLevelsAndLightnessOnly) {
     QMetaObject::invokeMethod(page, "startAdjust");
     EXPECT_FALSE(saturation->isEnabled());
     EXPECT_FALSE(load->isEnabled());
+    // White balance does not apply, but its caption still folds and says why.
+    QQuickItem* white = page->findChild<QQuickItem*>(QStringLiteral("adjustWhiteHeader"));
+    ASSERT_NE(white, nullptr);
+    EXPECT_TRUE(white->isEnabled());
+    EXPECT_EQ(white->property("detail").toString(), QStringLiteral("Not for gray pictures"));
+    EXPECT_FALSE(findNamed(white, QStringLiteral("paneHeaderSwitch"))->isEnabled());
+    EXPECT_FALSE(page->findChild<QQuickItem*>(QStringLiteral("adjustTemperature"))->isEnabled());
+    QMetaObject::invokeMethod(white, "toggled");
+    EXPECT_TRUE(white->property("collapsed").toBool());
+    QMetaObject::invokeMethod(white, "toggled");
     panel->setProperty("saturation", 0);
     EXPECT_DOUBLE_EQ(image->colorPreviewChroma(), 1) << "the preview leaves chroma alone";
     EXPECT_FALSE(panel->property("changes").toBool());
@@ -1527,12 +1538,16 @@ struct AdjustFixture {
     ImageView* image = nullptr;
     QObject* panel = nullptr;
 
-    explicit AdjustFixture(const QString& path) {
+    // Each test starts with every section unfolded, whatever an earlier one left remembered.
+    explicit AdjustFixture(const QString& path, bool keepRemembered = false) {
+        if (!keepRemembered) {
+            QSettings().remove(QStringLiteral("Adjust"));
+        }
         view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
                                    {QStringLiteral("active"), true},
                                    {QStringLiteral("fullScreen"), false}});
         view.setResizeMode(QQuickView::SizeRootObjectToView);
-        view.resize(900, 600);
+        view.resize(900, 1100);  // the whole panel in view, every section open
         view.loadFromModule("ImageViewer", "ViewerPage");
         view.show();
         page = view.rootObject();
@@ -1575,20 +1590,21 @@ TEST(Adjust, SectionsShowWhatIsInUseResetAloneAndSwitchOff) {
         ASSERT_TRUE(settled(f.image));
         QMetaObject::invokeMethod(f.page, "startAdjust");
         waitUntil([] { return false; }, 300);  // the panel slides in
-        QQuickItem* mark = f.in("adjustOklabHeader", "paneHeaderInUse");
-        QQuickItem* levelsMark = f.in("adjustLevelsHeader", "paneHeaderInUse");
+        // The caption's reset arrow is what shows a section in use, folded or not.
+        QQuickItem* mark = f.in("adjustOklabHeader", "paneHeaderReset");
+        QQuickItem* levelsMark = f.in("adjustLevelsHeader", "paneHeaderReset");
         ASSERT_NE(mark, nullptr);
-        EXPECT_FALSE(mark->isVisible());
+        EXPECT_FALSE(mark->isEnabled());
 
         f.panel->setProperty("saturation", 50);
         f.panel->setProperty("black", 40);
-        EXPECT_TRUE(mark->isVisible());
-        EXPECT_TRUE(levelsMark->isVisible());
+        EXPECT_TRUE(mark->isEnabled());
+        EXPECT_TRUE(levelsMark->isEnabled());
         EXPECT_DOUBLE_EQ(f.image->colorPreviewChroma(), 0.5);
 
         f.click(f.in("adjustOklabHeader", "paneHeaderText"));
         EXPECT_FALSE(f.named("adjustSaturation")->isVisible()) << "folded";
-        EXPECT_TRUE(mark->isVisible()) << "in use shows when folded too";
+        EXPECT_TRUE(mark->isVisible() && mark->isEnabled()) << "in use shows when folded too";
 
         f.click(f.in("adjustOklabHeader", "paneHeaderSwitch"));
         EXPECT_FALSE(f.panel->property("oklabOn").toBool());
@@ -1600,36 +1616,61 @@ TEST(Adjust, SectionsShowWhatIsInUseResetAloneAndSwitchOff) {
 
         f.click(f.in("adjustOklabHeader", "paneHeaderReset"));
         EXPECT_DOUBLE_EQ(f.panel->property("saturation").toDouble(), 100);
-        EXPECT_FALSE(mark->isVisible());
+        EXPECT_FALSE(mark->isEnabled());
         EXPECT_DOUBLE_EQ(f.panel->property("black").toDouble(), 40) << "levels are another section";
         QMetaObject::invokeMethod(f.page, "cancelAdjust");
     }
-    AdjustFixture again(dir.path());
+    AdjustFixture again(dir.path(), true);
     EXPECT_TRUE(again.named("adjustOklabHeader")->property("collapsed").toBool());
     EXPECT_FALSE(again.named("adjustLevelsHeader")->property("collapsed").toBool());
-    again.click(again.in("adjustOklabHeader", "paneHeaderText"));  // as the other tests expect it
 }
 
-// Why: the temperature shows kelvins but moves evenly in mireds, so the warm end, where most
-// corrections are, is not squeezed; and the edit it makes is applied as previewed. Input: the
-// slider's ends and middle, then 3200 K applied to a mid gray. The truth: 2000 K and 15000 K at
-// the ends, the middle at the mean of their mireds (3529 K, shown to 50 K), 6500 K about a fifth
-// from the right, and the gray made bluer.
+// Why: a slider should make about the same change for the same distance everywhere: the
+// temperature evenly in mireds, so the warm end, where most corrections are, is not squeezed,
+// and an exponent evenly either side of 1. Input: the scales' ends, middles and values beyond
+// them. The truth: 2000 K and 15000 K at the ends, the middle at the mean of their mireds (3529
+// K, to the step of 50 K: 3550), 6500 K about a fifth from the right; an exponent of 1 halfway
+// from 1/4 to 4; values beyond the ends kept at them.
+TEST(SliderScale, SpreadsValuesEvenlyAsItsKindSays) {
+    iv::SliderScale temperature;
+    temperature.setKind(iv::SliderScale::Kind::Reciprocal);
+    temperature.setFrom(2000);
+    temperature.setTo(15000);
+    temperature.setStep(50);
+    EXPECT_EQ(temperature.valueAt(0), 2000);
+    EXPECT_EQ(temperature.valueAt(1), 15000);
+    EXPECT_EQ(temperature.valueAt(0.5), 3550);
+    EXPECT_NEAR(temperature.positionOf(6500), 0.8, 0.01);
+    EXPECT_EQ(temperature.positionOf(1000), 0);
+    EXPECT_EQ(temperature.valueAt(2), 15000);
+
+    iv::SliderScale power;
+    power.setKind(iv::SliderScale::Kind::Logarithmic);
+    power.setFrom(0.25);
+    power.setTo(4);
+    power.setStep(0.01);
+    EXPECT_DOUBLE_EQ(power.positionOf(1), 0.5);
+    EXPECT_DOUBLE_EQ(power.valueAt(0.75), 2);
+
+    iv::SliderScale even;
+    even.setFrom(-50);
+    even.setTo(50);
+    even.setStep(1);
+    EXPECT_DOUBLE_EQ(even.positionOf(0), 0.5);
+    EXPECT_EQ(even.valueAt(0.123), -38);
+}
+
+// Why: white balance applied as previewed. Input: 3200 K applied to a mid gray. The truth:
+// the gray made bluer, and the section marked in use.
 TEST(Adjust, TemperatureMovesEvenlyInMiredsAndTungstenMakesItBluer) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("gray.tif"));
     iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {{.width = 40, .height = 30}});
     AdjustFixture f(path);
     ASSERT_TRUE(settled(f.image));
-    const auto call = [&](const char* name, double value) {
-        QVariant result;
-        QMetaObject::invokeMethod(f.panel, name, Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, value));
-        return result.toDouble();
-    };
-    EXPECT_EQ(call("kelvinAt", 0), 2000);
-    EXPECT_EQ(call("kelvinAt", 1), 15000);
-    EXPECT_EQ(call("kelvinAt", 0.5), 3550);
-    EXPECT_NEAR(call("positionOf", 6500), 0.8, 0.01);
+    QQuickItem* slider = f.named("adjustTemperatureSlider");
+    ASSERT_NE(slider, nullptr);
+    EXPECT_NEAR(slider->property("value").toDouble(), 0.8, 0.01) << "6500 K a fifth from the right";
 
     QMetaObject::invokeMethod(f.page, "startAdjust");
     EXPECT_FALSE(f.image->colorPreviewWhite());
@@ -1773,4 +1814,118 @@ TEST(Adjust, PickGrayIsNeutralOnScreenInAWideGamutPicture) {
     const QColor colour = probed.first().first().toMap().value(QStringLiteral("color")).value<QColor>();
     EXPECT_NEAR(colour.red(), colour.green(), 1);
     EXPECT_NEAR(colour.green(), colour.blue(), 1);
+}
+
+// Why: every value of Adjust can be set from the keyboard: a slider takes the keys when clicked,
+// steps by its value's step with the arrows, and Enter gives the keys back to the picture without
+// applying, so that a second Enter applies; and a number can be typed in its box. Input: a
+// click on the contrast slider, Right twice and Page Down, Enter, then 4200 typed for the
+// temperature, Enter, and Enter again. The truth: contrast 102 then 92, the panel no longer
+// holding the keys after each Enter, 4200 K, and the edit applied by the last Enter.
+TEST(Adjust, EveryValueCanBeSetFromTheKeyboard) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    AdjustFixture f(dir.path());
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    waitUntil([] { return false; }, 300);  // the panel slides in
+    QQuickItem* slider = f.named("adjustContrastSlider");
+    ASSERT_NE(slider, nullptr);
+    f.click(slider);
+    EXPECT_TRUE(slider->hasActiveFocus()) << "a click gives it the keys";
+    const double clicked = f.panel->property("contrast").toDouble();
+    QTest::keyClick(&f.view, Qt::Key_Right);
+    QTest::keyClick(&f.view, Qt::Key_Right);
+    EXPECT_DOUBLE_EQ(f.panel->property("contrast").toDouble(), clicked + 2);
+    QTest::keyClick(&f.view, Qt::Key_PageDown);
+    EXPECT_DOUBLE_EQ(f.panel->property("contrast").toDouble(), clicked - 8);
+    QTest::keyClick(&f.view, Qt::Key_Return);
+    EXPECT_FALSE(f.panel->property("editing").toBool()) << "the keys went back";
+    EXPECT_TRUE(f.page->property("adjusting").toBool()) << "and nothing was applied";
+
+    QQuickItem* box = f.named("adjustTemperatureBox");
+    ASSERT_NE(box, nullptr);
+    auto* field = box->property("contentItem").value<QQuickItem*>();
+    field->forceActiveFocus();
+    QTest::keyClick(&f.view, Qt::Key_A, Qt::ControlModifier);
+    for (const char key : {'4', '2', '0', '0'}) {
+        QTest::keyClick(&f.view, key);
+    }
+    QTest::keyClick(&f.view, Qt::Key_Return);
+    EXPECT_DOUBLE_EQ(f.panel->property("temperature").toDouble(), 4200);
+    EXPECT_FALSE(f.panel->property("editing").toBool());
+    EXPECT_TRUE(f.page->property("enterApplies").toBool());
+    QMetaObject::invokeMethod(f.page, "applyTool");
+    ASSERT_TRUE(waitUntil([&] { return f.image->status() == ImageView::Status::Ready && f.image->modified(); }));
+}
+
+// Why: a section switched off keeps its values on view, greyed, to compare with; each value has
+// an arrow that puts it back; and section captions stand on a band, unlike the browser's.
+// Input: saturation changed, the Oklab section switched off and on, then the saturation's arrow.
+// The truth: the saturation row disabled but showing 50 while off, the arrow enabled only while
+// the value differs, 100 after it, and the caption banded.
+TEST(Adjust, ASectionOffGreysItsValuesAndEachValueResetsAlone) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    AdjustFixture f(dir.path());
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    waitUntil([] { return false; }, 300);
+    QQuickItem* row = f.named("adjustSaturation");
+    QQuickItem* reset = f.named("adjustSaturationReset");
+    ASSERT_NE(reset, nullptr);
+    EXPECT_FALSE(reset->isEnabled());
+    EXPECT_TRUE(f.named("adjustOklabHeader")->property("banded").toBool());
+    f.panel->setProperty("saturation", 50);
+    EXPECT_TRUE(reset->isEnabled());
+
+    f.click(f.in("adjustOklabHeader", "paneHeaderSwitch"));
+    EXPECT_FALSE(row->isEnabled());
+    EXPECT_TRUE(row->isVisible());
+    EXPECT_EQ(f.named("adjustSaturationBox")->property("displayText").toString(), QStringLiteral("50"));
+    f.click(f.in("adjustOklabHeader", "paneHeaderSwitch"));
+    EXPECT_TRUE(row->isEnabled());
+
+    f.click(reset);
+    EXPECT_DOUBLE_EQ(f.panel->property("saturation").toDouble(), 100);
+    EXPECT_EQ(f.named("adjustSaturationBox")->property("displayText").toString(), QStringLiteral("100"))
+        << "the box follows a value set elsewhere";
+}
+
+// Why: picking gray is a mode, and it must be as easy to leave as to enter, without losing the
+// adjustment: by the button again, or by Esc, which stops picking before it would leave the tool.
+// The button must also show the mode truly after a reset stops it. Input: the button clicked
+// twice; clicked, then Reset; clicked, then Esc twice. The truth: picking on then off; off after
+// Reset, the button no longer pressed, and the next click starting it again; Esc stopping
+// picking with Adjust still open, and the second Esc leaving Adjust.
+TEST(Adjust, PickingGrayStopsByTheButtonAgainOrByEscape) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    AdjustFixture f(dir.path());
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    waitUntil([] { return false; }, 300);
+    QQuickItem* button = f.named("adjustPickGray");
+    ASSERT_NE(button, nullptr);
+    f.click(button);
+    EXPECT_TRUE(f.panel->property("picking").toBool());
+    EXPECT_TRUE(button->property("checked").toBool());
+    f.click(button);
+    EXPECT_FALSE(f.panel->property("picking").toBool());
+    EXPECT_FALSE(button->property("checked").toBool());
+
+    f.click(button);
+    QMetaObject::invokeMethod(f.panel, "reset");
+    EXPECT_FALSE(button->property("checked").toBool()) << "shows that the reset stopped it";
+    f.click(button);
+    EXPECT_TRUE(f.panel->property("picking").toBool()) << "one click starts it again";
+
+    // Main's Esc calls stepBack, which a QML function answers as a QVariant.
+    QVariant stepped;
+    QMetaObject::invokeMethod(f.page, "stepBack", Q_RETURN_ARG(QVariant, stepped));
+    EXPECT_TRUE(stepped.toBool());
+    EXPECT_FALSE(f.panel->property("picking").toBool());
+    EXPECT_TRUE(f.page->property("adjusting").toBool()) << "Esc stopped picking, not Adjust";
+    QMetaObject::invokeMethod(f.page, "stepBack", Q_RETURN_ARG(QVariant, stepped));
+    EXPECT_FALSE(f.page->property("adjusting").toBool());
 }

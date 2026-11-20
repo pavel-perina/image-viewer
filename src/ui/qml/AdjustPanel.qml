@@ -28,8 +28,6 @@ ToolPanel {
     // sees about the same change for each.
     property real temperature: 6500
     property real tint: 0
-    readonly property real coolest: 15000
-    readonly property real warmest: 2000
     // Picking something neutral on the picture, and the patch a click takes, in pixels.
     property bool picking: false
     property int patchSize: kept.patchSize
@@ -74,16 +72,6 @@ ToolPanel {
     })
     readonly property bool changes: (whiteOn && whiteInUse) || (levelsOn && levelsInUse) || (oklabOn && oklabInUse)
                                     || (lookOn && lookInUse)
-
-    // Where the slider is, from 0 at the warm end to 1 at the cool one, even in mireds; and back,
-    // to 50 K, which is finer than the eye tells apart at any temperature.
-    function positionOf(kelvin) {
-        return (1e6 / warmest - 1e6 / kelvin) / (1e6 / warmest - 1e6 / coolest)
-    }
-    function kelvinAt(position) {
-        const mired = 1e6 / warmest - position * (1e6 / warmest - 1e6 / coolest)
-        return Math.round(1e6 / mired / 50) * 50
-    }
 
     function start() {
         view.clearColorCube()
@@ -193,7 +181,8 @@ ToolPanel {
     ToolSection {
         objectName: "adjustWhite"
         title: "White balance"
-        enabled: !panel.view.grayImage
+        available: !panel.view.grayImage
+        unavailableText: "Not for gray pictures"
         collapsed: kept.whiteCollapsed
         onCollapseToggled: kept.whiteCollapsed = !kept.whiteCollapsed
         inUse: panel.whiteInUse
@@ -203,41 +192,28 @@ ToolPanel {
         onSwitched: (on) => panel.whiteOn = on
         onResetRequested: panel.resetWhite()
 
-        GridLayout {
-            columns: 3
-            columnSpacing: 8
-            Layout.fillWidth: true
-
-            Label { text: "Temperature" }
-            Slider {
-                objectName: "adjustTemperature"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                from: 0
-                to: 1
-                value: panel.positionOf(panel.temperature)
-                onMoved: panel.temperature = panel.kelvinAt(value)
-            }
-            ValueLabel {
-                Layout.preferredWidth: 56
-                text: Math.round(panel.temperature) + " K"
-            }
-
-            Label { text: "Tint" }
-            Slider {
-                objectName: "adjustTint"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                from: -100
-                to: 100
-                stepSize: 1
-                value: panel.tint
-                onMoved: panel.tint = value
-            }
-            ValueLabel {
-                Layout.preferredWidth: 56
-                text: (panel.tint > 0 ? "+" : "") + Math.round(panel.tint)
-            }
+        // Kelvins grow to the right, as in other programs, and the slider moves evenly in mireds.
+        SliderRow {
+            objectName: "adjustTemperature"
+            label: "Temperature (K)"
+            value: panel.temperature
+            defaultValue: 6500
+            from: 2000
+            to: 15000
+            stepSize: 50
+            kind: SliderScale.Reciprocal
+            onModified: (value) => panel.temperature = value
+            onDoneEditing: panel.doneEditing()
+        }
+        SliderRow {
+            objectName: "adjustTint"
+            label: "Tint"
+            value: panel.tint
+            from: -100
+            to: 100
+            decimals: 1
+            onModified: (value) => panel.tint = value
+            onDoneEditing: panel.doneEditing()
         }
         RowLayout {
             Layout.fillWidth: true
@@ -245,15 +221,18 @@ ToolPanel {
                 objectName: "adjustPickGray"
                 focusPolicy: Qt.NoFocus
                 text: "Pick Gray"
-                checkable: true
+                // Shown pressed while picking, by the panel's state alone: a checkable button
+                // would set its own state and lose the binding, and then look pressed after a
+                // reset had stopped the picking.
                 checked: panel.picking
-                onToggled: {
-                    panel.picking = checked
+                onClicked: {
+                    panel.picking = !panel.picking
                     panel.pickMessage = ""
                 }
                 ToolTip.visible: hovered
                 ToolTip.delay: 600
-                ToolTip.text: "Click something that should be neutral, or drag a rectangle over it"
+                ToolTip.text: panel.picking ? "Stop picking (Esc)"
+                                            : "Click something that should be neutral, or drag a rectangle over it; click again or press Esc to stop"
             }
             ComboBox {
                 objectName: "adjustPatchSize"
@@ -310,7 +289,7 @@ ToolPanel {
 
     ToolSection {
         objectName: "adjustOklab"
-        title: "Lightness and colour, in Oklab"
+        title: "Lightness and colour"
         collapsed: kept.oklabCollapsed
         onCollapseToggled: kept.oklabCollapsed = !kept.oklabCollapsed
         inUse: panel.oklabInUse
@@ -320,61 +299,49 @@ ToolPanel {
         onSwitched: (on) => panel.oklabOn = on
         onResetRequested: panel.resetOklab()
 
-        GridLayout {
-            columns: 3
-            columnSpacing: 8
-            Layout.fillWidth: true
-
-            Label { text: "Brightness" }
-            Slider {
-                objectName: "adjustBrightness"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                from: -50
-                to: 50
-                stepSize: 1
-                value: panel.brightness
-                onMoved: panel.brightness = value
-            }
-            ValueLabel { text: (panel.brightness > 0 ? "+" : "") + Math.round(panel.brightness) }
-
-            Label { text: "Contrast" }
-            Slider {
-                objectName: "adjustContrast"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                from: 0
-                to: 200
-                stepSize: 1
-                value: panel.contrast
-                onMoved: panel.contrast = value
-            }
-            ValueLabel { text: Math.round(panel.contrast) + "%" }
-
-            Label { text: "Midtones" }
-            PowerSlider {
-                objectName: "adjustMidtones"
-                power: panel.midtones
-                onPicked: (v) => panel.midtones = v
-            }
-            ValueLabel { text: panel.midtones.toFixed(2) }
-
-            Label { text: "Saturation"; enabled: !panel.view.grayImage }
-            Slider {
-                objectName: "adjustSaturation"
-                focusPolicy: Qt.NoFocus
-                Layout.fillWidth: true
-                enabled: !panel.view.grayImage
-                from: 0
-                to: 200
-                stepSize: 1
-                value: panel.saturation
-                onMoved: panel.saturation = value
-            }
-            ValueLabel {
-                text: Math.round(panel.saturation) + "%"
-                enabled: !panel.view.grayImage
-            }
+        SliderRow {
+            objectName: "adjustBrightness"
+            label: "Brightness"
+            value: panel.brightness
+            from: -50
+            to: 50
+            onModified: (value) => panel.brightness = value
+            onDoneEditing: panel.doneEditing()
+        }
+        SliderRow {
+            objectName: "adjustContrast"
+            label: "Contrast (%)"
+            value: panel.contrast
+            defaultValue: 100
+            from: 0
+            to: 200
+            onModified: (value) => panel.contrast = value
+            onDoneEditing: panel.doneEditing()
+        }
+        // An exponent from 1/4 to 4, even steps either side of 1.
+        SliderRow {
+            objectName: "adjustMidtones"
+            label: "Midtones"
+            value: panel.midtones
+            defaultValue: 1
+            from: 0.25
+            to: 4
+            stepSize: 0.01
+            decimals: 2
+            kind: SliderScale.Logarithmic
+            onModified: (value) => panel.midtones = value
+            onDoneEditing: panel.doneEditing()
+        }
+        SliderRow {
+            objectName: "adjustSaturation"
+            label: "Saturation (%)"
+            enabled: !panel.view.grayImage
+            value: panel.saturation
+            defaultValue: 100
+            from: 0
+            to: 200
+            onModified: (value) => panel.saturation = value
+            onDoneEditing: panel.doneEditing()
         }
 
         CheckBox {
@@ -395,7 +362,8 @@ ToolPanel {
     ToolSection {
         objectName: "adjustLook"
         title: "Colour table"
-        enabled: !panel.view.grayImage
+        available: !panel.view.grayImage
+        unavailableText: "Not for gray pictures"
         collapsed: kept.lookCollapsed
         onCollapseToggled: kept.lookCollapsed = !kept.lookCollapsed
         inUse: panel.lookInUse
@@ -428,31 +396,5 @@ ToolPanel {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
-    }
-
-    Label {
-        visible: panel.view.grayImage
-        text: "A gray picture takes levels and lightness only."
-        color: Theme.textMuted
-        wrapMode: Text.WordWrap
-        Layout.fillWidth: true
-    }
-
-    // An exponent from 1/4 to 4, even steps either side of 1.
-    component PowerSlider: Slider {
-        id: slider
-        property real power: 1
-        signal picked(real value)
-        focusPolicy: Qt.NoFocus
-        Layout.fillWidth: true
-        from: -2
-        to: 2
-        value: Math.log2(power)
-        onMoved: slider.picked(Math.round(Math.pow(2, value) * 100) / 100)
-    }
-
-    component ValueLabel: Label {
-        Layout.preferredWidth: 36
-        horizontalAlignment: Text.AlignRight
     }
 }

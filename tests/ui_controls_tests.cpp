@@ -41,6 +41,7 @@ ApplicationWindow {
     palette.dark: Theme.dark
 
     property alias apply: apply
+    property alias buttonsCaption: buttonsCaption
     property alias cancel: cancel
     property alias off: off
     property alias on: on
@@ -62,7 +63,7 @@ ApplicationWindow {
 
         ColumnLayout {
             spacing: 10
-            Label { text: "BUTTONS"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
+            Label { id: buttonsCaption; text: "BUTTONS"; color: Theme.textMuted; font.pointSize: Theme.smallSize }
             RowLayout {
                 spacing: 8
                 Button { text: "Reset" }
@@ -233,7 +234,8 @@ TEST(Controls, MenuLinesStartTheirWordsAtOnePlace) {
 }
 
 // Why: Qt's SpinBox counts in whole numbers. The decimal one shows and steps its decimals, and
-// takes them typed.
+// takes them typed. It reports the value and leaves realValue to its owner: setting its own
+// cut realValue off from what it was bound to, so a reset elsewhere no longer reached the box.
 TEST(Controls, ADecimalSpinBoxKeepsItsDecimals) {
     Gallery g;
     QObject* box = g.item("decimal");
@@ -243,8 +245,10 @@ TEST(Controls, ADecimalSpinBoxKeepsItsDecimals) {
     QSignalSpy modified(box, SIGNAL(realValueModified(double)));
     g.item("decimal")->forceActiveFocus();
     QTest::keyClick(g.window, Qt::Key_Up);
-    EXPECT_DOUBLE_EQ(box->property("realValue").toDouble(), 1.75);
-    EXPECT_EQ(modified.count(), 1);
+    EXPECT_EQ(box->property("displayText").toString(), QStringLiteral("1.75"));
+    ASSERT_EQ(modified.count(), 1);
+    EXPECT_DOUBLE_EQ(modified.first().first().toDouble(), 1.75);
+    EXPECT_DOUBLE_EQ(box->property("realValue").toDouble(), 1.25) << "left to the owner";
 }
 
 // Why: the list opens below the field with its entries, and the one picked is shown.
@@ -441,6 +445,28 @@ TEST(Controls, TheControlsUseTheProgramsOwnFont) {
     const QFont font = g.item("apply")->property("font").value<QFont>();
     EXPECT_TRUE(QFontInfo(font).family().startsWith(QStringLiteral("Inter"))) << QFontInfo(font).family().toStdString();
     EXPECT_DOUBLE_EQ(font.pointSizeF(), 10);
+}
+
+// Why: Qt Quick draws labels from distance fields unless told otherwise, which never use
+// ClearType and look soft at small sizes, while text fields and what QPainter draws use the
+// platform's hinted rendering: the window mixed sharp and soft text, most visibly on Windows.
+// Input: the gallery, after useProgramFont as main() and the tests call it. The truth: a label
+// and a button's text drawn natively, as a text field already is.
+TEST(Controls, AllTextIsDrawnByThePlatformsOwnRendering) {
+    Gallery g;
+    EXPECT_EQ(QQuickWindow::textRenderType(), QQuickWindow::NativeTextRendering);
+    constexpr int kNative = 1;  // Text.NativeRendering
+    QObject* caption = g.item("buttonsCaption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->property("renderType").toInt(), kNative);
+    QObject* apply = g.item("apply");
+    ASSERT_NE(apply, nullptr);
+    QQuickItem* buttonText = apply->property("contentItem").value<QQuickItem*>();
+    ASSERT_NE(buttonText, nullptr);
+    const QVariant type = buttonText->property("renderType");
+    if (type.isValid()) {
+        EXPECT_EQ(type.toInt(), kNative);
+    }
 }
 
 // Numbers that change under the cursor (the probe, the zoom, fields being stepped) must not

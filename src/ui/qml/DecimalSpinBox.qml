@@ -16,7 +16,8 @@ SpinBox {
     readonly property bool pendingEdit: contentItem && contentItem.activeFocus && contentItem.acceptableInput
                                        && valueFromText(contentItem.text, locale) !== value
 
-    // The value changed by the person, not by a binding.
+    // The value changed by the person, not by a binding. The owner sets realValue from it; the
+    // box does not set its own, which would cut realValue off from what it is bound to.
     signal realValueModified(real value)
 
     from: Math.round(realFrom * factor)
@@ -33,11 +34,10 @@ SpinBox {
         locale: control.locale.name
     }
 
+    // Without group separators: "4200", not "4,200", which reads oddly in a field being typed in.
     textFromValue: (value, locale) => Number(value / factor).toLocaleString(locale, "f", decimals)
+                                          .split(locale.groupSeparator).join("")
     valueFromText: (text, locale) => Math.round(Number.fromLocaleString(locale, text) * factor)
 
-    onValueModified: {
-        realValue = value / factor
-        realValueModified(realValue)
-    }
+    onValueModified: realValueModified(value / factor)
 }

@@ -51,6 +51,8 @@ qt_add_library(iv_ui STATIC
     image_overlay.h
     overlay_style.h
     probe_overlay.cpp
+    slider_scale.cpp
+    slider_scale.h
     probe_overlay.h
     gray_pick_overlay.cpp
     gray_pick_overlay.h
@@ -147,6 +149,7 @@ qt_add_qml_module(iv_ui
         qml/Screens.qml
         qml/ToolPanel.qml
         qml/ToolSection.qml
+        qml/SliderRow.qml
         qml/ViewSettings.qml
         qml/ViewerPage.qml
 )
@@ -190,6 +193,7 @@ set(iv_icons
     "tabler/perspective.svg=straighten"
     "tabler/rotate.svg=object-rotate-left"
     "tabler/rotate-clockwise.svg=object-rotate-right"
+    "tabler/arrow-back-up.svg=edit-reset"
     "tabler/pencil.svg=annotate"
     "tabler/dimensions.svg=image-resize"
     "tabler/adjustments-horizontal.svg=adjust-colours"

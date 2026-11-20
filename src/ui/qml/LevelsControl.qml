@@ -12,6 +12,9 @@ import ImageViewer
 ColumnLayout {
     id: control
 
+    // Drawn by hand, so it shows being disabled itself, as the styled controls do.
+    opacity: enabled ? 1 : 0.45
+
     property var histogram
     property real black: 0
     property real white: 255
