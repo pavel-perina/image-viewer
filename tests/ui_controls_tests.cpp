@@ -234,7 +234,8 @@ TEST(Controls, MenuLinesStartTheirWordsAtOnePlace) {
 }
 
 // Why: Qt's SpinBox counts in whole numbers. The decimal one shows and steps its decimals, and
-// takes them typed.
+// takes them typed. It reports the value and leaves realValue to its owner: setting its own
+// cut realValue off from what it was bound to, so a reset elsewhere no longer reached the box.
 TEST(Controls, ADecimalSpinBoxKeepsItsDecimals) {
     Gallery g;
     QObject* box = g.item("decimal");
@@ -244,8 +245,10 @@ TEST(Controls, ADecimalSpinBoxKeepsItsDecimals) {
     QSignalSpy modified(box, SIGNAL(realValueModified(double)));
     g.item("decimal")->forceActiveFocus();
     QTest::keyClick(g.window, Qt::Key_Up);
-    EXPECT_DOUBLE_EQ(box->property("realValue").toDouble(), 1.75);
-    EXPECT_EQ(modified.count(), 1);
+    EXPECT_EQ(box->property("displayText").toString(), QStringLiteral("1.75"));
+    ASSERT_EQ(modified.count(), 1);
+    EXPECT_DOUBLE_EQ(modified.first().first().toDouble(), 1.75);
+    EXPECT_DOUBLE_EQ(box->property("realValue").toDouble(), 1.25) << "left to the owner";
 }
 
 // Why: the list opens below the field with its entries, and the one picked is shown.
