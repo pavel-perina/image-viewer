@@ -1100,6 +1100,17 @@ Left out for now:
   sections read apart from their controls; the browser's captions have none. A section that
   does not apply to what is open (white balance and the colour table on a gray picture) keeps a
   caption that folds and says why, with its box and controls disabled.
+* Pick Gray is a mode: the button shows it pressed and stops it when clicked again, and Esc
+  stops it before Esc would leave Adjust, as Esc in Annotate lets go of a shape first. Picking
+  stays on after a pick, so that another place can be tried.
+* Each value is a `SliderRow`, on two rows: its name and its number in a box that steps with its
+  buttons and can be typed in; then a slider across the width and an arrow that puts the value
+  back, enabled while it differs. A slider spreads values as `SliderScale` says: evenly, evenly
+  in their reciprocal (temperature, in mireds) or in their logarithm (Midtones, an exponent).
+  Sliders take the keys when clicked or reached by Tab: the arrows take a step of the value,
+  Page Up and Down ten, Home and End go to the ends. Boxes show numbers without group separators
+  (4200, not 4,200), as they are typed in. Enter in a box or on a slider gives the keys
+  back to the picture, and Enter then applies, as in the other tools' panels.
 * White balance (`core/white_balance.h`) is for rendered pictures, whose original light cannot
   be recovered from their pixels. So its controls say what white the picture is to be taken as
   having and correct that to neutral, as raw editors' controls read: Temperature in kelvins,
@@ -1110,8 +1121,7 @@ Left out for now:
   being 0.02 there.
 * The slider shows kelvins but moves evenly in mireds, a million over kelvins, because the eye
   sees about the same change for each mired anywhere on the scale: 2000 K at the left, 15000 K
-  at the right, 6500 K a fifth of the way from the right. It steps by 50 K. Typing a number is
-  left out for now: Adjust has no fields, so that Enter always applies.
+  at the right, 6500 K a fifth of the way from the right. It steps by 50 K, and any whole number can be typed.
 * The source white is placed relative to the picture's own white, moved by as much as the
   temperature and tint move a white from 6500 K and tint 0. So 6500 K and tint 0 are exactly
   the identity (D65 lies a little off the locus, so a plain point on it would not be).

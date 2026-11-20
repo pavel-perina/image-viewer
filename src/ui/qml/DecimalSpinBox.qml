@@ -34,7 +34,9 @@ SpinBox {
         locale: control.locale.name
     }
 
+    // Without group separators: "4200", not "4,200", which reads oddly in a field being typed in.
     textFromValue: (value, locale) => Number(value / factor).toLocaleString(locale, "f", decimals)
+                                          .split(locale.groupSeparator).join("")
     valueFromText: (text, locale) => Math.round(Number.fromLocaleString(locale, text) * factor)
 
     onValueModified: realValueModified(value / factor)
