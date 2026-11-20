@@ -24,11 +24,11 @@ struct TiffImage {
     int compression = 1;   // COMPRESSION_NONE
     int orientation = 1;
     bool reduced = false;  // mark as a reduced resolution image
-    std::vector<std::uint8_t> iccProfile;
+    std::vector<std::uint8_t> iccProfile{};
     std::function<Rgb(int x, int y)> pixel = [](int, int) { return Rgb{128, 128, 128}; };
     // For 16-bit unsigned files, each sample at full precision instead of pixel.
-    std::function<std::uint16_t(int x, int y, int sample)> wide16;
-    std::vector<TiffImage> subIfds;  // written as SubIFDs of this image
+    std::function<std::uint16_t(int x, int y, int sample)> wide16{};
+    std::vector<TiffImage> subIfds{};  // written as SubIFDs of this image
 };
 
 void writeTiff(const std::filesystem::path& path, const std::vector<TiffImage>& images, bool bigTiff = false);

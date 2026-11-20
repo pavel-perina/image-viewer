@@ -47,6 +47,7 @@
 #include "core/perspective.h"
 #include "ui/color_lut.h"
 #include "core/pixel_probe.h"
+#include "core/white_balance.h"
 #include "core/viewport.h"
 #include "core/work_queue.h"
 #include "ui/color_settings.h"
@@ -325,17 +326,46 @@ struct ImageView::Impl {
         following = false;
     }
 
+    // The picture's RGB to XYZ, for white balance: from its profile, else sRGB.
+    Matrix3 workingSpace() const {
+        if (source) {
+            if (const auto m = profileRgbToXyz(subimage().iccProfile)) {
+                return *m;
+            }
+        }
+        return rgbToXyz(kSrgbPrimaries);
+    }
+
+    // The RGB the shader sees: the screen's when the picture is converted for it, else the
+    // picture's own.
+    Matrix3 previewSpace() const {
+        if (!colorTransform) {
+            return workingSpace();
+        }
+        const ColorTarget target = ColorSettings::target();
+        if (target.displayProfile) {
+            if (const auto m = profileRgbToXyz(*target.displayProfile)) {
+                return *m;
+            }
+        }
+        return rgbToXyz(kSrgbPrimaries);
+    }
+
     // The same edit for previewing and applying.
     ColorEdit colorEditFor(const QVariantMap& settings) const {
         const auto value = [&](const char* key, double fallback) {
             return settings.value(QLatin1StringView(key), fallback).toDouble();
         };
         ColorEdit edit;
+        edit.whiteBalance = {value("temperature", 6500), value("tint", 0)};
+        edit.workingSpace = workingSpace();
         edit.tone = levelsCurve(value("black", 0), value("white", 1), value("gamma", 1), value("outBlack", 0), value("outWhite", 1));
         edit.lightness = lightnessCurve(value("brightness", 0), value("contrast", 1), value("lightness", 1));
         edit.chroma = value("saturation", 1);
         edit.gamutMap = settings.value(QStringLiteral("gamutMap"), true).toBool();
-        edit.cube = colorCube;
+        if (settings.value(QStringLiteral("cube"), true).toBool()) {
+            edit.cube = colorCube;
+        }
         return edit;
     }
 
@@ -1237,6 +1267,31 @@ QVector4D ImageView::colorPreviewDomainMax() const {
     return {d[0], d[1], d[2], 1};
 }
 
+bool ImageView::colorPreviewWhite() const {
+    const auto& preview = m_impl->colorPreview;
+    return preview && !grayImage() && !preview->whiteBalance.isIdentity();
+}
+
+QMatrix4x4 ImageView::colorPreviewWhiteMatrix() const {
+    if (!colorPreviewWhite()) {
+        return {};
+    }
+    // The correction made in the picture's RGB, carried over into the RGB the shader sees, so
+    // that the preview matches what applying gives also when the two differ.
+    const auto& preview = *m_impl->colorPreview;
+    const Matrix3& picture = preview.workingSpace;
+    const Matrix3 shown = m_impl->previewSpace();
+    const auto m = (shown.inverse() * picture * whiteBalanceMatrix(preview.whiteBalance, picture) * picture.inverse() * shown).m;
+    return QMatrix4x4(static_cast<float>(m[0]), static_cast<float>(m[1]), static_cast<float>(m[2]), 0,
+                      static_cast<float>(m[3]), static_cast<float>(m[4]), static_cast<float>(m[5]), 0,
+                      static_cast<float>(m[6]), static_cast<float>(m[7]), static_cast<float>(m[8]), 0, 0, 0, 0, 1);
+}
+
+QVector4D ImageView::colorPreviewLuminance() const {
+    const Matrix3 space = m_impl->previewSpace();
+    return {static_cast<float>(space.m[3]), static_cast<float>(space.m[4]), static_cast<float>(space.m[5]), 0};
+}
+
 QString ImageView::colorCubeName() const { return m_impl->colorCubeName; }
 
 ImageView* ImageView::linkedView() const { return m_impl->linked; }
@@ -1286,6 +1341,7 @@ void ImageView::adjustColors(const QVariantMap& settings) {
     Impl& d = *m_impl;
     ColorEdit color = d.colorEditFor(settings);
     if (grayImage()) {
+        color.whiteBalance = {};
         color.chroma = 1;
         color.cube.reset();
     }
@@ -1639,6 +1695,50 @@ void ImageView::probe(QPointF point) {
         QMetaObject::invokeMethod(this, [this, request, pixel = std::move(pixel)] {
             if (request == m_impl->probeRequest) {  // only the latest, while the mouse drags
                 emit this->probed(pixel);
+            }
+        });
+    });
+}
+
+void ImageView::pickGray(QRectF rect) {
+    Impl& d = *m_impl;
+    if (!d.source || d.status != Status::Ready) {
+        return;
+    }
+    // The pixels as shown that the rectangle touches, then the stored ones under them.
+    const Size shown = d.shownSize();
+    const double left = std::clamp(std::floor(rect.left()), 0.0, double(shown.width));
+    const double top = std::clamp(std::floor(rect.top()), 0.0, double(shown.height));
+    const double right = std::clamp(std::max(std::ceil(rect.right()), left + 1), 0.0, double(shown.width));
+    const double bottom = std::clamp(std::max(std::ceil(rect.bottom()), top + 1), 0.0, double(shown.height));
+    if (left >= right || top >= bottom) {
+        return;
+    }
+    const RectD stored = d.imageToDisplay.inverse().mapRect({left, top, right - left, bottom - top});
+    const int x = static_cast<int>(std::lround(stored.x));
+    const int y = static_cast<int>(std::lround(stored.y));
+    const int width = std::max(1, static_cast<int>(std::lround(stored.width)));
+    const int height = std::max(1, static_cast<int>(std::lround(stored.height)));
+    const std::uint64_t request = ++d.probeRequest;
+    d.queue.submit(d.group, kProbePriority,
+                   [this, source = d.source, page = d.page, space = d.workingSpace(), x, y, width, height,
+                    request](std::stop_token stop) {
+        const auto mean = patchAverage(*source, page, x, y, width, height, stop);
+        if (!mean && stop.stop_requested()) {
+            return;
+        }
+        QVariantMap result;
+        if (mean) {
+            const WhiteBalanceFit fit = whiteBalanceFor(*mean, space);
+            result.insert(QStringLiteral("temperature"), fit.balance.kelvin);
+            result.insert(QStringLiteral("tint"), fit.balance.tint);
+            result.insert(QStringLiteral("clamped"), fit.clamped);
+        } else {
+            result.insert(QStringLiteral("error"), QString::fromStdString(mean.error()));
+        }
+        QMetaObject::invokeMethod(this, [this, request, result = std::move(result)] {
+            if (request == m_impl->probeRequest) {
+                emit this->grayPicked(result);
             }
         });
     });

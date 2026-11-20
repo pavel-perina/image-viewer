@@ -1,5 +1,11 @@
 #include "ui_test_support.h"
 
+#include "core/oklab.h"
+#include "core/white_balance.h"
+
+#include <QMatrix4x4>
+#include <QVector3D>
+
 TEST(LosslessJpeg, IsOfferedOnlyWhenEveryFileIsAJpeg) {
     BrowseContext context;
     EXPECT_TRUE(context.allJpeg({QStringLiteral("/a/b.jpg"), QStringLiteral("/a/C.JPEG")}));
@@ -1509,4 +1515,262 @@ TEST(Editing, TheFrameDialogFramesTheImage) {
     EXPECT_FALSE(image->frameProblem(nothing).isEmpty());
     image->undo();
     ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready && image->imageWidth() == 40; }));
+}
+
+namespace {
+
+// A viewer page in a window of its own, showing what is at path once it is ready.
+struct AdjustFixture {
+    BrowseContext context;
+    QQuickView view;
+    QObject* page = nullptr;
+    ImageView* image = nullptr;
+    QObject* panel = nullptr;
+
+    explicit AdjustFixture(const QString& path) {
+        view.setInitialProperties({{QStringLiteral("context"), QVariant::fromValue(&context)},
+                                   {QStringLiteral("active"), true},
+                                   {QStringLiteral("fullScreen"), false}});
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.resize(900, 600);
+        view.loadFromModule("ImageViewer", "ViewerPage");
+        view.show();
+        page = view.rootObject();
+        image = page->property("view").value<ImageView*>();
+        panel = page->findChild<QObject*>(QStringLiteral("adjustPanel"));
+        context.openPath(path);
+    }
+
+    QQuickItem* named(const char* name) const { return page->findChild<QQuickItem*>(QLatin1StringView(name)); }
+    QQuickItem* in(const char* header, const char* part) const { return findNamed(named(header), QLatin1StringView(part)); }
+    // After a frame, so that what has just been shown or hidden is laid out.
+    void click(QQuickItem* item) const {
+        waitUntil([] { return false; }, 50);
+        QTest::mouseClick(const_cast<QQuickView*>(&view), Qt::LeftButton, Qt::NoModifier,
+                          item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint());
+    }
+};
+
+// The colour a gray of 0.2 in linear light takes under light of that white balance, as 8 bits
+// of an RGB with that matrix.
+Rgb grayUnder(iv::WhiteBalance balance, const iv::Matrix3& space = iv::rgbToXyz(iv::kSrgbPrimaries)) {
+    const auto rgb = iv::whiteBalanceMatrix(balance, space).inverse() * std::array<double, 3>{0.2, 0.2, 0.2};
+    const auto eight = [](double c) { return static_cast<std::uint8_t>(std::lround(iv::srgbEncode(c) * 255)); };
+    return Rgb{eight(rgb[0]), eight(rgb[1]), eight(rgb[2])};
+}
+
+}  // namespace
+
+// Why: Adjust is in sections in the order its stages run, and each shows whether it is in use,
+// resets alone, and can be switched off to see whether it helps, losing nothing. Which are
+// folded is remembered. Input: the panel over a JPEG; saturation and levels changed, the Oklab
+// section folded, switched off and on, and reset; then a new page. The truth: the in-use mark
+// following the values even when folded, the preview leaving a section out while its value
+// stays, a reset of one section leaving the other, and the fold kept by the new page.
+TEST(Adjust, SectionsShowWhatIsInUseResetAloneAndSwitchOff) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    {
+        AdjustFixture f(dir.path());
+        ASSERT_TRUE(settled(f.image));
+        QMetaObject::invokeMethod(f.page, "startAdjust");
+        waitUntil([] { return false; }, 300);  // the panel slides in
+        QQuickItem* mark = f.in("adjustOklabHeader", "paneHeaderInUse");
+        QQuickItem* levelsMark = f.in("adjustLevelsHeader", "paneHeaderInUse");
+        ASSERT_NE(mark, nullptr);
+        EXPECT_FALSE(mark->isVisible());
+
+        f.panel->setProperty("saturation", 50);
+        f.panel->setProperty("black", 40);
+        EXPECT_TRUE(mark->isVisible());
+        EXPECT_TRUE(levelsMark->isVisible());
+        EXPECT_DOUBLE_EQ(f.image->colorPreviewChroma(), 0.5);
+
+        f.click(f.in("adjustOklabHeader", "paneHeaderText"));
+        EXPECT_FALSE(f.named("adjustSaturation")->isVisible()) << "folded";
+        EXPECT_TRUE(mark->isVisible()) << "in use shows when folded too";
+
+        f.click(f.in("adjustOklabHeader", "paneHeaderSwitch"));
+        EXPECT_FALSE(f.panel->property("oklabOn").toBool());
+        EXPECT_DOUBLE_EQ(f.image->colorPreviewChroma(), 1) << "left out of the preview";
+        EXPECT_DOUBLE_EQ(f.panel->property("saturation").toDouble(), 50) << "but kept";
+        EXPECT_TRUE(f.named("adjustOklabHeader")->property("collapsed").toBool()) << "the box does not fold it";
+        f.click(f.in("adjustOklabHeader", "paneHeaderSwitch"));
+        EXPECT_DOUBLE_EQ(f.image->colorPreviewChroma(), 0.5);
+
+        f.click(f.in("adjustOklabHeader", "paneHeaderReset"));
+        EXPECT_DOUBLE_EQ(f.panel->property("saturation").toDouble(), 100);
+        EXPECT_FALSE(mark->isVisible());
+        EXPECT_DOUBLE_EQ(f.panel->property("black").toDouble(), 40) << "levels are another section";
+        QMetaObject::invokeMethod(f.page, "cancelAdjust");
+    }
+    AdjustFixture again(dir.path());
+    EXPECT_TRUE(again.named("adjustOklabHeader")->property("collapsed").toBool());
+    EXPECT_FALSE(again.named("adjustLevelsHeader")->property("collapsed").toBool());
+    again.click(again.in("adjustOklabHeader", "paneHeaderText"));  // as the other tests expect it
+}
+
+// Why: the temperature shows kelvins but moves evenly in mireds, so the warm end, where most
+// corrections are, is not squeezed; and the edit it makes is applied as previewed. Input: the
+// slider's ends and middle, then 3200 K applied to a mid gray. The truth: 2000 K and 15000 K at
+// the ends, the middle at the mean of their mireds (3529 K, shown to 50 K), 6500 K about a fifth
+// from the right, and the gray made bluer.
+TEST(Adjust, TemperatureMovesEvenlyInMiredsAndTungstenMakesItBluer) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("gray.tif"));
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {{.width = 40, .height = 30}});
+    AdjustFixture f(path);
+    ASSERT_TRUE(settled(f.image));
+    const auto call = [&](const char* name, double value) {
+        QVariant result;
+        QMetaObject::invokeMethod(f.panel, name, Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, value));
+        return result.toDouble();
+    };
+    EXPECT_EQ(call("kelvinAt", 0), 2000);
+    EXPECT_EQ(call("kelvinAt", 1), 15000);
+    EXPECT_EQ(call("kelvinAt", 0.5), 3550);
+    EXPECT_NEAR(call("positionOf", 6500), 0.8, 0.01);
+
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    EXPECT_FALSE(f.image->colorPreviewWhite());
+    f.panel->setProperty("temperature", 3200);
+    EXPECT_TRUE(f.image->colorPreviewWhite());
+    EXPECT_TRUE(f.named("adjustWhiteHeader")->property("inUse").toBool());
+    QMetaObject::invokeMethod(f.page, "applyAdjust");
+    ASSERT_TRUE(waitUntil([&] { return f.image->status() == ImageView::Status::Ready && f.image->modified(); }));
+    QSignalSpy probed(f.image, &ImageView::probed);
+    f.image->probe(QPointF(5, 5));
+    ASSERT_TRUE(probed.wait());
+    const QColor colour = probed.first().first().toMap().value(QStringLiteral("color")).value<QColor>();
+    EXPECT_GT(colour.blue(), colour.red() + 10);
+}
+
+// Why: Pick gray is how most people will set white balance: click something neutral, or drag
+// over it, and it becomes neutral. It reads the picture as it enters Adjust, so picking again
+// with white balance already set finds the same; and it refuses what says nothing about the
+// light. Input: a picture of a gray under 4000 K light with a magenta tint of 20, beside black;
+// a click with a 5-pixel patch, a second click after white balance and levels are set, a drag,
+// and a click on the black. The truth: about 4000 K and tint 20 each time (8-bit samples allow
+// a little either way), the patch outlined at the size chosen, and a refusal saying it is dark.
+TEST(Adjust, PickGrayMakesWhatIsClickedOrDraggedNeutral) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("tinted.tif"));
+    const Rgb gray = grayUnder({4000, 20});
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(),
+                        {{.width = 60, .height = 40, .pixel = [gray](int x, int) { return x < 40 ? gray : Rgb{1, 1, 1}; }}});
+    AdjustFixture f(path);
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    // The panel slides in and the view narrows; the clicks need it settled.
+    ASSERT_TRUE(waitUntil([&] { return f.image->width() < 800; }));
+    double width = 0;
+    QElapsedTimer still;
+    still.start();
+    ASSERT_TRUE(waitUntil([&] {
+        if (f.image->width() != width) {
+            width = f.image->width();
+            still.restart();
+        }
+        return still.elapsed() > 200;
+    }));
+    for (int i = 0; i < 4; ++i) {
+        f.image->zoomIn();
+    }
+    const QPointF far = f.image->imageToItem(QPointF(60, 40));
+    ASSERT_TRUE(f.image->contains(far - QPointF(1, 1))) << "the whole picture in view";
+    auto* overlay = f.named("grayPick");
+    ASSERT_NE(overlay, nullptr);
+    EXPECT_FALSE(overlay->isVisible());
+    f.click(f.named("adjustPickGray"));
+    ASSERT_TRUE(f.panel->property("picking").toBool());
+    EXPECT_TRUE(overlay->isVisible());
+    const auto at = [&](double x, double y) { return f.image->mapToScene(f.image->imageToItem(QPointF(x, y))).toPoint(); };
+    const auto expectFound = [&](const char* how) {
+        EXPECT_NEAR(f.panel->property("temperature").toDouble(), 4000, 80) << how;
+        EXPECT_NEAR(f.panel->property("tint").toDouble(), 20, 4) << how;
+    };
+    QSignalSpy picked(f.image, &ImageView::grayPicked);
+    // The result may come while the mouse events are still being handled, so it is counted
+    // rather than waited for after them.
+    qsizetype seen = 0;
+    const auto onePicked = [&] {
+        const bool came = waitUntil([&] { return picked.count() > seen; });
+        seen = picked.count();
+        return came;
+    };
+
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, at(20.5, 20.5));
+    ASSERT_TRUE(onePicked());
+    expectFound("a click");
+    EXPECT_EQ(overlay->property("patch").toRectF(), QRectF(18, 18, 5, 5));
+
+    f.panel->setProperty("temperature", 9000);
+    f.panel->setProperty("black", 30);
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, at(10.5, 30.5));
+    ASSERT_TRUE(onePicked());
+    expectFound("again, with white balance and levels set");
+
+    QTest::mousePress(&f.view, Qt::LeftButton, Qt::NoModifier, at(5.5, 5.5));
+    QTest::mouseMove(&f.view, at(15.5, 15.5));
+    QTest::mouseMove(&f.view, at(30.5, 25.5));
+    QTest::mouseRelease(&f.view, Qt::LeftButton, Qt::NoModifier, at(30.5, 25.5));
+    ASSERT_TRUE(onePicked());
+    expectFound("a drag");
+    EXPECT_EQ(overlay->property("patch").toRectF(), QRectF(5, 5, 26, 21));
+
+    QTest::mouseClick(&f.view, Qt::LeftButton, Qt::NoModifier, at(50.5, 20.5));
+    ASSERT_TRUE(onePicked());
+    expectFound("unchanged by a refusal");
+    EXPECT_NE(f.panel->property("pickMessage").toString().indexOf(QStringLiteral("dark")), -1);
+
+    QMetaObject::invokeMethod(f.page, "cancelAdjust");
+    EXPECT_FALSE(overlay->isVisible());
+    EXPECT_TRUE(overlay->property("patch").toRectF().isEmpty());
+}
+
+// Why: Pick gray must make the patch neutral as seen, also in a picture whose RGB is not the
+// screen's. The preview works on the picture converted for the screen, so its matrix must be
+// the correction carried over into the screen's RGB; with the picture's own, the patch only came
+// close to gray. Input: a Display P3 picture, as phones make them, of a gray under 3500 K light
+// with a tint of -30, picked; then applied. The truth: the patch's colour in the screen's RGB
+// made neutral by the preview's matrix, and the applied picture's patch neutral on screen,
+// within a level.
+TEST(Adjust, PickGrayIsNeutralOnScreenInAWideGamutPicture) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("p3.tif"));
+    const iv::IccBytes p3Profile = iv::profileFromCicp(12, 13);
+    const auto p3 = iv::profileRgbToXyz(p3Profile);
+    ASSERT_TRUE(p3);
+    const Rgb gray = grayUnder({3500, -30}, *p3);
+    iv::test::TiffImage tiff{.width = 30, .height = 20};
+    tiff.iccProfile = p3Profile;
+    tiff.pixel = [gray](int, int) { return gray; };
+    iv::test::writeTiff(QFileInfo(path).filesystemFilePath(), {tiff});
+    AdjustFixture f(path);
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    f.panel->setProperty("picking", true);
+    QSignalSpy picked(f.image, &ImageView::grayPicked);
+    f.image->pickGray(QRectF(10, 5, 5, 5));
+    ASSERT_TRUE(picked.count() > 0 || picked.wait());
+    EXPECT_NEAR(f.panel->property("temperature").toDouble(), 3500, 60);
+    EXPECT_NEAR(f.panel->property("tint").toDouble(), -30, 3);
+
+    // The patch as the screen (sRGB here) gets it, through the preview's matrix.
+    const auto linear = [](std::uint8_t v) { return iv::srgbDecode(v / 255.0); };
+    const iv::Matrix3 srgb = iv::rgbToXyz(iv::kSrgbPrimaries);
+    const auto onScreen = srgb.inverse() * *p3 * std::array<double, 3>{linear(gray.r), linear(gray.g), linear(gray.b)};
+    const QMatrix4x4 m = f.image->colorPreviewWhiteMatrix();
+    const QVector3D shown = m.map(QVector3D(float(onScreen[0]), float(onScreen[1]), float(onScreen[2])));
+    EXPECT_NEAR(shown.x(), shown.y(), 0.01 * shown.y());
+    EXPECT_NEAR(shown.y(), shown.z(), 0.01 * shown.y());
+
+    QMetaObject::invokeMethod(f.page, "applyAdjust");
+    ASSERT_TRUE(waitUntil([&] { return f.image->status() == ImageView::Status::Ready && f.image->modified(); }));
+    QSignalSpy probed(f.image, &ImageView::probed);
+    f.image->probe(QPointF(12, 7));
+    ASSERT_TRUE(probed.wait());
+    const QColor colour = probed.first().first().toMap().value(QStringLiteral("color")).value<QColor>();
+    EXPECT_NEAR(colour.red(), colour.green(), 1);
+    EXPECT_NEAR(colour.green(), colour.blue(), 1);
 }

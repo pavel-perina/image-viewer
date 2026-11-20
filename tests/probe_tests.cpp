@@ -1,4 +1,7 @@
+#include <array>
 #include <atomic>
+#include <cmath>
+#include <functional>
 #include <filesystem>
 #include <string>
 
@@ -7,7 +10,9 @@
 
 #include "core/color.h"
 #include "core/image_source.h"
+#include "core/oklab.h"
 #include "core/pixel_probe.h"
+#include "core/whole_image_source.h"
 #include "test_tiff.h"
 
 using namespace iv;
@@ -118,4 +123,106 @@ TEST(Probe, RefusesPixelsOutsideTheImage) {
     EXPECT_FALSE(probePixel(*file.source, 0, 50, 0, {}));
     EXPECT_FALSE(probePixel(*file.source, 0, -1, 0, {}));
     EXPECT_FALSE(probePixel(*file.source, 1, 0, 0, {}));
+}
+
+namespace {
+
+// An 8-bit picture held in memory, each pixel from a function giving R, G, B and alpha.
+std::shared_ptr<ImageSource> memoryPicture(Size size, bool alpha, std::function<std::array<int, 4>(int, int)> pixel) {
+    SubimageInfo info;
+    info.format = PixelFormat::Bgrx8;
+    info.alpha = alpha;
+    info.levels.push_back({size, {256, 256}});
+    info.stored.colorModel = alpha ? "RGB + alpha" : "RGB";
+    return makeWholeImageSource(info, size, [=](const std::stop_token&) -> Result<ImageBuffer> {
+        const ImageBuffer image = ImageBuffer::create(size, PixelFormat::Bgrx8).withAlpha(alpha);
+        for (int y = 0; y < size.height; ++y) {
+            auto* p = reinterpret_cast<std::uint8_t*>(image.row(y));
+            for (int x = 0; x < size.width; ++x, p += 4) {
+                const auto c = pixel(x, y);
+                p[0] = static_cast<std::uint8_t>(c[2]);
+                p[1] = static_cast<std::uint8_t>(c[1]);
+                p[2] = static_cast<std::uint8_t>(c[0]);
+                p[3] = static_cast<std::uint8_t>(c[3]);
+            }
+        }
+        return image;
+    });
+}
+
+double linear8(int v) { return srgbDecode(v / 255.0); }
+
+}  // namespace
+
+// Why: Pick gray must average what it covers, as one noisy pixel would shift the white balance.
+// Input: a gray of 120 with a fixed pattern of noise around it, across tiles of 16 pixels; a
+// patch of 5 and single pixels; then a rectangle of two halves, 100 and 140. The truth: the
+// patch nearer the gray than the typical single pixel, and the rectangle's mean in linear light.
+TEST(PatchAverage, AveragesWhatItCovers) {
+    TiffImage image;
+    image.width = 40;
+    image.height = 40;
+    image.tileSize = 16;
+    image.pixel = [](int x, int y) {
+        const int noise = ((x * 7 + y * 13) % 9) - 4;  // -4 to +4, evenly spread
+        return Rgb{static_cast<std::uint8_t>(120 + noise), static_cast<std::uint8_t>(120 - noise), 120};
+    };
+    ProbeFile file(image);
+    ASSERT_TRUE(file.source);
+    const double gray = linear8(120);
+    const auto patch = patchAverage(*file.source, 0, 14, 14, 5, 5, {});  // across four tiles
+    ASSERT_TRUE(patch) << patch.error();
+    double singles = 0;
+    for (int i = 0; i < 25; ++i) {
+        const auto one = patchAverage(*file.source, 0, 14 + i % 5, 14 + i / 5, 1, 1, {});
+        singles += std::abs((*one)[0] - gray);
+    }
+    EXPECT_LT(std::abs((*patch)[0] - gray), singles / 25 / 3);
+
+    const auto halves = memoryPicture({10, 4}, false, [](int x, int) {
+        const int v = x < 5 ? 100 : 140;
+        return std::array<int, 4>{v, v, v, 255};
+    });
+    const auto mean = patchAverage(*halves, 0, -3, 0, 100, 4, {});  // cut to the picture
+    ASSERT_TRUE(mean) << mean.error();
+    EXPECT_NEAR((*mean)[1], (linear8(100) + linear8(140)) / 2, 1e-9);
+}
+
+// Why: patches whose colour says nothing about the light must be refused, with the reason,
+// rather than set a wrong white balance. Input: a transparent patch, a black one, a clipped
+// one, and a gray picture; then a patch half clipped by a small part, which is kept. The truth:
+// refusals naming each, and the mean of the unclipped pixels for the last.
+TEST(PatchAverage, RefusesTransparentBlackAndClippedPatches) {
+    const auto picture = memoryPicture({30, 10}, true, [](int x, int) {
+        if (x < 10) {
+            return std::array<int, 4>{128, 128, 128, 20};  // nearly transparent
+        }
+        if (x < 20) {
+            return std::array<int, 4>{2, 3, 2, 255};
+        }
+        return std::array<int, 4>{255, 255, 250, 255};
+    });
+    const auto transparent = patchAverage(*picture, 0, 0, 0, 5, 5, {});
+    ASSERT_FALSE(transparent);
+    EXPECT_NE(transparent.error().find("transparent"), std::string::npos);
+    const auto black = patchAverage(*picture, 0, 12, 0, 5, 5, {});
+    ASSERT_FALSE(black);
+    EXPECT_NE(black.error().find("dark"), std::string::npos);
+    const auto clipped = patchAverage(*picture, 0, 22, 0, 5, 5, {});
+    ASSERT_FALSE(clipped);
+    EXPECT_NE(clipped.error().find("Clipped"), std::string::npos);
+
+    TiffImage grayImage;
+    grayImage.samples = 1;
+    ProbeFile gray(grayImage);
+    ASSERT_TRUE(gray.source);
+    EXPECT_FALSE(patchAverage(*gray.source, 0, 0, 0, 5, 5, {}));
+
+    // One clipped column of five: left out, the rest averaged.
+    const auto some = memoryPicture({5, 5}, false, [](int x, int) {
+        return x == 0 ? std::array<int, 4>{255, 255, 255, 255} : std::array<int, 4>{90, 100, 110, 255};
+    });
+    const auto kept = patchAverage(*some, 0, 0, 0, 5, 5, {});
+    ASSERT_TRUE(kept) << kept.error();
+    EXPECT_NEAR((*kept)[2], linear8(110), 1e-9);
 }

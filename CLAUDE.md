@@ -22,14 +22,16 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 ### Core, by area
 
 * **Image model:** `image_source.h` (the interface every format implements: subimages, levels,
-  tiles), `image_buffer`, `geometry`, `viewport`, `overview_source`, `whole_image_source`.
+  tiles), `image_buffer`, `geometry` (also `Matrix3`), `viewport`, `overview_source`,
+  `whole_image_source`.
 * **Formats:** `jpeg_source`, `tiff_source`, `png_source`, `webp_source`, `avif_source`,
   `jxl_source`; read only, without a library: `bmp_source`, `gif_source`, `tga_source`,
   `netpbm_source`, over `decompress` (LZW, RLE) and `byte_reader.h`. Metadata: `exif`, `xmp`,
   `image_details`.
 * **Colour:** `color` (ICC, display transform), `color_edit` (levels, curves, cube tables),
-  `oklab.h`, `histogram`, `pixel_probe`, `palette` (the interface's colours, worked out from a
-  hue), `rgba.h`.
+  `white_balance` (temperature and tint, the locus, channel gains), `oklab.h`,
+  `histogram`, `pixel_probe` (one pixel, and a patch's mean for Pick gray), `palette` (the
+  interface's colours, worked out from a hue), `rgba.h`.
 * **Editing:** `document` (the edit list, undo), `crop`, `perspective` (straighten),
   `image_ops` (resize, grayscale), `shapes` (annotation shapes: points, grips, hit-testing),
   `image_layer` (blending a drawn layer into the picture, pixelate), `coverage` (growing,
@@ -52,8 +54,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   remembered tool/dialog state stays local), `retired_settings` (removes, at start, the
   settings the program has dropped).
 * **Tools drawn on the image:** `image_overlay` (the base), `overlay_style` (their colours,
-  from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `annotate_overlay`, and
-  `shape_painter` (draws annotation shapes, for the screen and for burning in).
+  from `Theme`), `crop_overlay`, `straighten_overlay`, `probe_overlay`, `gray_pick_overlay`
+  (Pick gray for white balance), `annotate_overlay`, and `shape_painter` (draws annotation shapes, for the screen and for burning in).
 * **Browsing:** `browse_context` (one folder, its files, the current image), `file_list_model`,
   `directory_tree_model`, `folder_listing`, `subfolder_list`, `folder_lists`, `thumbnail_store`,
   `thumbnail_provider`.
@@ -63,10 +65,11 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 * **QML shared controls:** `AppDialog` (a dialog inside the window), `DialogWindow` (a large
   dialog in a window of its own), `AppMenu`, `AppMenuItem`, `BarButton`, `IconButton` (a tool bar button showing an icon), `AppScrollBar`,
   `MessageBox`, `NumberRow` (a label with a number to set), `DecimalSpinBox`, `ListFrame` (what
-  a list stands on: base colour and a frame), `PaneHeader` (a pane's caption, which may collapse
+  a list stands on: base colour and a frame), `PaneHeader` (a pane's or section's caption, which may collapse
   it), `SearchCombo` (a combo box with
   fzf-style search, over `fuzzy_list_model`), `ToolPanel` (the base of every tool's panel:
-  heading, rows, Cancel and Apply), `Theme` (every colour, and the sizes pages share).
+  heading, rows, Cancel and Apply), `ToolSection` (a folding section of a tool's panel, over
+  `PaneHeader`), `Theme` (every colour, and the sizes pages share).
 
 ## Build and test
 

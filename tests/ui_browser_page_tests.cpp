@@ -477,14 +477,7 @@ TEST(BrowserPage, TheFoldersAndThePreviewHaveCaptionsThatStartAtOnePlace) {
     QQuickItem* preview = findNamed(f.view.rootObject(), QStringLiteral("previewHeader"));
     ASSERT_NE(folders, nullptr);
     ASSERT_NE(preview, nullptr);
-    const auto words = [](QQuickItem* header) -> QQuickItem* {
-        for (QQuickItem* child : header->childItems()) {
-            if (child->property("text").isValid() && child->property("elide").isValid()) {
-                return child;
-            }
-        }
-        return nullptr;
-    };
+    const auto words = [](QQuickItem* header) { return findNamed(header, QStringLiteral("paneHeaderText")); };
     ASSERT_NE(words(folders), nullptr);
     ASSERT_NE(words(preview), nullptr);
     EXPECT_EQ(words(folders)->property("text").toString(), QStringLiteral("Folders"));

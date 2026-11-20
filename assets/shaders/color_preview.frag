@@ -1,6 +1,6 @@
 #version 440
 // A colour edit over the image as shown, the same stages as applyColor in core/color_edit.cpp:
-// a tone curve on the samples, lightness and chroma in Oklab, then a cube, from one lookup image
+// white balance by a matrix on linear RGB, a tone curve on the samples, lightness and chroma in Oklab, then a cube, from one lookup image
 // made by colorLutImage: the cube's slices side by side, then a row per curve.
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -17,6 +17,9 @@ layout(std140, binding = 0) uniform buf {
     vec4 domainMax;
     float adjust;        // 0 passes the colours through, to be dithered
     float ditherStep;    // one step of the output, or 0 when another pass follows
+    mat4 whiteMatrix;    // white balance on linear RGB, in its upper 3 x 3
+    vec4 luminance;      // weights of R, G, B for the luminance of the picture's RGB
+    float useWhite;      // 1 to apply white balance
 };
 layout(binding = 1) uniform sampler2D source;
 layout(binding = 2) uniform sampler2D lut;
@@ -88,6 +91,21 @@ vec3 intoGamut(vec3 lab) {
     return fromOklab(vec3(lab.x, lab.yz * low));
 }
 
+// As fitByChroma in core/white_balance.cpp: towards the gray of the same luminance until the
+// colour fits.
+vec3 fitByChroma(vec3 c) {
+    const float gray = clamp(dot(c, luminance.rgb), 0.0, 1.0);
+    float keep = 1.0;
+    for (int i = 0; i < 3; ++i) {
+        if (c[i] > 1.0) {
+            keep = min(keep, (1.0 - gray) / (c[i] - gray));
+        } else if (c[i] < 0.0) {
+            keep = min(keep, gray / (gray - c[i]));
+        }
+    }
+    return gray + (c - gray) * max(keep, 0.0);
+}
+
 float curveAt(int row, float x) {
     const float position = clamp(x, 0.0, 1.0) * float(kCurveSamples - 1);
     const int i = min(int(position), kCurveSamples - 2);
@@ -136,6 +154,13 @@ void main() {
     }
     vec3 c = sampled.rgb / sampled.a;
     const int n = adjust > 0.5 ? int(cubeSize + 0.5) : 0;
+    if (adjust > 0.5 && useWhite > 0.5) {
+        vec3 linear = mat3(whiteMatrix) * decode(clamp(c, 0.0, 1.0));
+        if (gamutMap > 0.5) {
+            linear = fitByChroma(linear);
+        }
+        c = encode(clamp(linear, 0.0, 1.0));
+    }
     if (adjust > 0.5 && useTone > 0.5) {
         c = vec3(curveAt(n, c.r), curveAt(n, c.g), curveAt(n, c.b));
     }

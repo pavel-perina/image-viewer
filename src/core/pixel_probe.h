@@ -25,6 +25,14 @@ struct PixelProbe {
 // The pixel at x, y of level 0, in stored coordinates, before any orientation.
 Result<PixelProbe> probePixel(ImageSource& source, int subimage, int x, int y, const std::stop_token& stop);
 
+// The mean colour of a rectangle of level 0, in stored coordinates, in linear light, for
+// finding the white balance that makes it neutral. The rectangle is cut to the picture. Pixels
+// count by how much of them shows, and those with a clipped channel are left out. Refused, with
+// the reason, when what is covered says nothing reliable about the light: a gray picture, or
+// a patch mostly transparent, nearly black or mostly clipped.
+Result<std::array<double, 3>> patchAverage(ImageSource& source, int subimage, int x, int y, int width, int height,
+                                           const std::stop_token& stop);
+
 // "#405060".
 std::string hexText(const std::array<std::uint8_t, 3>& rgb);
 

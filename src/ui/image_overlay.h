@@ -65,6 +65,10 @@ protected:
         bool hollow = false;
     };
     void drawGrip(QPainter* painter, QPointF at, const QColor& colour, Grip grip) const;
+    // A frame around part of the image, in pixels of the image as shown, never smaller on
+    // screen than a few device pixels: light, then dark around it, each a device pixel wide and
+    // outside the part, so that its colour stays in view.
+    void drawFrame(QPainter* painter, const QRectF& imageRect) const;
 
     // For a tool to fill in.
     // Whether it takes the mouse now. Panning waits for this too.

@@ -821,6 +821,11 @@ TEST(ColorPreview, TheShaderShowsWhatApplyingGives) {
     // Colours pushed far beyond the range, fitted by chroma and clipped.
     compare({{QStringLiteral("saturation"), 2.0}, {QStringLiteral("brightness"), 0.05}});
     compare({{QStringLiteral("saturation"), 2.0}, {QStringLiteral("brightness"), 0.05}, {QStringLiteral("gamutMap"), false}});
+    // White balance first, warm and cool, with a tint, then levels and the cube; then with
+    // the Oklab stages, and with strong colours clipped rather than fitted.
+    compare({{QStringLiteral("temperature"), 3200}, {QStringLiteral("tint"), 25}, {QStringLiteral("black"), 0.05}});
+    compare({{QStringLiteral("temperature"), 11000}, {QStringLiteral("tint"), -40}, {QStringLiteral("saturation"), 1.4}});
+    compare({{QStringLiteral("temperature"), 2500}, {QStringLiteral("gamutMap"), false}});
     view->clearColorCube();
     // Everything but a cube, with blacks lifted twice over.
     compare({{QStringLiteral("black"), 0.05}, {QStringLiteral("gamma"), 0.8}, {QStringLiteral("outBlack"), 0.1},

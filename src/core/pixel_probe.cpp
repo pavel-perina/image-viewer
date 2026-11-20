@@ -1,10 +1,12 @@
 #include "core/pixel_probe.h"
 
+#include <algorithm>
 #include <format>
 #include <new>
 
 #include "core/color.h"
 #include "core/image_ops.h"
+#include "core/oklab.h"
 
 namespace iv {
 
@@ -113,6 +115,119 @@ Result<PixelProbe> probePixel(ImageSource& source, int subimage, int x, int y, c
         return std::unexpected("not enough memory");
     }
     return probe;
+}
+
+namespace {
+
+// A patch says nothing about the light when less than this much of it shows, its luminance is
+// below this in linear light (about 6 of 255 as stored), or more than this part of it is clipped.
+constexpr double kLeastShowing = 0.5;
+constexpr double kDarkest = 0.002;
+constexpr double kMostClipped = 0.25;
+// A channel this near the top of an integer format is taken as clipped.
+constexpr double kClipped = 254.0 / 255.0;
+
+struct PatchSums {
+    std::array<double, 3> rgb{};
+    double weight = 0;   // of the pixels kept
+    double showing = 0;  // of all, by alpha
+    double clipped = 0;
+    double pixels = 0;
+};
+
+// R, G, B from 0 to 1 as stored and alpha, of one pixel.
+std::array<double, 4> samplesAt(const ImageBuffer& tile, int x, int y) {
+    const std::byte* p = tile.row(y);
+    const bool alpha = tile.hasAlpha();
+    switch (tile.format()) {
+    case PixelFormat::Bgrx8: {
+        const auto* b = reinterpret_cast<const std::uint8_t*>(p) + static_cast<std::ptrdiff_t>(x) * 4;
+        return {b[2] / 255.0, b[1] / 255.0, b[0] / 255.0, alpha ? b[3] / 255.0 : 1.0};
+    }
+    case PixelFormat::Rgba16: {
+        const auto* s = reinterpret_cast<const std::uint16_t*>(p) + static_cast<std::ptrdiff_t>(x) * 4;
+        return {s[0] / 65535.0, s[1] / 65535.0, s[2] / 65535.0, alpha ? s[3] / 65535.0 : 1.0};
+    }
+    case PixelFormat::Rgba32F: {
+        const auto* f = reinterpret_cast<const float*>(p) + static_cast<std::ptrdiff_t>(x) * 4;
+        return {f[0], f[1], f[2], alpha ? std::clamp(double(f[3]), 0.0, 1.0) : 1.0};
+    }
+    case PixelFormat::Gray8:
+    case PixelFormat::Gray16:
+    case PixelFormat::Gray32F: break;
+    }
+    return {0, 0, 0, 0};
+}
+
+void addTile(const ImageBuffer& tile, int x0, int y0, int x1, int y1, bool integer, PatchSums& sums) {
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            const auto s = samplesAt(tile, x, y);
+            sums.pixels += 1;
+            sums.showing += s[3];
+            if (s[3] <= 0) {
+                continue;
+            }
+            if (integer && std::max({s[0], s[1], s[2]}) >= kClipped) {
+                sums.clipped += s[3];
+                continue;
+            }
+            for (std::size_t c = 0; c < 3; ++c) {
+                sums.rgb[c] += srgbDecode(s[c]) * s[3];
+            }
+            sums.weight += s[3];
+        }
+    }
+}
+
+}  // namespace
+
+Result<std::array<double, 3>> patchAverage(ImageSource& source, int subimage, int x, int y, int width, int height,
+                                           const std::stop_token& stop) {
+    const auto subimages = source.subimages();
+    if (subimage < 0 || subimage >= static_cast<int>(subimages.size())) {
+        return std::unexpected("there is no such page");
+    }
+    const SubimageInfo& info = subimages[static_cast<std::size_t>(subimage)];
+    if (info.format == PixelFormat::Gray8 || info.format == PixelFormat::Gray16 || info.format == PixelFormat::Gray32F ||
+        info.stored.colorModel.starts_with("Grayscale")) {
+        return std::unexpected("A gray picture has no colour to balance.");
+    }
+    const LevelInfo& level = info.levels.front();
+    const int left = std::max(x, 0);
+    const int top = std::max(y, 0);
+    const int right = std::min(x + width, level.size.width);
+    const int bottom = std::min(y + height, level.size.height);
+    if (left >= right || top >= bottom) {
+        return std::unexpected("outside the image");
+    }
+    const bool integer = info.format != PixelFormat::Rgba32F;
+    const Size tileSize = level.tileSize;
+    PatchSums sums;
+    for (int row = top / tileSize.height; row * tileSize.height < bottom; ++row) {
+        for (int col = left / tileSize.width; col * tileSize.width < right; ++col) {
+            const auto tile = source.readTile({subimage, 0, col, row}, stop);
+            if (!tile) {
+                return std::unexpected(tile.error());
+            }
+            const int tx = col * tileSize.width;
+            const int ty = row * tileSize.height;
+            addTile(*tile, std::max(left - tx, 0), std::max(top - ty, 0), std::min(right - tx, tile->width()),
+                    std::min(bottom - ty, tile->height()), integer, sums);
+        }
+    }
+    if (sums.showing < kLeastShowing * sums.pixels) {
+        return std::unexpected("Mostly transparent: pick something that shows.");
+    }
+    if (sums.clipped > kMostClipped * sums.showing || sums.weight <= 0) {
+        return std::unexpected("Clipped: a highlight at full brightness has lost its colour.");
+    }
+    const std::array<double, 3> mean{sums.rgb[0] / sums.weight, sums.rgb[1] / sums.weight, sums.rgb[2] / sums.weight};
+    // By the weights of sRGB: enough to tell black, whatever the picture's primaries.
+    if (0.2126 * mean[0] + 0.7152 * mean[1] + 0.0722 * mean[2] < kDarkest) {
+        return std::unexpected("Too dark to tell the colour of the light.");
+    }
+    return mean;
 }
 
 std::string hexText(const std::array<std::uint8_t, 3>& rgb) {
