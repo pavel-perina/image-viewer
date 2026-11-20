@@ -74,8 +74,13 @@ struct ColorEdit {
     // their hue and flattens them. Floats keep what lies beyond the range either way.
     bool gamutMap = true;
     std::shared_ptr<const ColorCube> cube;
+    // How much of the cube: its result mixed with the colour it was given, from 0 to 1, in the
+    // samples as stored, as other programs tone down a look. Looks are often made strong.
+    double cubeStrength = 1;
 
-    bool isIdentity() const { return whiteBalance.isIdentity() && tone.isIdentity() && lightness.isIdentity() && chroma == 1 && !cube; }
+    // The cube, unless there is none or none of it is taken.
+    const ColorCube* usedCube() const { return cubeStrength > 0 ? cube.get() : nullptr; }
+    bool isIdentity() const { return whiteBalance.isIdentity() && tone.isIdentity() && lightness.isIdentity() && chroma == 1 && !usedCube(); }
     bool usesOklab() const { return !lightness.isIdentity() || chroma != 1; }
     bool operator==(const ColorEdit& other) const;
 };

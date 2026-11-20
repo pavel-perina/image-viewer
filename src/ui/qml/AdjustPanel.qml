@@ -54,12 +54,13 @@ ToolPanel {
     property bool levelsOn: true
     property bool oklabOn: true
     property bool lookOn: true
+    property real cubeStrength: 100
 
     readonly property bool whiteInUse: !view.grayImage && (temperature !== 6500 || tint !== 0)
     readonly property bool levelsInUse: black !== 0 || white !== 255 || gamma !== 1 || outBlack !== 0 || outWhite !== 255
     readonly property bool oklabInUse: brightness !== 0 || contrast !== 100 || midtones !== 1
                                        || (!view.grayImage && saturation !== 100)
-    readonly property bool lookInUse: !view.grayImage && view.colorCubeName !== ""
+    readonly property bool lookInUse: !view.grayImage && view.colorCubeName !== "" && cubeStrength > 0
 
     // A section switched off gives the values that leave the picture alone.
     readonly property var settings: ({
@@ -68,7 +69,7 @@ ToolPanel {
         outBlack: levelsOn ? outBlack / 255 : 0, outWhite: levelsOn ? outWhite / 255 : 1,
         brightness: oklabOn ? brightness / 100 : 0, contrast: oklabOn ? contrast / 100 : 1,
         lightness: oklabOn ? midtones : 1, saturation: oklabOn ? saturation / 100 : 1,
-        gamutMap: gamutMap, cube: lookOn
+        gamutMap: gamutMap, cube: lookOn, cubeStrength: cubeStrength / 100
     })
     readonly property bool changes: (whiteOn && whiteInUse) || (levelsOn && levelsInUse) || (oklabOn && oklabInUse)
                                     || (lookOn && lookInUse)
@@ -113,6 +114,7 @@ ToolPanel {
 
     function resetLook() {
         message = ""
+        cubeStrength = 100
         view.clearColorCube()
         preview()
     }
@@ -388,6 +390,19 @@ ToolPanel {
             elide: Text.ElideMiddle
             color: Theme.textMuted
             text: panel.view.colorCubeName !== "" ? panel.view.colorCubeName : "None"
+        }
+        // Looks are often made strong, to be toned down: the table's result mixed with the colour
+        // before it.
+        SliderRow {
+            objectName: "adjustCubeStrength"
+            label: "Strength (%)"
+            enabled: panel.view.colorCubeName !== ""
+            value: panel.cubeStrength
+            defaultValue: 100
+            from: 0
+            to: 100
+            onModified: (value) => panel.cubeStrength = value
+            onDoneEditing: panel.doneEditing()
         }
         Label {
             visible: panel.message !== ""

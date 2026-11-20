@@ -26,6 +26,7 @@ ShaderEffect {
     }
     property var lut: lutTexture
     property real cubeSize: view.colorPreviewCubeSize
+    property real cubeStrength: view.colorPreviewCubeStrength
     property real chroma: view.colorPreviewChroma
     property real useTone: view.colorPreviewTone ? 1 : 0
     property real useLightness: view.colorPreviewLightness ? 1 : 0

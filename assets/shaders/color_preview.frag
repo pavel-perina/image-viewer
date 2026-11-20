@@ -20,6 +20,7 @@ layout(std140, binding = 0) uniform buf {
     mat4 whiteMatrix;    // white balance on linear RGB, in its upper 3 x 3
     vec4 luminance;      // weights of R, G, B for the luminance of the picture's RGB
     float useWhite;      // 1 to apply white balance
+    float cubeStrength;  // the cube's result mixed with its input, from 0 to 1
 };
 layout(binding = 1) uniform sampler2D source;
 layout(binding = 2) uniform sampler2D lut;
@@ -173,7 +174,7 @@ void main() {
         c = encode(clamp(gamutMap > 0.5 ? intoGamut(lab) : fromOklab(lab), 0.0, 1.0));
     }
     if (n >= 2) {
-        c = throughCube(c, n);
+        c = mix(c, throughCube(c, n), cubeStrength);
     }
     c = clamp(c, 0.0, 1.0);
     if (ditherStep > 0.0) {

@@ -42,6 +42,7 @@
 #include "core/document.h"
 #include "core/histogram.h"
 #include "core/image_details.h"
+#include "core/image_layer.h"
 #include "core/image_ops.h"
 #include "core/image_source.h"
 #include "core/perspective.h"
@@ -351,6 +352,8 @@ struct ImageView::Impl {
         return rgbToXyz(kSrgbPrimaries);
     }
 
+    bool gray() const { return source && isGray(subimage().format); }
+
     // The same edit for previewing and applying.
     ColorEdit colorEditFor(const QVariantMap& settings) const {
         const auto value = [&](const char* key, double fallback) {
@@ -363,8 +366,13 @@ struct ImageView::Impl {
         edit.lightness = lightnessCurve(value("brightness", 0), value("contrast", 1), value("lightness", 1));
         edit.chroma = value("saturation", 1);
         edit.gamutMap = settings.value(QStringLiteral("gamutMap"), true).toBool();
-        if (settings.value(QStringLiteral("cube"), true).toBool()) {
+        // No cube at all when none of it is taken or the picture is gray, rather than a cube
+        // marked unused: the preview's lookup image holds the curves after the cube's slices,
+        // and the shader finds them by the cube's size, so the two must agree.
+        const double strength = std::clamp(value("cubeStrength", 1), 0.0, 1.0);
+        if (settings.value(QStringLiteral("cube"), true).toBool() && strength > 0 && !gray()) {
             edit.cube = colorCube;
+            edit.cubeStrength = strength;
         }
         return edit;
     }
@@ -1216,20 +1224,19 @@ bool ImageView::modified() const { return m_impl->edit && m_impl->edit->modified
 bool ImageView::canUndo() const { return m_impl->edit && m_impl->edit->canUndo(); }
 bool ImageView::canRedo() const { return m_impl->edit && m_impl->edit->canRedo(); }
 
-bool ImageView::grayImage() const {
-    if (!m_impl->source) {
-        return false;
-    }
-    const PixelFormat format = m_impl->subimage().format;
-    return format == PixelFormat::Gray8 || format == PixelFormat::Gray16 || format == PixelFormat::Gray32F;
-}
+bool ImageView::grayImage() const { return m_impl->gray(); }
 
 bool ImageView::colorPreviewActive() const { return m_impl->colorPreview.has_value(); }
 QImage ImageView::colorPreviewLut() const { return m_impl->colorPreviewLut; }
 
 int ImageView::colorPreviewCubeSize() const {
     const auto& preview = m_impl->colorPreview;
-    return preview && preview->cube && !grayImage() ? preview->cube->size : 0;
+    return preview && preview->cube ? preview->cube->size : 0;
+}
+
+double ImageView::colorPreviewCubeStrength() const {
+    const auto& preview = m_impl->colorPreview;
+    return preview ? preview->cubeStrength : 1.0;
 }
 
 double ImageView::colorPreviewChroma() const {

@@ -490,7 +490,7 @@ Result<ColorCube> parseCube(std::string_view text) {
 
 bool ColorEdit::operator==(const ColorEdit& other) const {
     const bool sameCube = cube == other.cube || (cube && other.cube && *cube == *other.cube);
-    return sameCube && whiteBalance == other.whiteBalance && workingSpace == other.workingSpace && tone == other.tone && lightness == other.lightness && chroma == other.chroma &&
+    return sameCube && cubeStrength == other.cubeStrength && whiteBalance == other.whiteBalance && workingSpace == other.workingSpace && tone == other.tone && lightness == other.lightness && chroma == other.chroma &&
            gamutMap == other.gamutMap;
 }
 
@@ -504,7 +504,8 @@ ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const s
     const int channels = channelsOf(format);
     const bool clip = format != PixelFormat::Rgba32F && format != PixelFormat::Gray32F;
     const bool oklab = gray ? !edit.lightness.isIdentity() : edit.usesOklab();
-    const ColorCube* cube = gray ? nullptr : edit.cube.get();
+    const ColorCube* cube = gray ? nullptr : edit.usedCube();
+    const auto strength = static_cast<float>(std::min(edit.cubeStrength, 1.0));
     const ImageBuffer target = ImageBuffer::create(source.size(), format).withAlpha(source.hasAlpha());  // alpha is copied as it is
     const Matrix3 white = balance ? whiteBalanceMatrix(edit.whiteBalance, edit.workingSpace) : Matrix3{};
     const std::array<double, 3> luminance{edit.workingSpace.m[3], edit.workingSpace.m[4], edit.workingSpace.m[5]};
@@ -538,7 +539,9 @@ ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const s
             if (cube) {
                 for (std::size_t i = 0; i < samples.size(); i += 3) {
                     const auto out = (*cube)(samples[i], samples[i + 1], samples[i + 2]);
-                    std::copy(out.begin(), out.end(), samples.begin() + static_cast<std::ptrdiff_t>(i));
+                    for (std::size_t c = 0; c < 3; ++c) {
+                        samples[i + c] += strength * (out[c] - samples[i + c]);
+                    }
                 }
             }
             for (int r = 0; r < rows; ++r) {

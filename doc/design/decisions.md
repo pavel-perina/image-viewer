@@ -1184,6 +1184,12 @@ Left out for now:
   keeps grays gray when the cube does. `.cube` files are read: `LUT_3D_SIZE`, `DOMAIN_MIN` and
   `DOMAIN_MAX`, and `LUT_1D_SIZE` tables, which become a 33-point cube. They apply to the
   encoded samples, as such files expect.
+* The cube has a strength, from 0 to 100 %: its result mixed with the colour it was given, in
+  the samples as stored, as other programs' Intensity or Mix tones a look down. Looks are often
+  made strong, to be used at well under full. The mix is exact, as it mixes two results for the
+  same colour; grays a cube keeps gray stay gray. It goes back to 100 % with the section's
+  Reset, as a new look starts at full, and at 0 the table is left out and the section is not in
+  use.
 * Colours the Oklab stages push beyond the range of an integer image are gamut mapped by
   default: lightness is clamped, then chroma reduced at the same hue until the colour fits,
   found by halving in 12 steps, in the shader too. Clipping each channel instead, which the

@@ -1929,3 +1929,41 @@ TEST(Adjust, PickingGrayStopsByTheButtonAgainOrByEscape) {
     QMetaObject::invokeMethod(f.page, "stepBack", Q_RETURN_ARG(QVariant, stepped));
     EXPECT_FALSE(f.page->property("adjusting").toBool());
 }
+
+// Why: a look is toned down by its strength, which waits for a table to be loaded, reaches the
+// preview, and goes back to full with the section's reset, as a new look starts at full. Input:
+// a made-up 2-point cube that swaps red and blue, strengths 40 and 0, then the caption's reset.
+// The truth: the row disabled until a table is loaded; 0.4 in the preview; at 0 the table left
+// out of the preview and the section no longer in use; after reset 100 and no table.
+TEST(Adjust, ALooksStrengthTonesItDown) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    const QString cubePath = dir.filePath(QStringLiteral("swap.cube"));
+    {
+        QFile cube(cubePath);
+        ASSERT_TRUE(cube.open(QIODevice::WriteOnly));
+        cube.write("LUT_3D_SIZE 2\n0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n");
+    }
+    AdjustFixture f(dir.path());
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    waitUntil([] { return false; }, 300);
+    QQuickItem* strength = f.named("adjustCubeStrength");
+    ASSERT_NE(strength, nullptr);
+    EXPECT_FALSE(strength->isEnabled()) << "nothing to tone down yet";
+
+    ASSERT_EQ(f.image->loadColorCube(QUrl::fromLocalFile(cubePath)), QString());
+    EXPECT_TRUE(strength->isEnabled());
+    f.panel->setProperty("cubeStrength", 40);
+    EXPECT_DOUBLE_EQ(f.image->colorPreviewCubeStrength(), 0.4);
+    EXPECT_EQ(f.image->colorPreviewCubeSize(), 2);
+    f.panel->setProperty("cubeStrength", 0);
+    EXPECT_EQ(f.image->colorPreviewCubeSize(), 0) << "none of the table taken";
+    EXPECT_EQ(f.image->colorPreviewLut().height(), 2) << "the curves alone, where the shader looks for them";
+    EXPECT_FALSE(f.named("adjustLookHeader")->property("inUse").toBool());
+
+    f.panel->setProperty("cubeStrength", 40);
+    f.click(f.in("adjustLookHeader", "paneHeaderReset"));
+    EXPECT_DOUBLE_EQ(f.panel->property("cubeStrength").toDouble(), 100);
+    EXPECT_EQ(f.image->colorCubeName(), QString());
+}

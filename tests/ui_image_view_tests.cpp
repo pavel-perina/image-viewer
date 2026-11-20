@@ -826,6 +826,11 @@ TEST(ColorPreview, TheShaderShowsWhatApplyingGives) {
     compare({{QStringLiteral("temperature"), 3200}, {QStringLiteral("tint"), 25}, {QStringLiteral("black"), 0.05}});
     compare({{QStringLiteral("temperature"), 11000}, {QStringLiteral("tint"), -40}, {QStringLiteral("saturation"), 1.4}});
     compare({{QStringLiteral("temperature"), 2500}, {QStringLiteral("gamutMap"), false}});
+    // The cube at a third of its strength, after the Oklab stages.
+    compare({{QStringLiteral("cubeStrength"), 0.35}, {QStringLiteral("saturation"), 1.3}});
+    // None of it, with levels and lightness: the shader finds the curves by the cube's size, and
+    // at 0 read the cube's slices as curves while the lookup image still held them.
+    compare({{QStringLiteral("cubeStrength"), 0.0}, {QStringLiteral("black"), 0.1}, {QStringLiteral("lightness"), 0.8}});
     view->clearColorCube();
     // Everything but a cube, with blacks lifted twice over.
     compare({{QStringLiteral("black"), 0.05}, {QStringLiteral("gamma"), 0.8}, {QStringLiteral("outBlack"), 0.1},

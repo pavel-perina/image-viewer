@@ -186,6 +186,34 @@ TEST(ColorEdit, TheCubeComesLast) {
     EXPECT_NEAR(p[2], darkened(30), 1);
 }
 
+// Why: looks are often made strong, and are toned down by mixing the table's result with the
+// colour it was given, as other programs' Intensity or Mix does. Input: a cube that swaps red and
+// blue, at strengths 1, 0.5 and 0, on known pixels. The truth: swapped at 1; halfway between the
+// pixel and its swap at 0.5, so grays stay; and at 0, no change at all, the edit an identity.
+TEST(ColorEdit, TheCubesStrengthMixesItsResultWithItsInput) {
+    ColorCube swap = identityCube(2);
+    for (std::size_t i = 0; i < swap.rgb.size(); i += 3) {
+        std::swap(swap.rgb[i], swap.rgb[i + 2]);
+    }
+    ColorEdit edit;
+    edit.cube = std::make_shared<ColorCube>(swap);
+    edit.cubeStrength = 0.5;
+    const ImageBuffer half = applyColor(colours8(), edit);
+    const auto* p = reinterpret_cast<const std::uint8_t*>(half.row(0));
+    EXPECT_NEAR(p[2], (220 + 30) / 2, 1) << "red halfway to blue's value";
+    EXPECT_NEAR(p[0], (30 + 220) / 2, 1);
+    EXPECT_NEAR(p[1], 60, 1) << "green kept";
+    EXPECT_NEAR(p[8], 128, 1) << "gray kept";
+
+    edit.cubeStrength = 0;
+    EXPECT_TRUE(edit.isIdentity());
+    const ImageBuffer source = colours8();
+    EXPECT_EQ(applyColor(source, edit).data(), source.data()) << "handed back untouched";
+    ColorEdit full;
+    full.cube = edit.cube;
+    EXPECT_FALSE(edit == full) << "strength is part of the edit";
+}
+
 TEST(ColorEdit, OutputLevelsLiftBlackAndLowerWhite) {
     const Curve curve = levelsCurve(0, 1, 1, 0.2, 0.9);
     EXPECT_NEAR(curve(0), 0.2F, 1e-6) << "black turns gray";

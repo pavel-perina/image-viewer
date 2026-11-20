@@ -2,7 +2,8 @@
 
 Three steps, each usable on its own: the panel in collapsible sections with nothing new, then
 white balance as the first section, then a strength and an export for the colour table. Steps 1
-and 2 are built, as described in `decisions.md` under Colour adjustment; step 3 is proposed.
+and 2 are built, as described in `decisions.md` under Colour adjustment, and the strength of
+step 3; its export is proposed.
 Where the build differs from what follows:
 
 * The correction scales the picture's R, G and B, normalised to keep a neutral's brightness,
