@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 namespace iv {
 
@@ -37,6 +38,40 @@ RectD Affine::mapRect(const RectD& rect) const {
     // Only axis-aligned transforms are used, so two opposite corners suffice.
     return {std::min(x0, x1), std::min(y0, y1), std::max(x0, x1) - std::min(x0, x1),
             std::max(y0, y1) - std::min(y0, y1)};
+}
+
+std::array<double, 9> inverse3(const std::array<double, 9>& a) {
+    std::array<double, 9> r{a[4] * a[8] - a[5] * a[7], a[2] * a[7] - a[1] * a[8], a[1] * a[5] - a[2] * a[4],
+                            a[5] * a[6] - a[3] * a[8], a[0] * a[8] - a[2] * a[6], a[2] * a[3] - a[0] * a[5],
+                            a[3] * a[7] - a[4] * a[6], a[1] * a[6] - a[0] * a[7], a[0] * a[4] - a[1] * a[3]};
+    const double det = a[0] * r[0] + a[1] * r[3] + a[2] * r[6];
+    for (double& v : r) {
+        v /= det;
+    }
+    return r;
+}
+
+std::array<double, 9> multiply3(const std::array<double, 9>& a, const std::array<double, 9>& b) {
+    std::array<double, 9> r{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        for (std::size_t j = 0; j < 3; ++j) {
+            double sum = 0;
+            for (std::size_t k = 0; k < 3; ++k) {
+                sum += a[i * 3 + k] * b[k * 3 + j];
+            }
+            r[i * 3 + j] = sum;
+        }
+    }
+    return r;
+}
+
+Matrix3 Matrix3::inverse() const { return {inverse3(m)}; }
+
+Matrix3 Matrix3::operator*(const Matrix3& other) const { return {multiply3(m, other.m)}; }
+
+std::array<double, 3> Matrix3::operator*(const std::array<double, 3>& v) const {
+    return {m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+            m[6] * v[0] + m[7] * v[1] + m[8] * v[2]};
 }
 
 Size displaySize(Size stored, Orientation orientation) {
