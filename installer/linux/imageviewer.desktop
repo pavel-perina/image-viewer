@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Image Viewer
+Comment=View, browse and edit pictures
+Exec=imageviewer %f
+Icon=imageviewer
+Terminal=false
+Categories=Graphics;Viewer;RasterGraphics;2DGraphics;
+MimeType=image/jpeg;image/png;image/tiff;image/webp;image/avif;image/jxl;image/bmp;image/gif;image/x-tga;image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;

@@ -58,4 +58,11 @@ if(WIN32)
             COMMAND_ERROR_IS_FATAL ANY
         )
     ")
+elseif(UNIX)
+    # The usual places, for the AppImage (installer/build-appimage.sh) or a system install.
+    # Licence texts go in share/imageviewer/licenses, put there by the script.
+    install(TARGETS imageviewer RUNTIME DESTINATION bin)
+    install(FILES ${CMAKE_SOURCE_DIR}/installer/linux/imageviewer.desktop DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/installer/linux/imageviewer.svg
+            DESTINATION share/icons/hicolor/scalable/apps)
 endif()

@@ -15,8 +15,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
 | `assets` | What is not code: `fonts`, `shaders` (resampling `mks_*`, the colour preview), `icons`. |
 | `tests` | GoogleTest. `iv_core_tests` (no Qt) and `iv_ui_tests` (offscreen QML). |
 | `doc/design` | `architecture.md` (goals), `decisions.md` (what was decided and why), `main-window.md`. |
-| `doc` | `building-windows.md`, `manual-checks.md`. |
-| `installer` | Inno Setup script and the PowerShell that stages it. |
+| `doc` | `building-windows.md`, `building-linux.md` (the AppImage), `manual-checks.md`. |
+| `installer` | Windows: Inno Setup script and the PowerShell that stages it. Linux: `build-appimage.sh` and `linux/` (Containerfile, Conan profile, licence check). |
 | `tools` | Scripts that make test images for the checks by hand. |
 
 ### Core, by area

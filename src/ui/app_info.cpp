@@ -45,10 +45,21 @@ QVariantList AppInfo::components() const {
     return list;
 }
 
+QString AppInfo::licencesFolderFor(const QString& programFolder) {
+    const QDir folder(programFolder);
+    for (const QString& candidate : {folder.filePath(QStringLiteral("licenses")),
+                                     folder.filePath(QStringLiteral("../share/imageviewer/licenses"))}) {
+        if (QFileInfo(candidate).isDir()) {
+            return QDir::cleanPath(candidate);
+        }
+    }
+    return {};
+}
+
 QUrl AppInfo::licencesUrl() const {
     const QString folder = !licencesFolderOverride().isEmpty()
             ? licencesFolderOverride()
-            : QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("licenses"));
+            : licencesFolderFor(QCoreApplication::applicationDirPath());
     return QFileInfo(folder).isDir() ? QUrl::fromLocalFile(folder) : QUrl();
 }
 

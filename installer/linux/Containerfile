@@ -1,0 +1,46 @@
+# The AppImage's build machine: AlmaLinux 9, whose glibc 2.34 is the oldest Qt 6.12's own Linux
+# binaries run on, so the AppImage adds no floor of its own. GCC 14 comes from gcc-toolset-14,
+# which links what C++23 adds to the library into the program, so it needs only the system's
+# libstdc++. See doc/building-linux.md.
+FROM docker.io/library/almalinux:9
+
+ARG QT_VERSION=6.12.1
+
+# EPEL and CRB for xcb-util-cursor and the -devel packages Qt's xcb plugin needs.
+RUN dnf -y install epel-release dnf-plugins-core && dnf config-manager --set-enabled crb && \
+    dnf -y install gcc-toolset-14-gcc-c++ gcc-toolset-14-binutils gcc-toolset-14-libatomic-devel git make patch perl file which xz \
+        findutils nasm \
+        mesa-libGL-devel mesa-libEGL-devel libxkbcommon-devel libxkbcommon-x11 fontconfig-devel \
+        freetype-devel dbus-libs libX11-devel libxcb-devel xcb-util-wm xcb-util-image \
+        xcb-util-keysyms xcb-util-renderutil xcb-util-cursor wayland-devel && \
+    dnf clean all
+
+# The Python tools through uv, each in an environment of its own with a Python uv brings, at fixed
+# versions, so that a rebuilt image has the same tools. The scripts' own Python is the system's.
+COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /usr/local/bin/uv
+# Without only-managed, uv would take the system's Python 3.9, out of support since 2025.
+ENV UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_PYTHON_PREFERENCE=only-managed UV_PYTHON=3.13
+RUN uv tool install aqtinstall==3.3.0 && uv tool install conan==2.34.0 && \
+    uv tool install cmake==4.4.5 && uv tool install ninja==1.13.2
+
+# Qt from its official binaries, with Shader Tools (Wayland is in the default archives); and the
+# qtbase sources, for the licence texts the AppImage ships. aqt warns that the target "desktop" is
+# deprecated, but its replacement "qt" does not find 6.12's binaries in aqt 3.3.0; the sources
+# need no target.
+RUN aqt install-qt linux desktop ${QT_VERSION} linux_gcc_64 -O /opt/qt \
+        -m qtshadertools && \
+    aqt install-src linux ${QT_VERSION} -O /opt/qt --archives qtbase && \
+    find /opt/qt/${QT_VERSION}/Src -mindepth 1 -maxdepth 1 ! -name qtbase -exec rm -rf {} + && \
+    find /opt/qt/${QT_VERSION}/Src/qtbase -mindepth 1 -maxdepth 1 ! -name LICENSES -exec rm -rf {} +
+ENV QT_DIR=/opt/qt/${QT_VERSION}
+
+# linuxdeploy and its Qt plugin, which gather the libraries, Qt's plugins and QML modules and
+# make the AppImage. Run extracted, as a container has no FUSE.
+RUN mkdir -p /opt/tools && cd /opt/tools && \
+    curl -fsSLO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage && \
+    curl -fsSLO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage && \
+    chmod +x *.AppImage
+ENV APPIMAGE_EXTRACT_AND_RUN=1 PATH=/opt/tools:$PATH
+
+WORKDIR /src

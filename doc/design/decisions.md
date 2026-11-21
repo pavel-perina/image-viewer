@@ -1428,6 +1428,13 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   rebuild within one minute recompiles nothing; only `main.cpp` includes it.
 * Without git, as in an unpacked archive, it says "unknown".
 * The project version stays in `CMakeLists.txt` for the installer's file name.
+* Linux is shipped as an AppImage built in an AlmaLinux 9 container (`installer/build-appimage.sh`,
+  `doc/building-linux.md`). Qt 6.12's own binaries need glibc 2.34, AlmaLinux 9's, so the base
+  sets no floor beyond Qt's; gcc-toolset-14 gives C++23 while needing only the system's
+  libstdc++, at the cost of `std::stacktrace`. Qt is taken from its official binaries rather than
+  built, and the other libraries from Conan with the Windows options, because distributions build
+  theirs with GPL parts (openSUSE's libtiff links jbig-kit, its Qt Network libproxy). A check
+  fails the build if any bundled library is GPL. Every optional format is required there.
 
 ## Preferences have one owner; remembered state stays local
 
