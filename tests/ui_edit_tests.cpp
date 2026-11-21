@@ -1967,3 +1967,34 @@ TEST(Adjust, ALooksStrengthTonesItDown) {
     EXPECT_DOUBLE_EQ(f.panel->property("cubeStrength").toDouble(), 100);
     EXPECT_EQ(f.image->colorCubeName(), QString());
 }
+
+// Why: vibrance is one more value of the lightness and colour section, with a box for skin that
+// matters only while vibrance acts. Input: vibrance 40, the box unticked, then the section's
+// reset. The truth: the box greyed at 0 and live at 40; 0.4 and unprotected in the preview; the
+// section in use; after reset vibrance 0 and the box ticked again.
+TEST(Adjust, VibranceHasABoxForSkinAndResetsWithItsSection) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    AdjustFixture f(dir.path());
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    waitUntil([] { return false; }, 300);
+    QQuickItem* box = f.named("adjustProtectSkin");
+    ASSERT_NE(f.named("adjustVibrance"), nullptr);
+    ASSERT_NE(box, nullptr);
+    EXPECT_FALSE(box->isEnabled()) << "nothing to protect from at 0";
+    EXPECT_TRUE(box->property("checked").toBool());
+
+    f.panel->setProperty("vibrance", 40);
+    EXPECT_TRUE(box->isEnabled());
+    f.click(box);
+    EXPECT_FALSE(f.panel->property("protectSkin").toBool());
+    EXPECT_DOUBLE_EQ(f.image->colorPreviewVibrance(), 0.4);
+    EXPECT_FALSE(f.image->colorPreviewProtectSkin());
+    EXPECT_TRUE(f.named("adjustOklabHeader")->property("inUse").toBool());
+
+    f.click(f.in("adjustOklabHeader", "paneHeaderReset"));
+    EXPECT_DOUBLE_EQ(f.panel->property("vibrance").toDouble(), 0);
+    EXPECT_TRUE(f.panel->property("protectSkin").toBool());
+    EXPECT_TRUE(box->property("checked").toBool()) << "the box follows the panel";
+}

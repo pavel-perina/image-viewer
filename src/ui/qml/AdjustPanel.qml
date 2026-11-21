@@ -54,12 +54,14 @@ ToolPanel {
     property bool levelsOn: true
     property bool oklabOn: true
     property bool lookOn: true
+    property real vibrance: 0
+    property bool protectSkin: true
     property real cubeStrength: 100
 
     readonly property bool whiteInUse: !view.grayImage && (temperature !== 6500 || tint !== 0)
     readonly property bool levelsInUse: black !== 0 || white !== 255 || gamma !== 1 || outBlack !== 0 || outWhite !== 255
     readonly property bool oklabInUse: brightness !== 0 || contrast !== 100 || midtones !== 1
-                                       || (!view.grayImage && saturation !== 100)
+                                       || (!view.grayImage && (saturation !== 100 || vibrance !== 0))
     readonly property bool lookInUse: !view.grayImage && view.colorCubeName !== "" && cubeStrength > 0
 
     // A section switched off gives the values that leave the picture alone.
@@ -69,6 +71,7 @@ ToolPanel {
         outBlack: levelsOn ? outBlack / 255 : 0, outWhite: levelsOn ? outWhite / 255 : 1,
         brightness: oklabOn ? brightness / 100 : 0, contrast: oklabOn ? contrast / 100 : 1,
         lightness: oklabOn ? midtones : 1, saturation: oklabOn ? saturation / 100 : 1,
+        vibrance: oklabOn ? vibrance / 100 : 0, protectSkin: protectSkin,
         gamutMap: gamutMap, cube: lookOn, cubeStrength: cubeStrength / 100
     })
     readonly property bool changes: (whiteOn && whiteInUse) || (levelsOn && levelsInUse) || (oklabOn && oklabInUse)
@@ -110,6 +113,8 @@ ToolPanel {
         contrast = 100
         midtones = 1
         saturation = 100
+        vibrance = 0
+        protectSkin = true
     }
 
     function resetLook() {
@@ -344,6 +349,31 @@ ToolPanel {
             to: 200
             onModified: (value) => panel.saturation = value
             onDoneEditing: panel.doneEditing()
+        }
+
+        // Livelier dull colours and the strong ones left alone, so nothing is pushed out of range;
+        // lowering tames the strong ones most.
+        SliderRow {
+            objectName: "adjustVibrance"
+            label: "Vibrance"
+            enabled: !panel.view.grayImage
+            value: panel.vibrance
+            from: -100
+            to: 100
+            onModified: (value) => panel.vibrance = value
+            onDoneEditing: panel.doneEditing()
+        }
+        CheckBox {
+            objectName: "adjustProtectSkin"
+            focusPolicy: Qt.NoFocus
+            enabled: !panel.view.grayImage && panel.vibrance !== 0
+            text: "Protect skin tones"
+            checked: panel.protectSkin
+            onToggled: panel.protectSkin = checked
+            ToolTip.visible: hovered
+            ToolTip.delay: 600
+            ToolTip.text: "Vibrance acts at a third on the hues and dull colours of skin, light or dark. Off "
+                          + "for pictures without people, where it would hold back wood, brick and autumn leaves."
         }
 
         CheckBox {

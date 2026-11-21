@@ -365,6 +365,8 @@ struct ImageView::Impl {
         edit.tone = levelsCurve(value("black", 0), value("white", 1), value("gamma", 1), value("outBlack", 0), value("outWhite", 1));
         edit.lightness = lightnessCurve(value("brightness", 0), value("contrast", 1), value("lightness", 1));
         edit.chroma = value("saturation", 1);
+        edit.vibrance = std::clamp(value("vibrance", 0), -1.0, 1.0);
+        edit.protectSkin = settings.value(QStringLiteral("protectSkin"), true).toBool();
         edit.gamutMap = settings.value(QStringLiteral("gamutMap"), true).toBool();
         // No cube at all when none of it is taken or the picture is gray, rather than a cube
         // marked unused: the preview's lookup image holds the curves after the cube's slices,
@@ -1244,6 +1246,15 @@ double ImageView::colorPreviewChroma() const {
     return preview && !grayImage() ? preview->chroma : 1.0;
 }
 
+double ImageView::colorPreviewVibrance() const {
+    const auto& preview = m_impl->colorPreview;
+    return preview && !grayImage() ? preview->vibrance : 0.0;
+}
+
+bool ImageView::colorPreviewProtectSkin() const {
+    return !m_impl->colorPreview || m_impl->colorPreview->protectSkin;
+}
+
 bool ImageView::colorPreviewTone() const {
     return m_impl->colorPreview && !m_impl->colorPreview->tone.isIdentity();
 }
@@ -1350,6 +1361,7 @@ void ImageView::adjustColors(const QVariantMap& settings) {
     if (grayImage()) {
         color.whiteBalance = {};
         color.chroma = 1;
+        color.vibrance = 0;
         color.cube.reset();
     }
     if (!editable() || d.status != Status::Ready || color.isIdentity()) {

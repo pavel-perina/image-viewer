@@ -21,6 +21,8 @@ layout(std140, binding = 0) uniform buf {
     vec4 luminance;      // weights of R, G, B for the luminance of the picture's RGB
     float useWhite;      // 1 to apply white balance
     float cubeStrength;  // the cube's result mixed with its input, from 0 to 1
+    float vibrance;      // -1 to 1, as vibrantChroma in core/color_edit.cpp
+    float protectSkin;   // 1 to have vibrance act at a third on skin
 };
 layout(binding = 1) uniform sampler2D source;
 layout(binding = 2) uniform sampler2D lut;
@@ -90,6 +92,45 @@ vec3 intoGamut(vec3 lab) {
         }
     }
     return fromOklab(vec3(lab.x, lab.yz * low));
+}
+
+// As maxChroma, skinWeight and vibrantChroma in core/color_edit.cpp.
+float maxChroma(float L, float hue) {
+    if (L <= 0.0 || L >= 1.0) {
+        return 0.0;
+    }
+    const vec2 direction = vec2(cos(hue), sin(hue));
+    float low = 0.0;
+    float high = 0.4;
+    for (int i = 0; i < 12; ++i) {
+        const float middle = (low + high) * 0.5;
+        if (inGamut(fromOklab(vec3(L, direction * middle)))) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+float skinWeight(float chroma, float hueDegrees) {
+    const float distance = abs(mod(hueDegrees - 50.0 + 180.0, 360.0) - 180.0);
+    if (distance >= 30.0 || chroma >= 0.2) {
+        return 0.0;
+    }
+    const float band = 0.5 * (1.0 + cos(3.14159265 * distance / 30.0));
+    const float fade = chroma <= 0.12 ? 1.0 : 0.5 * (1.0 + cos(3.14159265 * (chroma - 0.12) / 0.08));
+    return band * fade;
+}
+
+float vibrantChroma(float L, float chroma, float hue) {
+    float v = vibrance;
+    if (protectSkin > 0.5) {
+        v *= 1.0 - (2.0 / 3.0) * skinWeight(chroma, degrees(hue));
+    }
+    const float most = maxChroma(L, hue);
+    const float room = most > 0.0 ? clamp(1.0 - chroma / most, 0.0, 1.0) : 0.0;
+    return v > 0.0 ? chroma * (1.0 + v * room) : chroma / (1.0 - v * (1.0 - room));
 }
 
 // As fitByChroma in core/white_balance.cpp: towards the gray of the same luminance until the
@@ -165,12 +206,16 @@ void main() {
     if (adjust > 0.5 && useTone > 0.5) {
         c = vec3(curveAt(n, c.r), curveAt(n, c.g), curveAt(n, c.b));
     }
-    if (adjust > 0.5 && (useLightness > 0.5 || chroma != 1.0)) {
+    if (adjust > 0.5 && (useLightness > 0.5 || chroma != 1.0 || vibrance != 0.0)) {
         vec3 lab = toOklab(decode(clamp(c, 0.0, 1.0)));
         if (useLightness > 0.5) {
             lab.x = curveAt(n + 1, lab.x);
         }
         lab.yz *= chroma;
+        const float c0 = length(lab.yz);
+        if (vibrance != 0.0 && c0 > 1e-7) {
+            lab.yz *= vibrantChroma(lab.x, c0, atan(lab.z, lab.y)) / c0;
+        }
         c = encode(clamp(gamutMap > 0.5 ? intoGamut(lab) : fromOklab(lab), 0.0, 1.0));
     }
     if (n >= 2) {

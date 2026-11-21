@@ -828,6 +828,9 @@ TEST(ColorPreview, TheShaderShowsWhatApplyingGives) {
     compare({{QStringLiteral("temperature"), 2500}, {QStringLiteral("gamutMap"), false}});
     // The cube at a third of its strength, after the Oklab stages.
     compare({{QStringLiteral("cubeStrength"), 0.35}, {QStringLiteral("saturation"), 1.3}});
+    // Vibrance, raised with skin spared and lowered without, after saturation.
+    compare({{QStringLiteral("vibrance"), 0.8}, {QStringLiteral("saturation"), 1.2}});
+    compare({{QStringLiteral("vibrance"), -0.7}, {QStringLiteral("protectSkin"), false}});
     // None of it, with levels and lightness: the shader finds the curves by the cube's size, and
     // at 0 read the cube's slices as curves while the lookup image still held them.
     compare({{QStringLiteral("cubeStrength"), 0.0}, {QStringLiteral("black"), 0.1}, {QStringLiteral("lightness"), 0.8}});

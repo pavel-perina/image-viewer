@@ -214,6 +214,82 @@ TEST(ColorEdit, TheCubesStrengthMixesItsResultWithItsInput) {
     EXPECT_FALSE(edit == full) << "strength is part of the edit";
 }
 
+// Why: vibrance livens dull colours and leaves strong ones, so nothing is pushed out of range,
+// unlike saturation's even gain; lowering tames the strong ones most. Input: chromas from dull to
+// the most there is, at a blue hue and a mid lightness, at vibrance 1 and -1. The truth: the dull
+// gain nearly double and the most saturated nothing; nothing ends above maxChroma; order kept;
+// lowering halves the most saturated and leaves the dull nearly alone.
+TEST(ColorEdit, VibranceLivensDullColoursMostAndPushesNoneOut) {
+    const double L = 0.6;
+    const double hue = 260 * std::numbers::pi / 180;
+    const double most = maxChroma(L, hue);
+    ASSERT_GT(most, 0.1);
+    EXPECT_EQ(maxChroma(0, hue), 0) << "black has no colour";
+    EXPECT_EQ(maxChroma(1, hue), 0);
+    EXPECT_NEAR(vibrantChroma(L, 0.01, hue, 1, false), 0.02, 0.001) << "dull nearly doubles";
+    EXPECT_NEAR(vibrantChroma(L, most, hue, 1, false), most, 1e-9) << "the most saturated stays";
+    double previous = 0;
+    for (double c = 0.005; c <= most; c += 0.005) {
+        const double raised = vibrantChroma(L, c, hue, 1, false);
+        EXPECT_LE(raised, most + 1e-9) << c;
+        EXPECT_GT(raised, previous) << "order kept at " << c;
+        previous = raised;
+        const double lowered = vibrantChroma(L, c, hue, -1, false);
+        EXPECT_LT(lowered, c);
+        EXPECT_GT(lowered, c / 2 - 1e-9);
+    }
+    EXPECT_NEAR(vibrantChroma(L, most, hue, -1, false), most / 2, 1e-9) << "the strongest halved";
+    EXPECT_NEAR(vibrantChroma(L, 0.01, hue, -1, false), 0.01, 0.001) << "the dull nearly kept";
+    EXPECT_EQ(vibrantChroma(L, 0, hue, 1, false), 0) << "gray stays gray";
+}
+
+// Why: faces turn orange first when colours are livened, and skin of every complexion shares a
+// narrow band of hue at low chroma, differing mostly in lightness (Xiao et al. 2017). Input:
+// three light skins picked by hand (#bd8167, #d3a188, #dcac95) and a dark one (#3b2219), as Oklab
+// lightness, chroma and hue; a blue as dull; a saturated orange. The truth: skin gains a third or
+// a little more of what it gains unprotected, light or dark; the blue and the saturated orange
+// are not held back; unticked, skin gains in full.
+TEST(ColorEdit, VibranceSparesSkinOfAnyLightnessUnlessAskedNotTo) {
+    const auto gain = [](double L, double c, double hueDegrees, bool protect) {
+        return vibrantChroma(L, c, hueDegrees * std::numbers::pi / 180, 0.5, protect) / c - 1;
+    };
+    struct Skin {
+        double L, c, hue;
+    };
+    for (const Skin skin : {Skin{0.658, 0.084, 44.3}, Skin{0.749, 0.069, 47.8}, Skin{0.782, 0.065, 46.9}, Skin{0.282, 0.042, 40.5}}) {
+        const double share = gain(skin.L, skin.c, skin.hue, true) / gain(skin.L, skin.c, skin.hue, false);
+        EXPECT_GT(share, 0.3) << skin.L;
+        EXPECT_LT(share, 0.55) << skin.L;
+    }
+    EXPECT_NEAR(gain(0.6, 0.06, 50, true) / gain(0.6, 0.06, 50, false), 1.0 / 3, 1e-9) << "a third at the centre";
+    EXPECT_DOUBLE_EQ(gain(0.6, 0.06, 250, true), gain(0.6, 0.06, 250, false)) << "blue is not skin";
+    EXPECT_DOUBLE_EQ(gain(0.7, 0.21, 55, true), gain(0.7, 0.21, 55, false)) << "nor a saturated orange";
+    EXPECT_EQ(skinWeight(0.06, 50 + 360), skinWeight(0.06, 50)) << "hue wraps";
+}
+
+// Why: vibrance runs in the Oklab stage of the edit, and is part of what makes two edits equal.
+// Input: the test pixels at vibrance 0.6. The truth: the gray pixel kept, the others changed,
+// and an edit differing only in vibrance or skin protection not equal.
+TEST(ColorEdit, VibranceIsAStageOfTheEdit) {
+    ColorEdit edit;
+    edit.vibrance = 0.6;
+    EXPECT_FALSE(edit.isIdentity());
+    EXPECT_TRUE(edit.usesOklab());
+    const ImageBuffer source = colours8();
+    const ImageBuffer out = applyColor(source, edit);
+    const auto* in = reinterpret_cast<const std::uint8_t*>(source.row(0));
+    const auto* p = reinterpret_cast<const std::uint8_t*>(out.row(0));
+    EXPECT_NEAR(p[8], 128, 1) << "gray kept";
+    EXPECT_NEAR(p[9], 128, 1);
+    EXPECT_NE(std::memcmp(p, in, 8), 0) << "colours changed";
+    ColorEdit other = edit;
+    other.protectSkin = false;
+    EXPECT_FALSE(edit == other);
+    other = edit;
+    other.vibrance = 0.5;
+    EXPECT_FALSE(edit == other);
+}
+
 TEST(ColorEdit, OutputLevelsLiftBlackAndLowerWhite) {
     const Curve curve = levelsCurve(0, 1, 1, 0.2, 0.9);
     EXPECT_NEAR(curve(0), 0.2F, 1e-6) << "black turns gray";

@@ -1197,6 +1197,24 @@ Left out for now:
   flattens detail in strong colours. The cut is hard, so smooth gradients of extreme colours
   show a crease where mapping starts; a soft knee would need the largest chroma for every
   pixel's lightness and hue, not only for those beyond the range.
+* Vibrance, from -100 to 100, follows saturation in the Oklab stage. Raised, a colour's chroma
+  grows in proportion to its room: how far it is below the most chroma an sRGB colour has at its
+  lightness and hue, found by halving as gamut mapping is. So dull colours gain most, the most
+  saturated nothing, and nothing is pushed out of range, which saturation's even gain does to
+  strong colours first. Lowered, chroma is divided by 1 plus the strength times the colour's
+  fullness, so the strong lose most, at most half, and the dull little. Order is kept either
+  way. Room is measured against the real edge at each lightness and hue, rather than one
+  chroma for all, as a dark blue has far less room than a mid gray-green.
+* Protect skin tones, ticked by default and only for vibrance, has it act at a third on skin.
+  Skin of every complexion lies in a narrow band of hue at low chroma and differs mostly in
+  lightness (Xiao et al., Characterising the variations in ethnic skin colours, Skin Research
+  and Technology 2017: the groups overlap, differ most in yellowness, and alike in redness;
+  darker skin is lower in lightness with a wider spread). So the weight looks at hue and chroma
+  only, never lightness, so that dark skin is spared as light skin is: full at Oklab hue 50
+  degrees, falling smoothly to none 30 degrees away, which covers hand-picked light skins at 44
+  to 48 degrees, darker ones and the yellower Asian skins; and full up to chroma 0.12, none from
+  0.2, so a saturated orange is not taken for skin. It is a box rather than always on because it
+  also holds back wood, brick and autumn leaves, for no benefit where there are no people.
 * After that, integer images are clipped to their range in linear light; float images are not
   clipped anywhere.
 * Gray images take the curves only: the lightness curve works on L of the gray value, and

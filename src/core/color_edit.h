@@ -61,6 +61,17 @@ Result<ColorCube> parseCube(std::string_view text);
 // time, which is where changes that look at neighbouring pixels, such as local contrast, are
 // meant to go.
 // Gray pictures take the curves only: chroma and the cube would make colour out of them.
+// The most chroma an sRGB colour has at an Oklab lightness and hue (radians); 0 at black and
+// white. Found by halving, in the same steps as the shader.
+double maxChroma(double lightness, double hue);
+// How much of skin a colour is, from 0 to 1, by its Oklab chroma and hue (degrees) alone, as
+// skin of every complexion shares a narrow band of hue at low chroma and differs in lightness.
+double skinWeight(double chroma, double hueDegrees);
+// The chroma vibrance gives a colour. Raising, a colour gains in proportion to its room below
+// maxChroma, so dull colours gain most and the most saturated none, and none is pushed out;
+// lowering, the strong lose most and the dull little. Order is kept either way.
+double vibrantChroma(double lightness, double chroma, double hue, double vibrance, bool protectSkin);
+
 struct ColorEdit {
     WhiteBalance whiteBalance;
     // The picture's RGB to XYZ, which white balance works in: from its profile, else sRGB. A
@@ -69,6 +80,11 @@ struct ColorEdit {
     Curve tone;
     Curve lightness;
     double chroma = 1;
+    // From -1 to 1: chroma raised, or lowered, by how much room a colour has below the most an
+    // sRGB colour has at its lightness and hue, after the chroma gain. See vibrantChroma.
+    double vibrance = 0;
+    // Vibrance acts at a third on skin's hues and chromas, whatever the lightness.
+    bool protectSkin = true;
     // Colours the Oklab stages take beyond the range of an integer format lose chroma at the same
     // lightness and hue until they fit, rather than being clipped channel by channel, which turns
     // their hue and flattens them. Floats keep what lies beyond the range either way.
@@ -80,8 +96,8 @@ struct ColorEdit {
 
     // The cube, unless there is none or none of it is taken.
     const ColorCube* usedCube() const { return cubeStrength > 0 ? cube.get() : nullptr; }
-    bool isIdentity() const { return whiteBalance.isIdentity() && tone.isIdentity() && lightness.isIdentity() && chroma == 1 && !usedCube(); }
-    bool usesOklab() const { return !lightness.isIdentity() || chroma != 1; }
+    bool isIdentity() const { return whiteBalance.isIdentity() && tone.isIdentity() && lightness.isIdentity() && chroma == 1 && vibrance == 0 && !usedCube(); }
+    bool usesOklab() const { return !lightness.isIdentity() || chroma != 1 || vibrance != 0; }
     bool operator==(const ColorEdit& other) const;
 };
 

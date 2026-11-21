@@ -89,6 +89,8 @@ class ImageView : public QQuickItem {
     Q_PROPERTY(int colorPreviewCubeSize READ colorPreviewCubeSize NOTIFY colorPreviewChanged)
     Q_PROPERTY(double colorPreviewCubeStrength READ colorPreviewCubeStrength NOTIFY colorPreviewChanged)
     Q_PROPERTY(double colorPreviewChroma READ colorPreviewChroma NOTIFY colorPreviewChanged)
+    Q_PROPERTY(double colorPreviewVibrance READ colorPreviewVibrance NOTIFY colorPreviewChanged)
+    Q_PROPERTY(bool colorPreviewProtectSkin READ colorPreviewProtectSkin NOTIFY colorPreviewChanged)
     Q_PROPERTY(bool colorPreviewTone READ colorPreviewTone NOTIFY colorPreviewChanged)
     Q_PROPERTY(bool colorPreviewLightness READ colorPreviewLightness NOTIFY colorPreviewChanged)
     Q_PROPERTY(bool colorPreviewGamutMap READ colorPreviewGamutMap NOTIFY colorPreviewChanged)
@@ -163,6 +165,8 @@ public:
     int colorPreviewCubeSize() const;
     double colorPreviewCubeStrength() const;
     double colorPreviewChroma() const;
+    double colorPreviewVibrance() const;
+    bool colorPreviewProtectSkin() const;
     bool colorPreviewTone() const;
     bool colorPreviewLightness() const;
     bool colorPreviewGamutMap() const;

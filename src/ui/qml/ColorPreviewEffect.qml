@@ -28,6 +28,8 @@ ShaderEffect {
     property real cubeSize: view.colorPreviewCubeSize
     property real cubeStrength: view.colorPreviewCubeStrength
     property real chroma: view.colorPreviewChroma
+    property real vibrance: view.colorPreviewVibrance
+    property real protectSkin: view.colorPreviewProtectSkin ? 1 : 0
     property real useTone: view.colorPreviewTone ? 1 : 0
     property real useLightness: view.colorPreviewLightness ? 1 : 0
     property real gamutMap: view.colorPreviewGamutMap ? 1 : 0

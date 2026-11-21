@@ -4,6 +4,7 @@
 #include <atomic>
 #include <charconv>
 #include <cmath>
+#include <numbers>
 #include <cstdint>
 #include <string>
 
@@ -167,6 +168,18 @@ void applyOklabStages(OklabPlanes& planes, const ColorEdit& edit) {
             b *= gain;
         }
     }
+    if (edit.vibrance != 0) {
+        for (std::size_t i = 0; i < planes.L.size(); ++i) {
+            const double chroma = std::hypot(planes.a[i], planes.b[i]);
+            if (chroma < 1e-7) {
+                continue;
+            }
+            const double hue = std::atan2(planes.b[i], planes.a[i]);
+            const auto scale = static_cast<float>(vibrantChroma(planes.L[i], chroma, hue, edit.vibrance, edit.protectSkin) / chroma);
+            planes.a[i] *= scale;
+            planes.b[i] *= scale;
+        }
+    }
 }
 
 bool inGamut(const LinearRgb& c) {
@@ -178,6 +191,16 @@ bool inGamut(const LinearRgb& c) {
 // The colour at the same hue with lightness clamped and as much of its chroma as fits, found by
 // halving the steps; the shader takes the same steps.
 constexpr int kGamutSteps = 12;
+// Above the most chroma of any sRGB colour, blue's 0.31, as where halving for it starts.
+constexpr double kMostChroma = 0.4;
+// Skin of every complexion: a hue band in Oklab around 50 degrees, from measured skin (see
+// decisions.md), full at the centre and none 30 degrees away; at chromas up to 0.12, none from
+// 0.2, so a saturated orange is not taken for skin. Vibrance acts there at a third.
+constexpr double kSkinHue = 50;
+constexpr double kSkinHalfWidth = 30;
+constexpr double kSkinChroma = 0.12;
+constexpr double kSkinMostChroma = 0.2;
+constexpr double kSkinShare = 1.0 / 3;
 
 LinearRgb intoGamut(Oklab lab) {
     lab.L = std::clamp(lab.L, 0.0, 1.0);
@@ -488,10 +511,48 @@ Result<ColorCube> parseCube(std::string_view text) {
     return cube;
 }
 
+double maxChroma(double lightness, double hue) {
+    if (lightness <= 0 || lightness >= 1) {
+        return 0;
+    }
+    const double a = std::cos(hue);
+    const double b = std::sin(hue);
+    double low = 0;
+    double high = kMostChroma;
+    for (int i = 0; i < kGamutSteps; ++i) {
+        const double middle = (low + high) / 2;
+        (inGamut(oklabToLinear({lightness, a * middle, b * middle})) ? low : high) = middle;
+    }
+    return low;
+}
+
+double skinWeight(double chroma, double hueDegrees) {
+    const double distance = std::abs(std::remainder(hueDegrees - kSkinHue, 360.0));
+    if (distance >= kSkinHalfWidth || chroma >= kSkinMostChroma) {
+        return 0;
+    }
+    const double band = 0.5 * (1 + std::cos(std::numbers::pi * distance / kSkinHalfWidth));
+    const double fade = chroma <= kSkinChroma ? 1
+                                              : 0.5 * (1 + std::cos(std::numbers::pi * (chroma - kSkinChroma) / (kSkinMostChroma - kSkinChroma)));
+    return band * fade;
+}
+
+double vibrantChroma(double lightness, double chroma, double hue, double vibrance, bool protectSkin) {
+    if (chroma <= 0 || vibrance == 0) {
+        return chroma;
+    }
+    if (protectSkin) {
+        vibrance *= 1 - (1 - kSkinShare) * skinWeight(chroma, hue * 180 / std::numbers::pi);
+    }
+    const double most = maxChroma(lightness, hue);
+    const double room = most > 0 ? std::clamp(1 - chroma / most, 0.0, 1.0) : 0;
+    return vibrance > 0 ? chroma * (1 + vibrance * room) : chroma / (1 - vibrance * (1 - room));
+}
+
 bool ColorEdit::operator==(const ColorEdit& other) const {
     const bool sameCube = cube == other.cube || (cube && other.cube && *cube == *other.cube);
     return sameCube && cubeStrength == other.cubeStrength && whiteBalance == other.whiteBalance && workingSpace == other.workingSpace && tone == other.tone && lightness == other.lightness && chroma == other.chroma &&
-           gamutMap == other.gamutMap;
+           vibrance == other.vibrance && protectSkin == other.protectSkin && gamutMap == other.gamutMap;
 }
 
 ImageBuffer applyColor(const ImageBuffer& source, const ColorEdit& edit, const std::stop_token& stop) {
