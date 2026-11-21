@@ -1401,6 +1401,22 @@ TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
     QCoreApplication::setApplicationVersion({});
 }
 
+// Why: the Windows installer puts the licence texts beside the program, and the AppImage in the
+// usual Linux place, share/imageviewer/licenses beside bin. Input: a program folder with neither,
+// with the Linux one, and with both. The truth: none found, then the Linux one, then the one
+// beside the program first.
+TEST(AboutDialog, LicenceTextsAreFoundBesideTheProgramOrInShare) {
+    QTemporaryDir root;
+    const QString bin = root.filePath(QStringLiteral("usr/bin"));
+    ASSERT_TRUE(QDir().mkpath(bin));
+    EXPECT_EQ(iv::AppInfo::licencesFolderFor(bin), QString());
+    const QString shared = root.filePath(QStringLiteral("usr/share/imageviewer/licenses"));
+    ASSERT_TRUE(QDir().mkpath(shared));
+    EXPECT_EQ(iv::AppInfo::licencesFolderFor(bin), QDir::cleanPath(shared));
+    ASSERT_TRUE(QDir().mkpath(bin + QStringLiteral("/licenses")));
+    EXPECT_EQ(iv::AppInfo::licencesFolderFor(bin), QDir::cleanPath(bin + QStringLiteral("/licenses")));
+}
+
 // Why: Enter and Esc are one rule for every tool, kept by the page, not a shortcut per tool.
 // Input: the window showing a picture, each tool started in turn. The truth is the window's
 // own state: Esc leaves the tool and stays on the image, Enter applies an edit and stays too,

@@ -14,6 +14,8 @@ else()
 endif()
 
 option(IV_BUILD_TESTS "Build the test suite" ON)
+# For what is shipped: every format must be found, rather than left out quietly.
+option(IV_REQUIRE_ALL_FORMATS "Fail if an optional image format's library is missing" OFF)
 
 # Added before Qt is set up, so that core cannot pick up any Qt settings.
 add_subdirectory(src/core)

@@ -1,7 +1,7 @@
 # Building on Windows
 
-Conan is used on Windows only. Linux builds against the system `-devel` packages (see `README.md`)
-and never reads `conanfile.txt`.
+Conan is used on Windows and for the Linux AppImage (see `doc/building-linux.md`). Everyday Linux
+builds use the system `-devel` packages (see `README.md`) and never read `conanfile.txt`.
 
 Last built on 2026-11-08 with the versions below. The app builds and starts, but some tests still
 fail: see "Test status".

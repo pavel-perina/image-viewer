@@ -1,7 +1,7 @@
-# Windows dependencies. Linux uses system libraries, and Qt comes from the official installer.
-# See doc/building-windows.md.
+# The libraries for Windows and for the Linux AppImage; everyday Linux builds use the system's.
+# Qt comes from its official binaries. See doc/building-windows.md and doc/building-linux.md.
 [requires]
-libjpeg-turbo/3.2.0
+libjpeg-turbo/3.2.1
 libtiff/4.7.2
 sqlite3/3.54.1
 lcms/2.19.1
@@ -9,6 +9,9 @@ libpng/1.6.59
 libwebp/1.6.0
 libavif/1.4.1
 libjxl/0.12.0
+
+# For the tests only; the AppImage, built without them, skips it (tools.graph:skip_test).
+[test_requires]
 gtest/1.18.0
 
 [tool_requires]

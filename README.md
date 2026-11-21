@@ -50,6 +50,8 @@ openSUSE:
 
 Windows: see `doc/building-windows.md`. It builds with Conan and runs, but some tests still fail there.
 
+Linux AppImage: `installer/build-appimage.sh`, in a container; see `doc/building-linux.md`.
+
 Build and test:
 
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
