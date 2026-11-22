@@ -1439,6 +1439,16 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   draws every size from the SVG (Skia; Pillow packs the `.ico`), as scaled down from 256 px the
   small ones blur. The `.ico` and `.rc` are committed, so a build needs no Python. The resource
   is `IDI_ICON1`, the name Qt looks for, so the windows take the executable's icon.
+* The Windows installer offers the program for its types and takes none. Since Windows 8 a
+  program cannot make itself the default, and should not try: it registers a type
+  (`ImageViewer.Image`), adds it to each extension's `OpenWithProgids`, and lists its
+  capabilities under `RegisteredApplications`, so it shows in Open with and in Default apps,
+  where the user picks it for all its types at once. Per user, like the install, behind a task
+  that is ticked by default. `Software\ImageViewer` also holds the settings, so uninstalling
+  removes only its `Capabilities`. The extensions are listed in the script, as Inno cannot ask
+  the program, and a core test compares them with `supportedExtensions()`.
+* Opening several files from Explorer starts one window for each, as each gets its own process.
+  Handing them to a window already open would need a single instance, left for later.
 
 ## Preferences have one owner; remembered state stays local
 

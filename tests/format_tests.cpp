@@ -68,6 +68,35 @@ TEST(Formats, ListsTheExtensionsItWasBuiltWith) {
 #endif
 }
 
+// Why: the Windows installer offers the program for each type it reads (Open with, Default apps),
+// from a list of its own, which a new format could leave behind. Input: the Ext[] defines of
+// installer/imageviewer.iss. The truth is supportedExtensions(): every one it lists is offered, and
+// with every optional format built in, nothing else is.
+TEST(Formats, TheWindowsInstallerOffersWhatItReads) {
+    std::ifstream script(std::filesystem::path(IV_SOURCE_DIR) / "installer" / "imageviewer.iss");
+    ASSERT_TRUE(script) << "installer/imageviewer.iss";
+    std::vector<std::string> offered;
+    const std::string prefix = "#define Ext[";
+    for (std::string line; std::getline(script, line);) {
+        if (line.starts_with(prefix)) {
+            const auto open = line.find('"');
+            const auto close = line.rfind('"');
+            ASSERT_NE(open, close) << line;
+            offered.push_back(line.substr(open + 1, close - open - 1));
+        }
+    }
+    ASSERT_FALSE(offered.empty());
+    std::vector<std::string> read(supportedExtensions().begin(), supportedExtensions().end());
+    for (const std::string& extension : read) {
+        EXPECT_NE(std::ranges::find(offered, extension), offered.end()) << extension << " is not offered";
+    }
+#if defined(IV_HAVE_PNG) && defined(IV_HAVE_WEBP) && defined(IV_HAVE_AVIF) && defined(IV_HAVE_JXL)
+    std::ranges::sort(offered);
+    std::ranges::sort(read);
+    EXPECT_EQ(offered, read);
+#endif
+}
+
 // Showing a picture with alpha on mid gray, which is how transparency looks until it is drawn.
 // The values are worked out by hand: half of white and gray is 192. The source keeps its
 // pixels, as other readers share them.

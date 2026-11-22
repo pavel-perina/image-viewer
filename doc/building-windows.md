@@ -116,9 +116,14 @@ and Qt (taken from Qt's `Src\LICENSES`, so the Qt sources must be installed). Th
 `licenses` folder beside the executable, which Help > About opens with its Licence Texts button.
 
 The installer is per-user, so it needs no admin rights. It installs to
-`%LOCALAPPDATA%\Programs\Image Viewer`, adds a Start Menu shortcut and optionally a desktop one,
-and registers no file types. `AppId` in `installer/imageviewer.iss` must never change, as it's how
-a new version finds the old one to upgrade.
+`%LOCALAPPDATA%\Programs\Image Viewer`, adds a Start Menu shortcut and optionally a desktop one.
+Unless its task is unticked, it offers the program for the types it reads, in Open with and in
+Settings > Apps > Default apps, without taking any: the user chooses there. Uninstalling removes
+those entries and nothing else. `AppId` in `installer/imageviewer.iss` must never change, as it's
+how a new version finds the old one to upgrade.
+
+A new format goes in the `Ext[]` list of `installer/imageviewer.iss` too;
+`Formats.TheWindowsInstallerOffersWhatItReads` fails until it does.
 
 Before distributing it: the LGPL's source-availability obligation still
 has to be met (see the Qt licensing section), and Inno Setup asks commercial users to buy a licence.
