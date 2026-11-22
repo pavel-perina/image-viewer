@@ -8,7 +8,7 @@ lcms/2.19.1
 libpng/1.6.59
 libwebp/1.6.0
 libavif/1.4.1
-libjxl/0.12.0
+libjxl/0.13.0
 
 # For the tests only; the AppImage, built without them, skips it (tools.graph:skip_test).
 [test_requires]
