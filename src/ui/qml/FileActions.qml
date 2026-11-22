@@ -64,8 +64,7 @@ Item {
     readonly property alias saveAsAction: saveAsAction
 
     function showFolderMenu(path) {
-        folderMenu.path = path
-        folderMenu.popup()
+        folderMenu.popup(path)
     }
 
     // Files dropped on a folder. Moving the image shown asks first about unsaved changes.
@@ -79,15 +78,11 @@ Item {
     }
 
     function renameFolder(path) {
-        if (root.idle)
-            root.askName("Rename Folder", root.folderName(path), (name) => root.context.rename(path, name))
+        folderMenu.rename(path)
     }
 
     function trashFolder(path) {
-        if (!root.idle)
-            return
-        trashFolderDialog.path = path
-        trashFolderDialog.open()
+        folderMenu.trash(path)
     }
 
     function folderName(path) {
@@ -241,11 +236,7 @@ Item {
 
     // Accept returns why a name cannot be used, or nothing; cancel, if given, runs when no name was.
     function askName(title, text, accept, cancel) {
-        nameDialog.title = title
-        nameDialog.initialText = text
-        nameDialog.accept = accept
-        nameDialog.cancel = cancel ?? null
-        nameDialog.open()
+        nameDialog.ask(title, text, accept, cancel)
     }
 
     Settings {
@@ -306,8 +297,7 @@ Item {
         shortcut: "Ctrl+Shift+N"
         enabled: root.idle && root.context.directory !== ""
         onTriggered: {
-            const parent = root.context.directory
-            root.askName("New Folder", "New Folder", (name) => root.context.createFolder(parent, name))
+            folderMenu.createIn(root.context.directory)
         }
     }
     Action {
@@ -498,28 +488,15 @@ Item {
         AppMenuItem { action: openFolderAction }
     }
 
-    AppMenu {
+    NameDialog {
+        id: nameDialog
+    }
+
+    FolderMenu {
         id: folderMenu
-        property string path
-        parent: Overlay.overlay
-        AppMenuItem {
-            text: "&New Folder..."
-            enabled: root.idle
-            onTriggered: {
-                const parent = folderMenu.path
-                root.askName("New Folder", "New Folder", (name) => root.context.createFolder(parent, name))
-            }
-        }
-        AppMenuItem {
-            text: "&Rename..."
-            enabled: root.idle
-            onTriggered: root.renameFolder(folderMenu.path)
-        }
-        AppMenuItem {
-            text: "Move to &Trash..."
-            enabled: root.idle
-            onTriggered: root.trashFolder(folderMenu.path)
-        }
+        context: root.context
+        names: nameDialog
+        idle: root.idle
     }
 
     FileChooser {
@@ -585,69 +562,6 @@ Item {
         onChosen: (path) => root.transferToChosen(path)
     }
 
-    AppDialog {
-        id: nameDialog
-        objectName: "nameDialog"
-        property string initialText
-        property var accept: null
-        property var cancel: null
-        property bool named: false
-        width: Math.min(480, parent.width - 32)
-
-        function submit() {
-            const problem = nameDialog.accept(nameField.text)
-            nameProblem.text = problem
-            if (!problem) {
-                named = true
-                nameDialog.close()
-            }
-        }
-        onAboutToShow: named = false
-        onClosed: if (!named && cancel) cancel()
-
-        // Closed by submit, because a name that cannot be used keeps the dialog open.
-        closePolicy: Popup.CloseOnEscape
-        onOpened: {
-            nameProblem.text = ""
-            nameField.text = initialText
-            nameField.forceActiveFocus()
-            // Selects the name without its extension, as that is what usually changes.
-            const dot = initialText.lastIndexOf(".")
-            nameField.select(0, dot > 0 ? dot : initialText.length)
-        }
-
-        footer: DialogButtonBox {
-            Button {
-                text: "OK"
-                DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
-                onClicked: nameDialog.submit()
-            }
-            Button {
-                text: "Cancel"
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-                onClicked: nameDialog.close()
-            }
-        }
-
-        ColumnLayout {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            TextField {
-                id: nameField
-                objectName: "nameField"
-                Layout.fillWidth: true
-                onAccepted: nameDialog.submit()
-            }
-            Label {
-                id: nameProblem
-                objectName: "nameProblem"
-                Layout.fillWidth: true
-                visible: text !== ""
-                wrapMode: Text.Wrap
-            }
-        }
-    }
-
     MessageBox {
         id: conflictDialog
         kind: "question"
@@ -691,17 +605,6 @@ Item {
                 onClicked: conflictDialog.close()
             }
         }
-    }
-
-    MessageBox {
-        id: trashFolderDialog
-        objectName: "trashFolderDialog"
-        property string path
-        kind: "question"
-        title: "Move Folder to Trash"
-        text: "Move this folder and everything in it to the trash?\n\n" + path
-        standardButtons: Dialog.Yes | Dialog.No
-        onAccepted: root.context.trashFolder(path)
     }
 
     MessageBox {

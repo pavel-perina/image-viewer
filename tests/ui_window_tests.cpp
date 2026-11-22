@@ -4,6 +4,29 @@
 #include "ui/retired_settings.h"
 #include "ui/theme_palette.h"
 
+#include <QDesktopServices>
+
+namespace {
+
+// Takes the URLs the program hands to the desktop, so a test opens no file manager.
+class UrlCatcher : public QObject {
+    Q_OBJECT
+public:
+    explicit UrlCatcher(const QString& scheme) : m_scheme(scheme) {
+        QDesktopServices::setUrlHandler(m_scheme, this, "open");
+    }
+    ~UrlCatcher() override { QDesktopServices::unsetUrlHandler(m_scheme); }
+    QList<QUrl> opened;
+
+public slots:
+    void open(const QUrl& url) { opened.append(url); }
+
+private:
+    QString m_scheme;
+};
+
+}  // namespace
+
 TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("big.jpg"));
@@ -1682,3 +1705,28 @@ TEST(Compare, ApplyingAnAdjustmentEndsBeforeAndAfter) {
     EXPECT_EQ(f.other->status(), iv::ImageView::Status::Null) << "and the picture it held";
     EXPECT_TRUE(waitUntil([&] { return f.image->modified(); })) << "the change is applied";
 }
+
+// Why: the folder tree's menu offers the folder to the system's file manager (Explorer,
+// Dolphin), for what the program does not do itself.
+// Input: a folder "sub" beside the pictures, its menu opened as a right click opens it.
+// Truth: the item hands over that folder, not the one being browsed, as a local file URL.
+TEST(FolderTree, MenuOpensTheFolderInTheFileManager) {
+    MainFixture f(1, QStringList{QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    UrlCatcher catcher(QStringLiteral("file"));
+    const QString folder = f.dir.filePath(QStringLiteral("sub"));
+    QObject* menu = f.find(QStringLiteral("folderMenu"));
+    ASSERT_NE(menu, nullptr);
+    menu->setProperty("path", folder);
+    QMetaObject::invokeMethod(menu, "popup");
+    ASSERT_TRUE(waitUntil([&] { return menu->property("opened").toBool(); }));
+    QObject* item = f.find(QStringLiteral("openFolderInFileManagerItem"));
+    ASSERT_NE(item, nullptr);
+    EXPECT_TRUE(item->property("enabled").toBool());
+    QMetaObject::invokeMethod(item, "click");
+    ASSERT_EQ(catcher.opened.size(), 1);
+    EXPECT_EQ(catcher.opened.first(), QUrl::fromLocalFile(folder));
+    EXPECT_TRUE(waitUntil([&] { return !menu->property("visible").toBool(); })) << "the menu closes";
+}
+
+#include "ui_window_tests.moc"
