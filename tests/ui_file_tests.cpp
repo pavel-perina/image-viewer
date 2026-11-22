@@ -201,9 +201,14 @@ TEST(FileOperations, RenameChecksTheNameAndSelectsTheResult) {
 
 TEST(FileOperations, FoldersCanBeCreatedRenamedAndTrashed) {
     FileOpsFixture f(1);
+    QSignalSpy created(&f.context, &iv::BrowseContext::folderCreated);
     EXPECT_TRUE(f.context.createFolder(f.dir.path(), QStringLiteral("sub")).isEmpty());
     f.settle([&] { return QFileInfo(f.path(QStringLiteral("sub"))).isDir(); });
+    // Said once the folder exists, for the file chooser to open it.
+    ASSERT_TRUE(waitUntil([&] { return created.size() == 1; }));
+    EXPECT_EQ(created.at(0).at(0).toString(), f.path(QStringLiteral("sub")));
     EXPECT_FALSE(f.context.createFolder(f.dir.path(), QStringLiteral("sub")).isEmpty());
+    EXPECT_EQ(created.size(), 1) << "a name in use makes nothing";
 
     const QString sub = f.path(QStringLiteral("sub"));
     writeJpeg(QDir(sub).filePath(QStringLiteral("inside.jpg")));

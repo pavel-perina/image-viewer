@@ -175,6 +175,8 @@ signals:
     // The last image of the directory went away.
     void emptied();
     void operationFinished(const QStringList& problems);
+    // A folder from createFolder now exists. Comes just before its operationFinished.
+    void folderCreated(const QString& path);
     // These files have new contents, so whatever shows them should load them again.
     void filesEdited(const QStringList& paths);
     // An edited image from saveAs was written.

@@ -597,6 +597,12 @@ change nothing useful. The first press of a double click does this too, for that
   type's, or adds it; typing a known extension chooses its type; a name without a known one gets
   the type's. A name of a folder opens that folder and leaves the file name as it was. An
   existing file is replaced only after asking, and saying no keeps the chooser open.
+* Folders can be made, renamed, moved to the trash and opened in the system's file manager from
+  the chooser as from the browser: the folder tree's menu, F2 and Delete, and a New Folder button
+  by the path bar (Ctrl+Shift+N). Both use one `FolderMenu.qml`, with its `NameDialog.qml` and
+  trash question, acting on their own `BrowseContext`, so the two cannot drift apart. A folder
+  made in the chooser is opened at once, as that is where the user means to save; the browser
+  stays where it is. Problems from these jobs show in the chooser's problem line.
 * Opening: Enter or a double click opens a folder or opens the file; the button does the same
   for a name typed or the entry selected. Choosing a folder chooses the folder selected, else the
   one shown, and the button names it.

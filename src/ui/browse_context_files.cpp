@@ -146,7 +146,11 @@ QString BrowseContext::createFolder(const QString& parent, const QString& name) 
         return tr("%1 already exists.").arg(name);
     }
     m_impl->startJob(this, tr("Creating folder"), 1, [parent, name](std::stop_token, const JobProgress&) { return iv::createFolder(parent, name); },
-                     [](const FileJobResult&) {});
+                     [this, path = QDir(parent).filePath(name)](const FileJobResult& result) {
+                         if (result.problems.isEmpty()) {
+                             emit folderCreated(path);
+                         }
+                     });
     return {};
 }
 

@@ -207,6 +207,32 @@ DialogWindow {
     BrowseContext {
         id: browse
         showHiddenFolders: Preferences.showHiddenFolders
+        // A folder made here is where the user means to save or look next.
+        onFolderCreated: (path) => chooser.openFolder(path)
+        onOperationFinished: (problems) => {
+            if (problems.length > 0)
+                chooser.problem = problems.join("\n")
+        }
+    }
+
+    // The same folder actions as the browser's, for this chooser's folders.
+    NameDialog {
+        id: chooserNameDialog
+        objectName: "chooserNameDialog"
+    }
+
+    FolderMenu {
+        id: chooserFolderMenu
+        objectName: "chooserFolderMenu"
+        context: browse
+        names: chooserNameDialog
+        idle: !browse.busy
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+N"
+        enabled: browse.directory !== ""
+        onActivated: chooserFolderMenu.createIn(browse.directory)
     }
 
     FolderListing {
@@ -230,6 +256,14 @@ DialogWindow {
                 Layout.fillWidth: true
                 context: browse
                 recordVisits: false
+            }
+            IconButton {
+                objectName: "newFolderButton"
+                text: "New Folder"
+                tip: "New Folder (" + KeyNames.text("Ctrl+Shift+N") + ")"
+                iconName: "folder-new"
+                enabled: browse.directory !== "" && !browse.busy
+                onClicked: chooserFolderMenu.createIn(browse.directory)
             }
             IconButton {
                 objectName: "briefButton"
@@ -343,6 +377,9 @@ DialogWindow {
                         sourceComponent: FolderTree {
                             objectName: "chooserTree"
                             context: browse
+                            onFolderMenuRequested: (path) => chooserFolderMenu.popup(path)
+                            onRenameRequested: (path) => chooserFolderMenu.rename(path)
+                            onTrashRequested: (path) => chooserFolderMenu.trash(path)
                         }
                     }
                 }
