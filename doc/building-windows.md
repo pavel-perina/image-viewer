@@ -100,6 +100,14 @@ After building as above, from the repository root:
 
 It writes `build\installer\ImageViewer-<version>-setup.exe`, about 24 MB. The version is the one
 in the top-level `CMakeLists.txt`. Build first, as the script only packages what is already built.
+For the licence texts it runs `conan install` with `--build=missing`, so a library version that
+Conan has no prebuilt package of for this compiler is built rather than stopping it; rebuild the
+app after that, so that it uses the same version.
+
+The icon, of the executable, its windows and the installer, is `src/app/windows/imageviewer.ico`,
+made from the AppImage's `installer/linux/imageviewer.svg` by `tools/make_windows_icon.py`
+(`pip install skia-python pillow`). Both it and `imageviewer.rc` are committed, so only a changed
+SVG needs the script.
 
 The script runs `cmake --install` into `build\stage`, which is the exact content of the installer:
 the app, a `windeployqt` copy of Qt without the plugins it doesn't need or the software OpenGL
@@ -108,11 +116,16 @@ and Qt (taken from Qt's `Src\LICENSES`, so the Qt sources must be installed). Th
 `licenses` folder beside the executable, which Help > About opens with its Licence Texts button.
 
 The installer is per-user, so it needs no admin rights. It installs to
-`%LOCALAPPDATA%\Programs\Image Viewer`, adds a Start Menu shortcut and optionally a desktop one,
-and registers no file types. `AppId` in `installer/imageviewer.iss` must never change, as it's how
-a new version finds the old one to upgrade.
+`%LOCALAPPDATA%\Programs\Image Viewer`, adds a Start Menu shortcut and optionally a desktop one.
+Unless its task is unticked, it offers the program for the types it reads, in Open with and in
+Settings > Apps > Default apps, without taking any: the user chooses there. Uninstalling removes
+those entries and nothing else. `AppId` in `installer/imageviewer.iss` must never change, as it's
+how a new version finds the old one to upgrade.
 
-Before distributing it: the app has no icon yet, the LGPL's source-availability obligation still
+A new format goes in the `Ext[]` list of `installer/imageviewer.iss` too;
+`Formats.TheWindowsInstallerOffersWhatItReads` fails until it does.
+
+Before distributing it: the LGPL's source-availability obligation still
 has to be met (see the Qt licensing section), and Inno Setup asks commercial users to buy a licence.
 
 ## Project licence

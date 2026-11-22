@@ -1,6 +1,11 @@
 # WIN32: a windowed program on Windows, without a console beside it. Messages still go to the
 # debugger's output, or to DebugView outside one.
 qt_add_executable(imageviewer WIN32 main.cpp)
+if(WIN32)
+    # The icon of the executable and its windows, made from the AppImage's SVG by
+    # tools/make_windows_icon.py and committed.
+    target_sources(imageviewer PRIVATE windows/imageviewer.rc)
+endif()
 
 # Which build this is, for the About dialog: the commit, "-dirty" if changed, and the time.
 # Made at every build, not at configure time, so it never goes stale.

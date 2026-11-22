@@ -41,6 +41,8 @@ add_executable(iv_core_tests
     tiff_tests.cpp
 )
 set_target_properties(iv_core_tests PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+# For tests that compare the program with files of the repository, such as the installer's script.
+target_compile_definitions(iv_core_tests PRIVATE IV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 find_package(SQLite3 REQUIRED)
 target_link_libraries(iv_core_tests PRIVATE iv_core JPEG::JPEG TIFF::TIFF SQLite::SQLite3 PkgConfig::LCMS2 GTest::gtest GTest::gtest_main)
 # The formats' own encoders create the test files.

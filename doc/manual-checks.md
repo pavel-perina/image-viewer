@@ -65,11 +65,22 @@ resolution, Use NVIDIA color settings, Output color depth 10 bpc). Make the imag
 `python tools/gradient_test.py gradients.png` and open it at 100%: each gradient is drawn in
 full 16 bits, rounded to 10 bits and rounded to 8 bits.
 
-- [ ] L [ ] W  Run with `IV_OUTPUT_BITS=10 IV_NO_DITHER=1`. About says 10 bits per channel, not
+- [ ] L [x] W  Run with `IV_OUTPUT_BITS=10 IV_NO_DITHER=1`. About says 10 bits per channel, not
       dithered; the first two strips of each gradient are smooth and only the third bands.
 - [ ] L [ ] W  The same with `IV_NO_DITHER=1` alone: About says 8 bits, all three strips band
       alike. This is the comparison.
 - [ ] L [ ] W  `IV_OUTPUT_BITS=10` alone: smooth, with no grain to see, and About says dithered.
+
+## Windows installer
+
+- [x] W  After installing, right-click a JPEG > Open with: Image Viewer is listed, with its icon,
+         and the default is still what it was.
+- [x] W  Settings > Apps > Default apps > Image Viewer: lists its types; choosing it for .png
+         opens PNGs here on a double-click.
+- [x] W  The same for a .jxl and a .webp, which may have had no program before.
+- [x] W  Uninstall: Image Viewer leaves Open with and Default apps, the defaults chosen for other
+         programs stay, and its settings stay too (a reinstall remembers them).
+- [ ] W  Installing with the Open with task unticked: Image Viewer is not offered.
 
 ## Disks
 
