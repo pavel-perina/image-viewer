@@ -40,8 +40,10 @@ Copy-Item (Join-Path $root 'assets\fonts\Inter-LICENSE.txt') (Join-Path $licence
 New-Item -ItemType Directory -Force (Join-Path $licences 'tabler-icons') | Out-Null
 Copy-Item (Join-Path $root 'assets\icons\tabler\LICENSE') (Join-Path $licences 'tabler-icons')
 $graphFile = Join-Path $root 'build\conan\graph.json'
+# --build=missing: a library version without a prebuilt package for this compiler is built here,
+# rather than stopping the installer. Nothing is built when the cache has them all.
 $graph = & conan install $root -of (Join-Path $root 'build\conan') -s build_type=Release `
-    -c tools.cmake.cmaketoolchain:generator=Ninja -f json
+    -c tools.cmake.cmaketoolchain:generator=Ninja --build=missing -f json
 Assert-Success 'conan install'
 Set-Content -Path $graphFile -Value $graph -Encoding UTF8
 $nodes = (Get-Content $graphFile -Raw | ConvertFrom-Json).graph.nodes.PSObject.Properties.Value

@@ -100,6 +100,9 @@ After building as above, from the repository root:
 
 It writes `build\installer\ImageViewer-<version>-setup.exe`, about 24 MB. The version is the one
 in the top-level `CMakeLists.txt`. Build first, as the script only packages what is already built.
+For the licence texts it runs `conan install` with `--build=missing`, so a library version that
+Conan has no prebuilt package of for this compiler is built rather than stopping it; rebuild the
+app after that, so that it uses the same version.
 
 The icon, of the executable, its windows and the installer, is `src/app/windows/imageviewer.ico`,
 made from the AppImage's `installer/linux/imageviewer.svg` by `tools/make_windows_icon.py`
