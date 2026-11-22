@@ -1435,6 +1435,10 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   built, and the other libraries from Conan with the Windows options, because distributions build
   theirs with GPL parts (openSUSE's libtiff links jbig-kit, its Qt Network libproxy). A check
   fails the build if any bundled library is GPL. Every optional format is required there.
+* Windows takes the AppImage's SVG icon, so both show the same one. `tools/make_windows_icon.py`
+  draws every size from the SVG (Skia; Pillow packs the `.ico`), as scaled down from 256 px the
+  small ones blur. The `.ico` and `.rc` are committed, so a build needs no Python. The resource
+  is `IDI_ICON1`, the name Qt looks for, so the windows take the executable's icon.
 
 ## Preferences have one owner; remembered state stays local
 

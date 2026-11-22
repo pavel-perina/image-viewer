@@ -101,6 +101,11 @@ After building as above, from the repository root:
 It writes `build\installer\ImageViewer-<version>-setup.exe`, about 24 MB. The version is the one
 in the top-level `CMakeLists.txt`. Build first, as the script only packages what is already built.
 
+The icon, of the executable, its windows and the installer, is `src/app/windows/imageviewer.ico`,
+made from the AppImage's `installer/linux/imageviewer.svg` by `tools/make_windows_icon.py`
+(`pip install skia-python pillow`). Both it and `imageviewer.rc` are committed, so only a changed
+SVG needs the script.
+
 The script runs `cmake --install` into `build\stage`, which is the exact content of the installer:
 the app, a `windeployqt` copy of Qt without the plugins it doesn't need or the software OpenGL
 renderer, the Visual C++ runtime DLLs, and the licence texts of the project, the Conan packages
@@ -112,7 +117,7 @@ The installer is per-user, so it needs no admin rights. It installs to
 and registers no file types. `AppId` in `installer/imageviewer.iss` must never change, as it's how
 a new version finds the old one to upgrade.
 
-Before distributing it: the app has no icon yet, the LGPL's source-availability obligation still
+Before distributing it: the LGPL's source-availability obligation still
 has to be met (see the Qt licensing section), and Inno Setup asks commercial users to buy a licence.
 
 ## Project licence

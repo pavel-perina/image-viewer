@@ -17,6 +17,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputBaseFilename=ImageViewer-{#AppVersion}-setup
 UninstallDisplayIcon={app}\imageviewer.exe
+SetupIconFile=..\src\app\windows\imageviewer.ico
 WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes

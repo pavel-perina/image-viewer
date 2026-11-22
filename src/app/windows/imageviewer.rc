@@ -1,0 +1,3 @@
+// Written by tools/make_windows_icon.py; do not edit.
+// IDI_ICON1 is the name Qt looks for, so the windows take the same icon as the executable.
+IDI_ICON1 ICON "imageviewer.ico"
