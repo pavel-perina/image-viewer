@@ -769,6 +769,12 @@ struct MainFixture {
     }
 
     QObject* find(const QString& name) const { return window->findChild<QObject*>(name); }
+    // A part of the file actions: the file choosers have a name dialog and a folder menu of their
+    // own, under the same names, and one of them comes before the file actions in the window.
+    QObject* action(const QString& name) const {
+        QObject* actions = find(QStringLiteral("fileActions"));
+        return actions ? actions->findChild<QObject*>(name) : nullptr;
+    }
     QString focused() const {
         QQuickItem* item = window->activeFocusItem();
         return item ? QString::fromLatin1(item->metaObject()->className()) + QLatin1Char(' ') + item->objectName() : QStringLiteral("none");

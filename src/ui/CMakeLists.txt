@@ -111,6 +111,8 @@ qt_add_qml_module(iv_ui
         qml/DecimalSpinBox.qml
         qml/DialogWindow.qml
         qml/FileActions.qml
+        qml/FolderMenu.qml
+        qml/NameDialog.qml
         qml/FolderButton.qml
         qml/FileChooser.qml
         qml/FileListView.qml
@@ -200,6 +202,7 @@ set(iv_icons
     "tabler/square-half.svg=before-after"
     "tabler/eye.svg=show-original"
     "tabler/color-picker.svg=color-picker"
+    "tabler/folder-plus.svg=folder-new"
     "tabler/list.svg=view-list-brief"
     "tabler/list-details.svg=view-list-details"
     "tabler/info-circle-filled.svg=message-info"
@@ -219,6 +222,13 @@ endforeach()
 qt_add_resources(iv_ui "icons"
     PREFIX "/icons"
     FILES ${iv_icon_files}
+)
+# The program's own icon, the one the installers use: in colour, so apart from the themed ones.
+set(iv_program_icon ${CMAKE_SOURCE_DIR}/installer/linux/imageviewer.svg)
+set_source_files_properties(${iv_program_icon} PROPERTIES QT_RESOURCE_ALIAS icon.svg)
+qt_add_resources(iv_ui "program_icon"
+    PREFIX "/program"
+    FILES ${iv_program_icon}
 )
 
 # The shaders live in assets/shaders; BASE keeps them at qrc:/shaders/.

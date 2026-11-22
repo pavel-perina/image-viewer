@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QIcon>
 #include <QObject>
 #include <QString>
 #include <QUrl>
@@ -33,6 +34,11 @@ public:
     static QString licencesFolderFor(const QString& programFolder);
     // Where the licence texts are looked for, in place of beside the program, for tests.
     static void setLicencesFolderForTesting(const QString& folder);
+
+    // The program's icon, from the picture the installers use, drawn at the sizes window
+    // managers ask for. Set on the application, so its windows show it on X11 and Windows and
+    // wherever the desktop does not take it from the installed desktop entry.
+    static QIcon programIcon();
 };
 
 }  // namespace iv

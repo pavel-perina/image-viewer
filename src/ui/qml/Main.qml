@@ -103,6 +103,7 @@ ApplicationWindow {
 
     FileActions {
         id: fileActions
+        objectName: "fileActions"
         context: context
         viewing: window.viewing
         page: window.activeView.source === context.currentPath ? window.activeView.page : 0

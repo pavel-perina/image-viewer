@@ -8,6 +8,7 @@
 #include <QtQml/QQmlExtensionPlugin>
 
 #include "build_info.h"
+#include "ui/app_info.h"
 #include "ui/color_settings.h"
 #include "ui/display_output.h"
 #include "ui/program_font.h"
@@ -23,6 +24,12 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setOrganizationName(QStringLiteral("ImageViewer"));  // where settings are stored
     iv::requestOutputBits();  // names are set for preferences; still before the application
     QGuiApplication app(argc, argv);
+#ifndef Q_OS_WIN
+    // The installed desktop entry's name, by which Wayland desktops find its icon and name; and
+    // the icon itself, for the rest. Windows takes it from the program file's own icon.
+    QGuiApplication::setDesktopFileName(QStringLiteral("imageviewer"));
+    QGuiApplication::setWindowIcon(iv::AppInfo::programIcon());
+#endif
     QCoreApplication::setApplicationVersion(QStringLiteral(IV_BUILD_COMMIT ", built " IV_BUILD_TIME));
     // Our own style (src/ui/controls), which takes from Fusion what it does not redo, unless
     // another is asked for, to compare: QT_QUICK_CONTROLS_STYLE=Fusion, for one.

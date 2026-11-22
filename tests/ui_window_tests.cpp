@@ -4,6 +4,29 @@
 #include "ui/retired_settings.h"
 #include "ui/theme_palette.h"
 
+#include <QDesktopServices>
+
+namespace {
+
+// Takes the URLs the program hands to the desktop, so a test opens no file manager.
+class UrlCatcher : public QObject {
+    Q_OBJECT
+public:
+    explicit UrlCatcher(const QString& scheme) : m_scheme(scheme) {
+        QDesktopServices::setUrlHandler(m_scheme, this, "open");
+    }
+    ~UrlCatcher() override { QDesktopServices::unsetUrlHandler(m_scheme); }
+    QList<QUrl> opened;
+
+public slots:
+    void open(const QUrl& url) { opened.append(url); }
+
+private:
+    QString m_scheme;
+};
+
+}  // namespace
+
 TEST(ViewerPage, HandlesShowThePartInViewWhileItMovesAndLeaveTheMouseToTheImage) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("big.jpg"));
@@ -839,6 +862,103 @@ TEST(FileChooser, EscapeCancels) {
     EXPECT_EQ(f.chosen->size(), 0);
 }
 
+namespace {
+
+// The folder menu, name dialog and buttons of a chooser, which has its own of each.
+QQuickItem* chooserItem(const ChooserFixture& f, const char* name) {
+    return f.chooser->findChild<QQuickItem*>(QString::fromLatin1(name));
+}
+
+QObject* chooserObject(const ChooserFixture& f, const char* name) {
+    return f.chooser->findChild<QObject*>(QString::fromLatin1(name));
+}
+
+// Answers the chooser's name dialog with a name, as typing it and pressing OK would.
+void nameInChooser(const ChooserFixture& f, const QString& name) {
+    QObject* dialog = chooserObject(f, "chooserNameDialog");
+    ASSERT_NE(dialog, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return dialog->property("opened").toBool(); }));
+    dialog->findChild<QObject*>(QStringLiteral("nameField"))->setProperty("text", name);
+    QMetaObject::invokeMethod(dialog, "submit");
+}
+
+}  // namespace
+
+// Why: saving into a folder that does not exist yet needed a trip to the file manager. The
+// chooser makes one where it is, as other systems' save dialogs do, and goes into it.
+// Input: the save chooser in a folder, New Folder named "made", then Save with the name typed
+// before. The truth: the folder exists, the chooser shows it, and the name kept goes there.
+TEST(FileChooser, NewFolderMakesTheFolderOpensItAndSavesThere) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("new.jpg"));
+    f.click(chooserItem(f, "newFolderButton"));
+    nameInChooser(f, QStringLiteral("made"));
+    const QString made = f.dir.filePath(QStringLiteral("made"));
+    EXPECT_TRUE(waitUntil([&] { return f.directory() == made; })) << "in " << f.directory().toStdString();
+    EXPECT_TRUE(QFileInfo(made).isDir());
+    EXPECT_EQ(f.name(), QStringLiteral("new.jpg")) << "the name typed is kept";
+    f.click(f.item("acceptButton"));
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), made + QStringLiteral("/new.jpg"));
+}
+
+// Why: a name in use must not be taken over, nor the chooser moved anywhere.
+// Input: New Folder named "sub", which exists. The truth: the dialog stays open and says why,
+// and the chooser is still in the folder it was.
+TEST(FileChooser, NewFolderTurnsDownANameInUse) {
+    ChooserFixture f(QStringLiteral("save"));
+    f.start(QStringLiteral("new.jpg"));
+    QMetaObject::invokeMethod(chooserObject(f, "chooserFolderMenu"), "createIn", Q_ARG(QVariant, f.dir.path()));
+    nameInChooser(f, QStringLiteral("sub"));
+    QObject* dialog = chooserObject(f, "chooserNameDialog");
+    EXPECT_TRUE(dialog->property("opened").toBool());
+    EXPECT_FALSE(dialog->findChild<QObject*>(QStringLiteral("nameProblem"))->property("text").toString().isEmpty());
+    EXPECT_EQ(f.directory(), f.dir.path());
+}
+
+// Why: the chooser's folder tree offers what the browser's does, from the same code, so the
+// two cannot drift apart. Input: the menu for "sub", then each action of it. The truth: the
+// same four items; Open in File Manager hands over that folder; renaming the folder shown
+// keeps the chooser in it under its new name; Move to Trash asks, and No keeps the folder.
+TEST(FileChooser, FolderMenuHasTheBrowsersActions) {
+    ChooserFixture f(QStringLiteral("save"));
+    UrlCatcher catcher(QStringLiteral("file"));
+    f.start(QStringLiteral("new.jpg"));
+    QObject* folders = chooserObject(f, "chooserFolderMenu");
+    ASSERT_NE(folders, nullptr);
+    const QString sub = f.dir.filePath(QStringLiteral("sub"));
+
+    QMetaObject::invokeMethod(folders, "popup", Q_ARG(QVariant, sub));
+    QObject* menu = folders->findChild<QObject*>(QStringLiteral("folderMenu"));
+    ASSERT_TRUE(waitUntil([&] { return menu->property("opened").toBool(); }));
+    QStringList texts;
+    for (int i = 0; i < menu->property("count").toInt(); ++i) {
+        QQuickItem* entry = nullptr;
+        QMetaObject::invokeMethod(menu, "itemAt", Q_RETURN_ARG(QQuickItem*, entry), Q_ARG(int, i));
+        const QString text = entry ? entry->property("text").toString() : QString();
+        if (!text.isEmpty())
+            texts << text;
+    }
+    EXPECT_EQ(texts, (QStringList{"&New Folder...", "&Rename...", "Move to &Trash...", "&Open in File Manager"}));
+    QMetaObject::invokeMethod(folders->findChild<QObject*>(QStringLiteral("openFolderInFileManagerItem")), "click");
+    ASSERT_EQ(catcher.opened.size(), 1);
+    EXPECT_EQ(catcher.opened.first(), QUrl::fromLocalFile(sub));
+
+    QMetaObject::invokeMethod(f.chooser, "openFolder", Q_ARG(QVariant, sub));
+    ASSERT_TRUE(waitUntil([&] { return f.directory() == sub; }));
+    QMetaObject::invokeMethod(folders, "rename", Q_ARG(QVariant, sub));
+    nameInChooser(f, QStringLiteral("renamed"));
+    const QString renamed = f.dir.filePath(QStringLiteral("renamed"));
+    EXPECT_TRUE(waitUntil([&] { return f.directory() == renamed; })) << "in " << f.directory().toStdString();
+
+    QMetaObject::invokeMethod(folders, "trash", Q_ARG(QVariant, renamed));
+    QObject* question = folders->findChild<QObject*>(QStringLiteral("trashFolderDialog"));
+    ASSERT_TRUE(waitUntil([&] { return question->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(question, "reject");
+    ASSERT_TRUE(waitUntil([&] { return !question->property("visible").toBool(); }));
+    EXPECT_TRUE(QFileInfo(renamed).isDir()) << "No keeps the folder";
+}
+
 // Why: the chooser is large and worth resizing, so it is a window of its own that the system
 // decorates, moves and resizes, rather than a sheet drawn inside the main window, which could
 // do none of it. Input: the chooser opened over its window. The truth is the windows: two of
@@ -1047,7 +1167,7 @@ TEST(Keys, TheThumbnailsHaveTheKeysAfterEditingThePathOrAName) {
     EXPECT_EQ(f.context->currentIndex(), 2);
 
     QTest::keyClick(f.window, Qt::Key_F2);
-    QObject* names = f.find(QStringLiteral("nameDialog"));
+    QObject* names = f.action(QStringLiteral("nameDialog"));
     ASSERT_TRUE(waitUntil([&] { return names->property("opened").toBool(); }));
     QTest::keyClick(f.window, Qt::Key_Escape);
     ASSERT_TRUE(waitUntil([&] { return !names->property("visible").toBool(); }));
@@ -1156,7 +1276,7 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     tree->forceActiveFocus();
 
     QTest::keyClick(f.window, Qt::Key_F2);
-    QObject* names = f.find(QStringLiteral("nameDialog"));
+    QObject* names = f.action(QStringLiteral("nameDialog"));
     ASSERT_TRUE(waitUntil([&] { return names->property("opened").toBool(); }));
     EXPECT_EQ(names->property("title").toString(), QStringLiteral("Rename Folder"));
     EXPECT_EQ(names->property("initialText").toString(), QStringLiteral("sub"));
@@ -1165,7 +1285,7 @@ TEST(Keys, RenameAndDeleteInTheTreeAreForTheFolder) {
     EXPECT_TRUE(tree->hasActiveFocus()) << "the keys come back to the tree";
 
     QTest::keyClick(f.window, Qt::Key_Delete);
-    QObject* trash = f.find(QStringLiteral("trashFolderDialog"));
+    QObject* trash = f.action(QStringLiteral("trashFolderDialog"));
     ASSERT_NE(trash, nullptr);
     EXPECT_TRUE(waitUntil([&] { return trash->property("opened").toBool(); })) << "it asks about the folder";
     QTest::keyClick(f.window, Qt::Key_Escape);
@@ -1205,7 +1325,7 @@ TEST(Keys, DeleteFollowsThePaneFrameAndTextEditingNeverTrashesFiles) {
     EXPECT_TRUE(foldersFrame->property("focused").toBool());
     EXPECT_FALSE(filesFrame->property("focused").toBool());
     QTest::keyClick(f.window, Qt::Key_Delete);
-    auto* question = f.find("trashFolderDialog");
+    auto* question = f.action(QStringLiteral("trashFolderDialog"));
     ASSERT_TRUE(waitUntil([&] { return question->property("opened").toBool(); }));
     QTest::keyClick(f.window, Qt::Key_Escape);
     ASSERT_TRUE(waitUntil([&] { return !question->property("visible").toBool(); }));
@@ -1243,7 +1363,8 @@ TEST(Keys, DeleteFollowsThePaneFrameAndTextEditingNeverTrashesFiles) {
 
 // Why: Places, Directories and both file-list modes share one focus indicator. Moving
 // the keys must light exactly that frame, keep other selections inactive, and leave
-// geometry unchanged. Places is navigation-only; Delete must not remove a file.
+// geometry unchanged. Places is navigation-only; Delete must not remove a file, and in the
+// tree it asks about the folder, as in the browser.
 TEST(FileChooser, PaneFramesFollowKeyboardFocusInPlacesTreeBriefAndDetails) {
     ChooserFixture f(QStringLiteral("save"));
     f.start(QStringLiteral("a.jpg"));
@@ -1265,6 +1386,7 @@ TEST(FileChooser, PaneFramesFollowKeyboardFocusInPlacesTreeBriefAndDetails) {
     const QList<QQuickItem*> frames{placesFrame, treeFrame, fileFrame};
     const QList<QQuickItem*> contents{places, tree, files};
     for (int index = 0; index < contents.size(); ++index) {
+        SCOPED_TRACE(index);
         contents[index]->forceActiveFocus();
         QCoreApplication::processEvents();
         const QImage picture = grabIfShown(*f.window);
@@ -1285,6 +1407,14 @@ TEST(FileChooser, PaneFramesFollowKeyboardFocusInPlacesTreeBriefAndDetails) {
         }
         QTest::keyClick(f.window, Qt::Key_Delete);
         EXPECT_TRUE(QFile::exists(f.dir.filePath(QStringLiteral("a.jpg"))));
+        if (contents[index] == tree) {
+            // In the tree it is for the folder, as in the browser: asked first, and No keeps it.
+            QObject* question = f.chooser->findChild<QObject*>(QStringLiteral("trashFolderDialog"));
+            ASSERT_TRUE(waitUntil([&] { return question->property("opened").toBool(); }));
+            QMetaObject::invokeMethod(question, "reject");
+            ASSERT_TRUE(waitUntil([&] { return !question->property("visible").toBool(); }));
+            EXPECT_TRUE(QDir(f.dir.path()).exists());
+        }
     }
     const QSizeF before = fileFrame->size();
     files->setProperty("details", true);
@@ -1405,6 +1535,27 @@ TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
 // usual Linux place, share/imageviewer/licenses beside bin. Input: a program folder with neither,
 // with the Linux one, and with both. The truth: none found, then the Linux one, then the one
 // beside the program first.
+// Why: on Linux a window shows the program's icon only if the program gives one, unless the
+// desktop finds an installed desktop entry; the AppImage and the Windows build had theirs, the
+// running program did not. Input: the icon drawn from the picture the installers use. Truth:
+// every size window managers ask for, each with the picture in it, not blank.
+TEST(AppInfo, ProgramIconComesAtTheSizesWindowManagersAskFor) {
+    const QIcon icon = iv::AppInfo::programIcon();
+    ASSERT_FALSE(icon.isNull()) << "the picture is in the resources";
+    const QList<QSize> sizes = icon.availableSizes();
+    for (const int size : {16, 32, 48, 256}) {
+        EXPECT_TRUE(sizes.contains(QSize(size, size))) << size;
+    }
+    const QImage image = icon.pixmap(QSize(64, 64)).toImage();
+    int drawn = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            drawn += qAlpha(image.pixel(x, y)) > 0 ? 1 : 0;
+        }
+    }
+    EXPECT_GT(drawn, 64 * 64 / 20) << "the picture is drawn, not left transparent";
+}
+
 TEST(AboutDialog, LicenceTextsAreFoundBesideTheProgramOrInShare) {
     QTemporaryDir root;
     const QString bin = root.filePath(QStringLiteral("usr/bin"));
@@ -1682,3 +1833,29 @@ TEST(Compare, ApplyingAnAdjustmentEndsBeforeAndAfter) {
     EXPECT_EQ(f.other->status(), iv::ImageView::Status::Null) << "and the picture it held";
     EXPECT_TRUE(waitUntil([&] { return f.image->modified(); })) << "the change is applied";
 }
+
+
+// Why: the folder tree's menu offers the folder to the system's file manager (Explorer,
+// Dolphin), for what the program does not do itself.
+// Input: a folder "sub" beside the pictures, its menu opened as a right click opens it.
+// Truth: the item hands over that folder, not the one being browsed, as a local file URL.
+TEST(FolderTree, MenuOpensTheFolderInTheFileManager) {
+    MainFixture f(1, QStringList{QStringLiteral("sub")});
+    ASSERT_NE(f.window, nullptr);
+    UrlCatcher catcher(QStringLiteral("file"));
+    const QString folder = f.dir.filePath(QStringLiteral("sub"));
+    QObject* menu = f.action(QStringLiteral("folderMenu"));
+    ASSERT_NE(menu, nullptr);
+    menu->setProperty("path", folder);
+    QMetaObject::invokeMethod(menu, "popup");
+    ASSERT_TRUE(waitUntil([&] { return menu->property("opened").toBool(); }));
+    QObject* item = f.action(QStringLiteral("openFolderInFileManagerItem"));
+    ASSERT_NE(item, nullptr);
+    EXPECT_TRUE(item->property("enabled").toBool());
+    QMetaObject::invokeMethod(item, "click");
+    ASSERT_EQ(catcher.opened.size(), 1);
+    EXPECT_EQ(catcher.opened.first(), QUrl::fromLocalFile(folder));
+    EXPECT_TRUE(waitUntil([&] { return !menu->property("visible").toBool(); })) << "the menu closes";
+}
+
+#include "ui_window_tests.moc"

@@ -3,6 +3,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QImage>
+#include <QPainter>
+#include <QPixmap>
+#include <QSvgRenderer>
 #include <QVariantMap>
 
 #include "core/libraries.h"
@@ -65,6 +69,24 @@ QUrl AppInfo::licencesUrl() const {
 
 void AppInfo::setLicencesFolderForTesting(const QString& folder) {
     licencesFolderOverride() = folder;
+}
+
+QIcon AppInfo::programIcon() {
+    // Drawn here rather than left to Qt's SVG icon plugin, which a package can leave out.
+    QSvgRenderer renderer(QStringLiteral(":/program/icon.svg"));
+    QIcon icon;
+    if (!renderer.isValid()) {
+        return icon;
+    }
+    for (const int size : {16, 22, 24, 32, 48, 64, 128, 256}) {
+        QImage image(size, size, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        renderer.render(&painter);
+        painter.end();
+        icon.addPixmap(QPixmap::fromImage(image));
+    }
+    return icon;
 }
 
 }  // namespace iv
