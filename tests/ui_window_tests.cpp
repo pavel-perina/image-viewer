@@ -1535,6 +1535,27 @@ TEST(Main, AboutListsWhatItIsBuiltWithAndTheLicenceTextsWhenInstalled) {
 // usual Linux place, share/imageviewer/licenses beside bin. Input: a program folder with neither,
 // with the Linux one, and with both. The truth: none found, then the Linux one, then the one
 // beside the program first.
+// Why: on Linux a window shows the program's icon only if the program gives one, unless the
+// desktop finds an installed desktop entry; the AppImage and the Windows build had theirs, the
+// running program did not. Input: the icon drawn from the picture the installers use. Truth:
+// every size window managers ask for, each with the picture in it, not blank.
+TEST(AppInfo, ProgramIconComesAtTheSizesWindowManagersAskFor) {
+    const QIcon icon = iv::AppInfo::programIcon();
+    ASSERT_FALSE(icon.isNull()) << "the picture is in the resources";
+    const QList<QSize> sizes = icon.availableSizes();
+    for (const int size : {16, 32, 48, 256}) {
+        EXPECT_TRUE(sizes.contains(QSize(size, size))) << size;
+    }
+    const QImage image = icon.pixmap(QSize(64, 64)).toImage();
+    int drawn = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            drawn += qAlpha(image.pixel(x, y)) > 0 ? 1 : 0;
+        }
+    }
+    EXPECT_GT(drawn, 64 * 64 / 20) << "the picture is drawn, not left transparent";
+}
+
 TEST(AboutDialog, LicenceTextsAreFoundBesideTheProgramOrInShare) {
     QTemporaryDir root;
     const QString bin = root.filePath(QStringLiteral("usr/bin"));

@@ -1441,6 +1441,12 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   built, and the other libraries from Conan with the Windows options, because distributions build
   theirs with GPL parts (openSUSE's libtiff links jbig-kit, its Qt Network libproxy). A check
   fails the build if any bundled library is GPL. Every optional format is required there.
+* On Linux the program sets its window icon itself (`AppInfo::programIcon`), drawn from the same
+  `installer/linux/imageviewer.svg` the installers use, and names its desktop entry
+  (`imageviewer`). Without that, a Linux window shows a generic icon unless the desktop finds an
+  installed entry, which an AppImage does not have until it is added to the menu. It draws the
+  sizes itself rather than relying on Qt's SVG icon plugin, which a package may leave out. On
+  Windows the window takes the icon of the program file, made from the same picture.
 
 ## Preferences have one owner; remembered state stays local
 

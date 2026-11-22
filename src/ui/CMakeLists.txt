@@ -223,6 +223,13 @@ qt_add_resources(iv_ui "icons"
     PREFIX "/icons"
     FILES ${iv_icon_files}
 )
+# The program's own icon, the one the installers use: in colour, so apart from the themed ones.
+set(iv_program_icon ${CMAKE_SOURCE_DIR}/installer/linux/imageviewer.svg)
+set_source_files_properties(${iv_program_icon} PROPERTIES QT_RESOURCE_ALIAS icon.svg)
+qt_add_resources(iv_ui "program_icon"
+    PREFIX "/program"
+    FILES ${iv_program_icon}
+)
 
 # The shaders live in assets/shaders; BASE keeps them at qrc:/shaders/.
 qt_add_shaders(iv_ui "iv_shaders"
