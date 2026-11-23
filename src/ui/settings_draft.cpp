@@ -12,13 +12,14 @@
 namespace iv {
 struct SettingsDraft::Impl {
     struct Entry { const char* name; QVariant defaults; QVariant saved; QVariant value; };
-    std::array<Entry, 6> entries{{
+    std::array<Entry, 7> entries{{
         {"transparency", QStringLiteral("dark"), {}, {}},
         {"colorManaged", true, {}, {}},
         {"displayProfile", QString(), {}, {}},
         {"outputBits", 8, {}, {}},
         {"thumbnailSize", QSize(164, 164), {}, {}},
-        {"thumbnailCacheMiB", 512, {}, {}}
+        {"thumbnailCacheMiB", 512, {}, {}},
+        {"colorTablesFolder", QString(), {}, {}}
     }};
     Preferences& preferences;
     AppearanceDraft appearance;
@@ -51,6 +52,7 @@ SettingsDraft::SettingsDraft(Preferences& preferences, ThemePalette& theme, Colo
     connect(&preferences, &Preferences::outputBitsChanged, this, &SettingsDraft::refresh);
     connect(&preferences, &Preferences::thumbnailSizeChanged, this, &SettingsDraft::refresh);
     connect(&preferences, &Preferences::thumbnailCacheMiBChanged, this, &SettingsDraft::refresh);
+    connect(&preferences, &Preferences::colorTablesFolderChanged, this, &SettingsDraft::refresh);
     refresh();
 }
 SettingsDraft::~SettingsDraft() {
@@ -66,6 +68,8 @@ QString SettingsDraft::displayProfile() const { return m_impl->entries[Profile].
 int SettingsDraft::outputBits() const { return m_impl->entries[OutputBits].value.toInt(); }
 QSize SettingsDraft::thumbnailSize() const { return m_impl->entries[ThumbnailSize].value.toSize(); }
 int SettingsDraft::thumbnailCacheMiB() const { return m_impl->entries[CacheMiB].value.toInt(); }
+QString SettingsDraft::colorTablesFolder() const { return m_impl->entries[TablesFolder].value.toString(); }
+void SettingsDraft::chooseColorTablesFolder(const QUrl& folder) { set(TablesFolder, folder.isEmpty() ? QString() : folder.toLocalFile()); }
 bool SettingsDraft::busy() const { return m_impl->busy; }
 QString SettingsDraft::problem() const { return m_impl->problem; }
 bool SettingsDraft::dirty() const {

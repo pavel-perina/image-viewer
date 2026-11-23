@@ -135,6 +135,32 @@ struct SettingsDraftFixture : testing::Test {
 };
 }
 
+// Why: the folder of colour tables is chosen in Settings like the rest, so it waits for Apply
+// and goes with Cancel; it is where the user keeps files, not a look, so Reset of the Viewing
+// page leaves it. Input: a folder chosen, Reset, Cancel, then chosen again and applied, then
+// cleared. Truth: the preference, and the settings file read anew.
+TEST_F(SettingsDraftFixture, ColorTablesFolderWaitsForApplyAndOutlastsReset) {
+    const QString folder = dir.filePath("tables");
+    ASSERT_TRUE(draft.begin());
+    draft.chooseColorTablesFolder(QUrl::fromLocalFile(folder));
+    EXPECT_EQ(draft.colorTablesFolder(), folder);
+    EXPECT_TRUE(draft.dirty());
+    EXPECT_EQ(preferences.colorTablesFolder(), QString()) << "not before Apply";
+    draft.resetViewing();
+    EXPECT_EQ(draft.colorTablesFolder(), folder) << "Reset leaves the folder";
+    draft.cancel();
+    EXPECT_EQ(draft.colorTablesFolder(), QString());
+
+    ASSERT_TRUE(draft.begin());
+    draft.chooseColorTablesFolder(QUrl::fromLocalFile(folder));
+    draft.apply();
+    EXPECT_EQ(preferences.colorTablesFolder(), folder);
+    EXPECT_EQ(iv::Preferences(dir.filePath("settings.ini")).colorTablesFolder(), folder);
+    draft.chooseColorTablesFolder(QUrl());  // the window stays open after Apply
+    draft.apply();
+    EXPECT_EQ(preferences.colorTablesFolder(), QString()) << "an empty choice clears it";
+}
+
 // The shared draft is the cancellation boundary, even when edits belong to different
 // pages. Reload the isolated INI after Apply; Reset must affect only its own section.
 TEST_F(SettingsDraftFixture, PagesShareOneCheckpointAndResetOnlyTheirOwnSection) {

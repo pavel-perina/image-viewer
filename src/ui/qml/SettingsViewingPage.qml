@@ -15,6 +15,14 @@ SettingsPage {
         onChosen: path => page.draft.chooseProfile(profileChooser.urlOf(path))
     }
 
+    FileChooser {
+        id: tablesChooser
+        objectName: "settingsTablesChooser"
+        title: "Choose the Folder of Colour Tables"
+        mode: "folder"
+        onChosen: path => page.draft.chooseColorTablesFolder(tablesChooser.urlOf(path))
+    }
+
     ColumnLayout {
         width: page.availableWidth
         spacing: Theme.panelSpacing * 2
@@ -95,6 +103,40 @@ SettingsPage {
             visible: page.draft.displayProfile !== "" && page.draft.displayProfile === Preferences.displayProfile && !ColorSettings.hasDisplayProfile
             text: "The saved profile is unavailable. Images currently use sRGB."
             color: Theme.warning
+            wrapMode: Text.WordWrap
+        }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.paneFrame }
+        // The tables Adjust offers by name, from this folder and its subfolders.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.panelSpacing
+            Label { text: "Colour tables"; Layout.preferredWidth: 144 }
+            TextField {
+                objectName: "colorTablesFolderPath"
+                Layout.fillWidth: true
+                readOnly: true
+                text: page.draft.colorTablesFolder
+                placeholderText: "No folder chosen"
+                Accessible.name: "Folder of colour tables"
+                ToolTip.visible: hovered && text !== ""
+                ToolTip.text: text
+            }
+            Button {
+                objectName: "colorTablesFolderChoose"
+                text: "Choose…"
+                onClicked: tablesChooser.start(page.draft.colorTablesFolder, "")
+            }
+            Button {
+                objectName: "colorTablesFolderClear"
+                text: "Clear"
+                enabled: page.draft.colorTablesFolder !== ""
+                onClicked: page.draft.chooseColorTablesFolder("")
+            }
+        }
+        Label {
+            Layout.fillWidth: true
+            text: "Files ending in .cube, in the folder and its subfolders, are listed in Adjust."
+            color: Theme.textMuted
             wrapMode: Text.WordWrap
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.paneFrame }

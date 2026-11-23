@@ -29,6 +29,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString transparency READ transparency WRITE setTransparency NOTIFY transparencyChanged)
     Q_PROPERTY(bool colorManaged READ colorManaged WRITE setColorManaged NOTIFY colorManagedChanged)
     Q_PROPERTY(QString displayProfile READ displayProfile WRITE setDisplayProfile NOTIFY displayProfileChanged)
+    // Where Adjust lists colour tables (.cube) from, with its subfolders; empty for none.
+    Q_PROPERTY(QString colorTablesFolder READ colorTablesFolder WRITE setColorTablesFolder NOTIFY colorTablesFolderChanged)
     Q_PROPERTY(int sortKey READ sortKey WRITE setSortKey NOTIFY sortKeyChanged)
     Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending NOTIFY sortDescendingChanged)
     Q_PROPERTY(bool askBeforeEditing READ askBeforeEditing WRITE setAskBeforeEditing NOTIFY askBeforeEditingChanged)
@@ -76,6 +78,8 @@ public:
     void setColorManaged(bool value);
     QString displayProfile() const;
     void setDisplayProfile(QString value);
+    QString colorTablesFolder() const;
+    void setColorTablesFolder(QString value);
     int sortKey() const;
     void setSortKey(int value);
     bool sortDescending() const;
@@ -110,6 +114,7 @@ signals:
     void transparencyChanged();
     void colorManagedChanged();
     void displayProfileChanged();
+    void colorTablesFolderChanged();
     void sortKeyChanged();
     void sortDescendingChanged();
     void askBeforeEditingChanged();

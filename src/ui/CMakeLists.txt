@@ -11,6 +11,8 @@ qt_add_library(iv_ui STATIC
     browse_context_p.h
     color_lut.cpp
     color_lut.h
+    color_table_list.cpp
+    color_table_list.h
     color_settings.cpp
     color_settings.h
     crop_overlay.cpp
