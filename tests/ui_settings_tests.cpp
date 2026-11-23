@@ -533,7 +533,11 @@ TEST_F(SettingsWindowFixture, OverflowShowsAPersistentWorkingScrollbarOnEveryPag
                           bar->mapToScene(QPointF(bar->width() / 2, bar->height() - 4)).toPoint());
         ASSERT_TRUE(waitUntil([&] { return bar->property("position").toDouble() > 0; }));
         EXPECT_GT(area->property("contentY").toDouble(), 0);
-        EXPECT_NEAR(bar->property("position").toDouble(), area->property("contentY").toDouble() / contentHeight, 0.01);
+        // The page moves over a few frames, and wrapped text can still change its height; bar and
+        // content agree once both have settled.
+        const auto contentAt = [&] { return area->property("contentY").toDouble() / area->property("contentHeight").toDouble(); };
+        const auto agree = [&] { return std::abs(bar->property("position").toDouble() - contentAt()) < 0.01; };
+        EXPECT_TRUE(waitUntil(agree)) << "bar at " << bar->property("position").toDouble() << ", content at " << contentAt();
         EXPECT_TRUE(bar->property("revealed").toBool());
         const auto* ok = item("settingsOkButton");
         ASSERT_TRUE(ok);
