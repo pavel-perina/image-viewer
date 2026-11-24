@@ -2,6 +2,8 @@
 
 #include "core/oklab.h"
 #include "core/white_balance.h"
+#include "ui/color_table_list.h"
+#include "ui/preferences.h"
 #include "ui/slider_scale.h"
 
 #include <QMatrix4x4>
@@ -1935,6 +1937,104 @@ TEST(Adjust, PickingGrayStopsByTheButtonAgainOrByEscape) {
 // a made-up 2-point cube that swaps red and blue, strengths 40 and 0, then the caption's reset.
 // The truth: the row disabled until a table is loaded; 0.4 in the preview; at 0 the table left
 // out of the preview and the section no longer in use; after reset 100 and no table.
+namespace {
+
+// A colour table that swaps nothing: two samples a side, each colour itself.
+void writeCube(const QString& path) {
+    QDir().mkpath(QFileInfo(path).path());
+    QFile cube(path);
+    ASSERT_TRUE(cube.open(QIODevice::WriteOnly));
+    cube.write("LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n");
+}
+
+// The folder of colour tables, set for one test and cleared after it, as the preferences are
+// the application's own.
+struct TablesFolder {
+    explicit TablesFolder(const QString& folder) { iv::Preferences::instance()->setColorTablesFolder(folder); }
+    ~TablesFolder() { iv::Preferences::instance()->setColorTablesFolder(QString()); }
+};
+
+}  // namespace
+
+// Why: Adjust offers the tables of a folder by name, packs being folders of their own. Input: a
+// folder with tables beside it and in a subfolder, one numbered past 9, a text file and a hidden
+// folder. Truth: the names, below the folder and without the extension, in natural order; their
+// files; and the wheel's steps, from no table to the last and no further.
+TEST(ColorTableList, ListsTheTablesOfAFolderAndItsSubfoldersByName) {
+    QTemporaryDir dir;
+    writeCube(dir.filePath(QStringLiteral("warm.cube")));
+    writeCube(dir.filePath(QStringLiteral("Film/stock 10.cube")));
+    writeCube(dir.filePath(QStringLiteral("Film/stock 9.cube")));
+    writeCube(dir.filePath(QStringLiteral(".hidden/secret.cube")));
+    touchFile(dir.filePath(QStringLiteral("notes.txt")));
+    iv::ColorTableList tables;
+    tables.setFolder(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return !tables.loading() && !tables.names().isEmpty(); }));
+    EXPECT_EQ(tables.names(), (QStringList{"Film/stock 9", "Film/stock 10", "warm"}));
+    EXPECT_EQ(tables.pathOf(QStringLiteral("Film/stock 10")), dir.filePath(QStringLiteral("Film/stock 10.cube")));
+    EXPECT_EQ(tables.nameOf(dir.filePath(QStringLiteral("warm.cube"))), QStringLiteral("warm"));
+    EXPECT_EQ(tables.nameOf(QStringLiteral("/elsewhere/warm.cube")), QString());
+
+    EXPECT_EQ(tables.step(QString(), 1), QStringLiteral("Film/stock 9"));
+    EXPECT_EQ(tables.step(QStringLiteral("Film/stock 9"), 2), QStringLiteral("warm"));
+    EXPECT_EQ(tables.step(QStringLiteral("warm"), 1), QStringLiteral("warm")) << "stops at the last";
+    EXPECT_EQ(tables.step(QStringLiteral("Film/stock 9"), -1), QString()) << "no table before the first";
+    EXPECT_EQ(tables.step(QStringLiteral("not listed"), 1), QStringLiteral("Film/stock 9"));
+
+    tables.setFolder(dir.filePath(QStringLiteral("missing")));
+    EXPECT_TRUE(tables.names().isEmpty()) << "a folder that is not there lists nothing";
+    EXPECT_FALSE(tables.loading());
+}
+
+// Why: trying looks should be quick: pick one by a few letters, or turn the wheel over the box
+// to go through them, and None to drop it. Input: the Adjust panel with a folder of two tables.
+// Truth: the box offers None and both; picking one loads it; the wheel moves to the next and
+// back; None clears it; and the hint about Settings shows only while no folder is set.
+TEST(Adjust, TablesOfTheFolderArePickedByNameOrByTheWheel) {
+    QTemporaryDir dir;
+    writeTiltedJpeg(dir);
+    QTemporaryDir folder;
+    writeCube(folder.filePath(QStringLiteral("a.cube")));
+    writeCube(folder.filePath(QStringLiteral("b.cube")));
+    TablesFolder kept(folder.path());
+    AdjustFixture f(dir.path());
+    ASSERT_TRUE(settled(f.image));
+    QMetaObject::invokeMethod(f.page, "startAdjust");
+    QQuickItem* box = f.named("adjustTableChoice");
+    ASSERT_NE(box, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return box->property("names").toStringList().size() == 3; }));
+    EXPECT_EQ(box->property("names").toStringList(), (QStringList{"None", "a", "b"}));
+    EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("None"));
+    EXPECT_FALSE(f.named("adjustTablesHint")->isVisible());
+
+    QMetaObject::invokeMethod(box, "picked", Q_ARG(QString, QStringLiteral("a")));
+    EXPECT_EQ(f.image->colorCubeName(), QStringLiteral("a"));
+    EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("a"));
+
+    waitUntil([] { return false; }, 50);
+    const QPointF at = box->mapToScene(QPointF(box->width() / 2, box->height() / 2));
+    const auto turn = [&](int delta) {
+        QWheelEvent wheel(at, f.view.mapToGlobal(at), QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&f.view, &wheel);
+    };
+    turn(-120);
+    EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("b")) << "down goes to the next";
+    EXPECT_EQ(f.image->colorCubeName(), QStringLiteral("b"));
+    turn(60);
+    EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("b")) << "half a notch is not a step yet";
+    turn(60);
+    EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("a")) << "up goes back";
+
+    QMetaObject::invokeMethod(box, "picked", Q_ARG(QString, QStringLiteral("None")));
+    EXPECT_EQ(f.image->colorCubeName(), QString());
+    EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("None"));
+
+    iv::Preferences::instance()->setColorTablesFolder(QString());
+    EXPECT_TRUE(waitUntil([&] { return f.named("adjustTablesHint")->isVisible(); }));
+    EXPECT_EQ(box->property("names").toStringList(), QStringList{"None"});
+}
+
 TEST(Adjust, ALooksStrengthTonesItDown) {
     QTemporaryDir dir;
     writeTiltedJpeg(dir);

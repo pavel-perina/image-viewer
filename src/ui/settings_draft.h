@@ -27,6 +27,8 @@ class SettingsDraft : public QObject {
     Q_PROPERTY(int outputBits READ outputBits WRITE setOutputBits NOTIFY changed)
     Q_PROPERTY(QSize thumbnailSize READ thumbnailSize WRITE setThumbnailSize NOTIFY changed)
     Q_PROPERTY(int thumbnailCacheMiB READ thumbnailCacheMiB WRITE setThumbnailCacheMiB NOTIFY changed)
+    // Not reset with the rest of Viewing: it is where the user keeps files, not a look.
+    Q_PROPERTY(QString colorTablesFolder READ colorTablesFolder NOTIFY changed)
     Q_PROPERTY(bool dirty READ dirty NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString problem READ problem NOTIFY changed)
@@ -47,6 +49,7 @@ public:
     void setThumbnailSize(QSize value);
     int thumbnailCacheMiB() const;
     void setThumbnailCacheMiB(int value);
+    QString colorTablesFolder() const;
     bool dirty() const;
     bool busy() const;
     QString problem() const;
@@ -55,6 +58,8 @@ public:
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void chooseProfile(const QUrl& file);
     Q_INVOKABLE void useSrgb();
+    // An empty URL clears it.
+    Q_INVOKABLE void chooseColorTablesFolder(const QUrl& folder);
     Q_INVOKABLE void resetViewing();
     Q_INVOKABLE void resetThumbnails();
 signals:
@@ -63,7 +68,7 @@ signals:
     void activationRequested();
 private:
     SettingsDraft(Preferences&, ThemePalette&, ColorSettings*, QObject*);
-    enum Field { Transparency, ColorManaged, Profile, OutputBits, ThumbnailSize, CacheMiB };
+    enum Field { Transparency, ColorManaged, Profile, OutputBits, ThumbnailSize, CacheMiB, TablesFolder };
     void refresh();
     void set(Field field, QVariant value);
     void readProfile(const QString& path, bool applying, bool closeAfter);

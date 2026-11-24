@@ -120,7 +120,34 @@ ToolPanel {
     function resetLook() {
         message = ""
         cubeStrength = 100
+        tableName = ""
         view.clearColorCube()
+        preview()
+    }
+
+    // The table chosen from the folder's list, by its name there; empty for none, or for one
+    // loaded from elsewhere.
+    property string tableName
+    // Wheel turns not yet a whole notch, as touchpads send them in small steps.
+    property real wheelTurn: 0
+
+    ColorTableList {
+        id: tables
+        objectName: "colorTables"
+        folder: Preferences.colorTablesFolder
+    }
+
+    // A table of the folder by its name, or none for "".
+    function useTable(name) {
+        if (name === "") {
+            message = ""
+            tableName = ""
+            view.clearColorCube()
+        } else {
+            message = view.loadColorCube(tables.urlOf(name))
+            if (message === "")
+                tableName = name
+        }
         preview()
     }
 
@@ -180,6 +207,12 @@ ToolPanel {
             types: [{ label: "Colour tables", extensions: ["cube"] }, { label: "All files", extensions: [] }]
             onChosen: (path) => {
                 panel.message = panel.view.loadColorCube(urlOf(path))
+                if (panel.message === "") {
+                    panel.tableName = tables.nameOf(path)
+                    // The first table loaded shows where the user keeps them.
+                    if (Preferences.colorTablesFolder === "")
+                        Preferences.colorTablesFolder = path.substring(0, path.lastIndexOf("/"))
+                }
                 panel.preview()
             }
         }
@@ -405,21 +438,43 @@ ToolPanel {
         onSwitched: (on) => panel.lookOn = on
         onResetRequested: panel.resetLook()
 
+        // The tables of the folder set in Settings, found by a few letters of their names; the
+        // wheel over the box goes through them, to compare looks quickly.
         RowLayout {
             Layout.fillWidth: true
+            SearchCombo {
+                objectName: "adjustTableChoice"
+                Layout.fillWidth: true
+                names: ["None"].concat(tables.names)
+                currentName: panel.tableName !== "" ? panel.tableName
+                             : panel.view.colorCubeName !== "" ? panel.view.colorCubeName : "None"
+                onPicked: (name) => panel.useTable(name === "None" ? "" : name)
+                WheelHandler {
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: (event) => {
+                        panel.wheelTurn += event.angleDelta.y
+                        const notches = Math.trunc(panel.wheelTurn / 120)
+                        if (notches !== 0) {
+                            panel.wheelTurn -= notches * 120
+                            panel.useTable(tables.step(panel.tableName, -notches))
+                        }
+                    }
+                }
+            }
             Button {
                 objectName: "adjustLoadCube"
                 focusPolicy: Qt.NoFocus
                 text: "Load .cube..."
                 onClicked: panel.chooseCube()
             }
-            Item { Layout.fillWidth: true }
         }
         Label {
+            objectName: "adjustTablesHint"
             Layout.fillWidth: true
-            elide: Text.ElideMiddle
+            visible: Preferences.colorTablesFolder === ""
+            wrapMode: Text.Wrap
             color: Theme.textMuted
-            text: panel.view.colorCubeName !== "" ? panel.view.colorCubeName : "None"
+            text: "Choose a folder of colour tables in Settings to pick them here."
         }
         // Looks are often made strong, to be toned down: the table's result mixed with the colour
         // before it.

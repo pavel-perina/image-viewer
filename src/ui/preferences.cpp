@@ -26,6 +26,7 @@ struct Preferences::Impl {
     QString transparency = QStringLiteral("dark");
     bool colorManaged = true;
     QString displayProfile = QString();
+    QString colorTablesFolder = QString();
     int sortKey = 0;
     bool sortDescending = false;
     bool askBeforeEditing = true;
@@ -80,6 +81,7 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
         const QString value = m_impl->settings->value(QStringLiteral("Color/displayProfile"), QString()).toString();
         m_impl->displayProfile = value;
     }
+    m_impl->colorTablesFolder = m_impl->settings->value(QStringLiteral("Color/tablesFolder"), QString()).toString();
     {
         const int value = m_impl->settings->value(QStringLiteral("Browser/sortKey"), 0).toInt();
         if (value >= 0 && value <= 3) m_impl->sortKey = value;
@@ -240,6 +242,15 @@ void Preferences::setDisplayProfile(QString value) {
     m_impl->displayProfile = value;
     m_impl->settings->setValue(QStringLiteral("Color/displayProfile"), value);
     emit displayProfileChanged();
+}
+
+QString Preferences::colorTablesFolder() const { return m_impl->colorTablesFolder; }
+
+void Preferences::setColorTablesFolder(QString value) {
+    if (m_impl->colorTablesFolder == value) return;
+    m_impl->colorTablesFolder = value;
+    m_impl->settings->setValue(QStringLiteral("Color/tablesFolder"), value);
+    emit colorTablesFolderChanged();
 }
 
 int Preferences::sortKey() const { return m_impl->sortKey; }

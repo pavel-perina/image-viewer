@@ -1196,6 +1196,14 @@ Left out for now:
   same colour; grays a cube keeps gray stay gray. It goes back to 100 % with the section's
   Reset, as a new look starts at full, and at 0 the table is left out and the section is not in
   use.
+* Tables are picked by name from a folder set in Settings (Viewing), with its subfolders, as
+  packs come as folders: `ColorTableList` reads it in the background and names each table by its
+  path below the folder, without `.cube`, in natural order. The names are in the fzf-style
+  `SearchCombo`, as packs run to hundreds; the wheel over the box steps to the next or previous
+  table, to compare looks quickly, and None is before the first. "Load .cube..." stays for a
+  table elsewhere, and the first one loaded sets the folder while none is set. The folder is not
+  reset with the Viewing page, being where the user keeps files rather than a look. Previews of
+  every table on the picture are meant to come later, from the same list.
 * Colours the Oklab stages push beyond the range of an integer image are gamut mapped by
   default: lightness is clamped, then chroma reduced at the same hue until the colour fits,
   found by halving in 12 steps, in the shader too. Clipping each channel instead, which the
