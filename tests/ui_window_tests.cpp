@@ -1315,6 +1315,17 @@ TEST(Keys, TheFiltersCrossClosesIt) {
     EXPECT_TRUE(grid->property("activeFocus").toBool());
 }
 
+// Why: Ctrl+Q quits on every system. It was StandardKey.Quit, which Qt leaves without keys on
+// Windows, so there it did nothing. Input: Ctrl+Q in the browser. The truth is the window
+// closed.
+TEST(Keys, CtrlQQuitsOnEverySystem) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    ASSERT_TRUE(f.window->isVisible());
+    QTest::keyClick(f.window, Qt::Key_Q, Qt::ControlModifier);
+    EXPECT_TRUE(waitUntil([&] { return !f.window->isVisible(); }));
+}
+
 TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {
     MainFixture f(1, {QStringLiteral("sub")});
     ASSERT_NE(f.window, nullptr);

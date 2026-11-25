@@ -204,7 +204,8 @@ ApplicationWindow {
     function previous() { window.leaveImage(() => context.previous()) }
 
     Action { id: openAction; text: "&Open..."; shortcut: StandardKey.Open; onTriggered: openDialog.start(context.directory, "") }
-    Action { id: quitAction; text: "&Quit"; shortcut: StandardKey.Quit; onTriggered: window.close() }
+    // Ctrl+Q written out: StandardKey.Quit has no keys on Windows, which counts on Alt+F4.
+    Action { id: quitAction; text: "&Quit"; shortcut: "Ctrl+Q"; onTriggered: window.close() }
     Action {
         id: modeAction
         text: window.viewing ? "Browser" : "View"
