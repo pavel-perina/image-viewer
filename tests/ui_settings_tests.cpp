@@ -198,23 +198,23 @@ TEST_F(SettingsDraftFixture, PagesShareOneCheckpointAndResetOnlyTheirOwnSection)
     preferences.setShowHiddenFolders(true);
     ASSERT_TRUE(draft.begin());
     draft.appearance()->setHue(230);
-    draft.setThumbnailSize(QSize(320, 240));
+    draft.setThumbnailSize(QSize(320, 320));
     draft.setThumbnailCacheMiB(256);
     draft.setTransparency("light");
     draft.setColorManaged(false);
     draft.setOutputBits(10);
     EXPECT_TRUE(draft.dirty());
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(164, 164));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(160, 160));
     EXPECT_TRUE(preferences.colorManaged());
     draft.resetViewing();
     EXPECT_EQ(draft.transparency(), "dark");
-    EXPECT_EQ(draft.thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(draft.thumbnailSize(), QSize(320, 320));
     EXPECT_EQ(draft.appearance()->hue(), 230);
     draft.setTransparency("plain");
     draft.apply();
     EXPECT_FALSE(draft.dirty());
     iv::Preferences reloaded(dir.filePath("settings.ini"));
-    EXPECT_EQ(reloaded.thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(reloaded.thumbnailSize(), QSize(320, 320));
     EXPECT_EQ(reloaded.thumbnailCacheMiB(), 256);
     EXPECT_EQ(reloaded.transparency(), "plain");
     EXPECT_EQ(reloaded.hue(), 230);
@@ -223,7 +223,7 @@ TEST_F(SettingsDraftFixture, PagesShareOneCheckpointAndResetOnlyTheirOwnSection)
     draft.appearance()->setHue(40);
     draft.cancel();
     EXPECT_EQ(theme.hue(), 230);
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(320, 320));
     ASSERT_TRUE(draft.begin());
     EXPECT_FALSE(draft.dirty());
     EXPECT_EQ(draft.thumbnailCacheMiB(), 256);
@@ -232,8 +232,8 @@ TEST_F(SettingsDraftFixture, PagesShareOneCheckpointAndResetOnlyTheirOwnSection)
 // Invalid or inactive edits must not poison the draft. External changes merge into
 // untouched fields, while explicit edits retain the person's choice until Apply/Cancel.
 TEST_F(SettingsDraftFixture, ValidationAndExternalChangesKeepTheDraftConsistent) {
-    draft.setThumbnailSize(QSize(400, 300));
-    EXPECT_EQ(draft.thumbnailSize(), QSize(164, 164));
+    draft.setThumbnailSize(QSize(400, 400));
+    EXPECT_EQ(draft.thumbnailSize(), QSize(160, 160));
     ASSERT_TRUE(draft.begin());
     draft.setThumbnailSize(QSize(0, 120));
     draft.setThumbnailCacheMiB(0);
@@ -241,13 +241,13 @@ TEST_F(SettingsDraftFixture, ValidationAndExternalChangesKeepTheDraftConsistent)
     draft.setTransparency("unknown");
     EXPECT_FALSE(draft.dirty());
     draft.setTransparency("light");
-    preferences.setThumbnailSize(QSize(240, 160));
+    preferences.setThumbnailSize(QSize(240, 240));
     preferences.setTransparency("plain");
-    EXPECT_EQ(draft.thumbnailSize(), QSize(240, 160));
+    EXPECT_EQ(draft.thumbnailSize(), QSize(240, 240));
     EXPECT_EQ(draft.transparency(), "light");
     draft.cancel();
     EXPECT_EQ(draft.transparency(), "plain");
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(240, 160));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(240, 240));
 }
 
 // Profile validation runs before changing either the draft or persistence. A file can
@@ -265,14 +265,14 @@ TEST_F(SettingsDraftFixture, ProfileSelectionAndApplyValidateWithoutPartialWrite
     EXPECT_EQ(draft.displayProfile(), file);
     EXPECT_FALSE(draft.problem().isEmpty());
     draft.appearance()->setHue(230);
-    draft.setThumbnailSize(QSize(400, 300));
+    draft.setThumbnailSize(QSize(400, 400));
     ASSERT_TRUE(QFile::remove(file));
     QSignalSpy applied(&draft, &iv::SettingsDraft::applied);
     draft.apply(true);
     ASSERT_TRUE(waitUntil([&] { return !draft.busy(); }));
     EXPECT_TRUE(applied.isEmpty());
     EXPECT_EQ(preferences.hue(), 150);
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(164, 164));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(160, 160));
     iv::test::writeFile(QFileInfo(file).filesystemFilePath(), iv::adobeRgbProfile());
     draft.apply(true);
     ASSERT_TRUE(waitUntil([&] { return !draft.busy(); }));
@@ -280,7 +280,7 @@ TEST_F(SettingsDraftFixture, ProfileSelectionAndApplyValidateWithoutPartialWrite
     EXPECT_TRUE(applied.first().first().toBool());
     EXPECT_EQ(preferences.displayProfile(), file);
     EXPECT_EQ(preferences.hue(), 230);
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(400, 300));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(400, 400));
 }
 
 // Closing during validation must neither publish a late profile result nor retain a
@@ -484,14 +484,14 @@ TEST_F(SettingsWindowFixture, ViewingAndThumbnailsRetainEditsAcrossPagesAndApply
         capture("IV_SETTINGS_THUMBNAILS_PNG");
     }
     ASSERT_TRUE(item("thumbnailSizeChoice"));
-    ASSERT_TRUE(QMetaObject::invokeMethod(item("thumbnailSizeChoice"), "activated", Q_ARG(int, 4)));
+    ASSERT_TRUE(QMetaObject::invokeMethod(item("thumbnailSizeChoice"), "activated", Q_ARG(int, 3)));
     click("thumbnailCacheLimit");
     QTest::keyClick(window, Qt::Key_A, Qt::ControlModifier);
     typeText(window, QStringLiteral("256"));
     section(1);
     capture("IV_SETTINGS_VIEWING_PNG");
     EXPECT_EQ(model->thumbnailCacheMiB(), 256);
-    EXPECT_EQ(model->thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(model->thumbnailSize(), QSize(320, 320));
     ASSERT_TRUE(QMetaObject::invokeMethod(item("transparencyChoice"), "activated", Q_ARG(int, 1)));
     ASSERT_TRUE(QMetaObject::invokeMethod(item("outputBitsChoice"), "activated", Q_ARG(int, 1)));
     EXPECT_EQ(model->transparency(), "light");
@@ -501,17 +501,17 @@ TEST_F(SettingsWindowFixture, ViewingAndThumbnailsRetainEditsAcrossPagesAndApply
     click("resetViewingButton");
     EXPECT_EQ(model->outputBits(), 8);
     EXPECT_EQ(model->transparency(), "dark");
-    EXPECT_EQ(model->thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(model->thumbnailSize(), QSize(320, 320));
     section(0);
     click("settingsApplyButton");
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(320, 320));
     EXPECT_EQ(preferences.thumbnailCacheMiB(), 256);
     EXPECT_EQ(preferences.hue(), draft->hue());
     EXPECT_FALSE(model->dirty());
     section(2);
     click("resetThumbnailsButton");
     click("settingsCancelButton");
-    EXPECT_EQ(preferences.thumbnailSize(), QSize(320, 240));
+    EXPECT_EQ(preferences.thumbnailSize(), QSize(320, 320));
     EXPECT_EQ(preferences.thumbnailCacheMiB(), 256);
 }
 
@@ -638,24 +638,24 @@ TEST(Settings, AdjustColoursUsesTheSharedScrollAreaWithHoverVisibility) {
 }
 
 // The dimensions change every live browser grid, without changing its current image,
-// selected files or keyboard focus. The existing square default remains 180 x 200.
+// selected files or keyboard focus. The square default makes a 176 x 196 cell.
 TEST(Settings, ThumbnailSizeReflowsTheBrowserWithoutChangingItsSelectionOrFocus) {
     auto* preferences = iv::Preferences::instance();
     const QSize saved = preferences->thumbnailSize();
     const auto restore = qScopeGuard([preferences, saved] { preferences->setThumbnailSize(saved); });
-    preferences->setThumbnailSize(QSize(164, 164));
+    preferences->setThumbnailSize(QSize(160, 160));
     MainFixture main;
     ASSERT_TRUE(main.window);
     auto* grid = qobject_cast<QQuickItem*>(main.find("thumbnailGrid"));
     ASSERT_TRUE(grid);
     const QString current = main.context->currentPath();
     const QStringList selected = main.context->selectedPaths();
-    EXPECT_EQ(grid->property("cellWidth").toInt(), 180);
-    EXPECT_EQ(grid->property("cellHeight").toInt(), 200);
+    EXPECT_EQ(grid->property("cellWidth").toInt(), 176);
+    EXPECT_EQ(grid->property("cellHeight").toInt(), 196);
     grid->forceActiveFocus();
-    preferences->setThumbnailSize(QSize(320, 240));
+    preferences->setThumbnailSize(QSize(320, 320));
     ASSERT_TRUE(waitUntil([&] { return grid->property("cellWidth").toInt() == 336; }));
-    EXPECT_EQ(grid->property("cellHeight").toInt(), 276);
+    EXPECT_EQ(grid->property("cellHeight").toInt(), 356);
     EXPECT_EQ(main.context->currentPath(), current);
     EXPECT_EQ(main.context->selectedPaths(), selected);
     EXPECT_TRUE(grid->hasActiveFocus());

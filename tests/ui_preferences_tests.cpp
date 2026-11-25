@@ -36,7 +36,7 @@ const QList<Choice> choices{
     {"histogramLogScale", "InfoPanel/logScale", false, true},
     {"histogramFitRange", "InfoPanel/fitRange", false, true},
     {"thumbnailCacheMiB", "Thumbnails/cacheMiB", 512, 128},
-    {"thumbnailSize", "Thumbnails/imageSize", QSize(164, 164), QSize(320, 240)},
+    {"thumbnailSize", "Thumbnails/imageSize", QSize(160, 160), QSize(320, 320)},
     {"outputBits", "View/outputBits", 8, 10},
 };
 }

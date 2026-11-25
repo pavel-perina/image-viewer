@@ -17,7 +17,7 @@ struct SettingsDraft::Impl {
         {"colorManaged", true, {}, {}},
         {"displayProfile", QString(), {}, {}},
         {"outputBits", 8, {}, {}},
-        {"thumbnailSize", QSize(164, 164), {}, {}},
+        {"thumbnailSize", QSize(160, 160), {}, {}},
         {"thumbnailCacheMiB", 512, {}, {}},
         {"colorTablesFolder", QString(), {}, {}},
         {"escapeAction", QStringLiteral("auto"), {}, {}}

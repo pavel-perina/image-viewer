@@ -38,7 +38,7 @@ struct Preferences::Impl {
     bool histogramLogScale = false;
     bool histogramFitRange = false;
     int thumbnailCacheMiB = 512;
-    QSize thumbnailSize{164, 164};
+    QSize thumbnailSize{160, 160};
     int outputBits = 8;
 };
 
@@ -128,7 +128,7 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
         if (validCacheMiB(value)) m_impl->thumbnailCacheMiB = value;
     }
     {
-        const QSize value = m_impl->settings->value(QStringLiteral("Thumbnails/imageSize"), QSize(164, 164)).toSize();
+        const QSize value = m_impl->settings->value(QStringLiteral("Thumbnails/imageSize"), QSize(160, 160)).toSize();
         if (validThumbnailSize(value)) m_impl->thumbnailSize = value;
     }
     {

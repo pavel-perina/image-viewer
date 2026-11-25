@@ -28,13 +28,14 @@ SettingsPage {
             ComboBox {
                 objectName: "thumbnailSizeChoice"
                 Layout.fillWidth: true
+                // Squares, which fit pictures of either orientation alike. A size saved before,
+                // not in the list, still shows by displayText.
                 model: [
-                    {label: "164 × 164 (default)", size: Qt.size(164, 164)},
-                    {label: "160 × 120", size: Qt.size(160, 120)},
-                    {label: "200 × 150", size: Qt.size(200, 150)},
-                    {label: "240 × 160", size: Qt.size(240, 160)},
-                    {label: "320 × 240", size: Qt.size(320, 240)},
-                    {label: "400 × 300", size: Qt.size(400, 300)}
+                    {label: "160 × 160 (default)", size: Qt.size(160, 160)},
+                    {label: "200 × 200", size: Qt.size(200, 200)},
+                    {label: "240 × 240", size: Qt.size(240, 240)},
+                    {label: "320 × 320", size: Qt.size(320, 320)},
+                    {label: "400 × 400", size: Qt.size(400, 400)}
                 ]
                 textRole: "label"
                 currentIndex: model.findIndex(item => item.size.width === page.draft.thumbnailSize.width && item.size.height === page.draft.thumbnailSize.height)

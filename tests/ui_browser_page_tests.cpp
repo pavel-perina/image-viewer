@@ -293,8 +293,8 @@ TEST(BrowserPage, ThumbnailsAreShownOnePixelForOne) {
         return nullptr;
     };
     ASSERT_TRUE(waitUntil([&] { return (image = loadedThumbnail(f.view.contentItem())) != nullptr; }));
-    EXPECT_EQ(image->property("sourceSize").toSize(), QSize(164, 164));
-    EXPECT_LE(std::max(image->width(), image->height()), 164);
+    EXPECT_EQ(image->property("sourceSize").toSize(), QSize(160, 160));
+    EXPECT_LE(std::max(image->width(), image->height()), 160);
     const double scale = f.view.effectiveDevicePixelRatio();
     EXPECT_DOUBLE_EQ(image->width() * scale, std::round(image->width() * scale));
     const QPointF corner = image->mapToScene(QPointF(0, 0)) * scale;

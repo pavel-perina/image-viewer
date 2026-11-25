@@ -48,9 +48,11 @@ Choices made while implementing `architecture.md` and `main-window.md`.
   scrollbar visible while content overflows and hides it when content fits; tool panels
   retain hover fading. Validate the actual thumb's geometry and viewport/content ratio, not just its
   containing item's bounds, to prevent a misplaced dot masquerading as a scrollbar.
-* Keep the current 164 × 164 image box (180 × 200 browser cell) as the default. Offer
-  160 × 120, 200 × 150, 240 × 160, 320 × 240 and 400 × 300, preserving image aspect
-  ratio. The browser adds padding/caption space and preserves selection, current image
+* The image box is square: 160 × 160 by default (a 176 × 196 browser cell), or 200, 240, 320
+  and 400. A square fits pictures of either orientation alike, where the 4:3 and 3:2 boxes
+  offered at first shrank every portrait. (The first default, 164, was what a 180 px wide cell
+  left; 160 is near it, and round.) Sizes saved before stay valid and are shown as they are.
+  Images keep their aspect ratio. The browser adds padding/caption space and preserves selection, current image
   and pane focus when its grid reflows. The strip builder keeps its own compact layout.
 * Keep disk thumbnails keyed by longest edge; fit returned images into both requested
   bounds on the worker, without upscaling. Rectangles with the same longest edge can
