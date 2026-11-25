@@ -12,6 +12,12 @@
 //  * letters skipped in between cost, the first more than the rest.
 // The best placing of the letters is the one taken. Case is ignored for ASCII letters; other
 // characters must be the same.
+//
+// A word of the query may also be marked, as in fzf's extended search:
+//  * 'word   the word as it is, letters together, anywhere;
+//  * ^word   the name starts with it;  word$  the name ends with it;  ^word$  is the name;
+//  * !word   the name does not hold it as it is (also !^word and !word$); it adds no score.
+// A word that is nothing but the marks asks for nothing, so that typing one hides nothing yet.
 
 #include <cstddef>
 #include <optional>

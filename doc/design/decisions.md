@@ -761,6 +761,12 @@ the question before leaving an edited image. Still planned lists the rest.
   the query separated by spaces each match anywhere. Its numbers are fzf's, so that it ranks
   as people used to fzf expect. It depends on nothing else in the program, nor does
   `SearchCombo` on fonts, so both can serve other long lists, or other programs.
+* Words of the query may carry fzf's marks: `'word` for the letters together, `^word` and
+  `word$` for the start and end of the name, `!word` to leave names out. They cover what a file
+  list wants of regular expressions (a type of file, a prefix, leaving something out) and still
+  mark what they found, which regular expressions would complicate; a half-typed regular
+  expression is also often invalid. A word that is only marks asks for nothing yet, so typing
+  one does not empty the list.
 
 ### One tool at a time
 * The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,

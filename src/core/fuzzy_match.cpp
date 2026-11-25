@@ -153,6 +153,86 @@ std::optional<FuzzyMatch> matchWord(const std::u32string& word, const std::u32st
     return match;
 }
 
+// The word as it is, letters together, at one place of the name: scored as a run of matched
+// letters that starts there.
+FuzzyMatch scoreRun(const std::u32string& name, std::size_t at, std::size_t length) {
+    FuzzyMatch match;
+    int keep = 0;
+    for (std::size_t k = 0; k < length; ++k) {
+        const int bonus = bonusAt(name, at + k);
+        if (k == 0) {
+            match.score = matchScore + bonus * firstLetterFactor;
+            keep = bonus;
+        } else {
+            keep = std::max({keep, bonus, runBonus});
+            match.score += matchScore + keep;
+        }
+        match.positions.push_back(at + k);
+    }
+    return match;
+}
+
+bool sameAt(const std::u32string& name, std::size_t at, const std::u32string& word) {
+    if (at + word.size() > name.size()) {
+        return false;
+    }
+    for (std::size_t k = 0; k < word.size(); ++k) {
+        if (fold(name[at + k]) != fold(word[k])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The word as it is, where the marks allow: at the start, at the end, or the best place anywhere.
+std::optional<FuzzyMatch> matchExact(const std::u32string& word, const std::u32string& name, bool prefix, bool suffix) {
+    if (word.size() > name.size()) {
+        return std::nullopt;
+    }
+    const std::size_t last = name.size() - word.size();
+    std::optional<FuzzyMatch> best;
+    for (std::size_t at = prefix ? 0 : (suffix ? last : 0); at <= (prefix ? 0 : last); ++at) {
+        if ((suffix && at != last) || !sameAt(name, at, word)) {
+            continue;
+        }
+        FuzzyMatch here = scoreRun(name, at, word.size());
+        if (!best || here.score > best->score) {
+            best = std::move(here);
+        }
+    }
+    return best;
+}
+
+// One word of the query with its marks; none if the name does not fit it.
+std::optional<FuzzyMatch> matchTerm(std::u32string word, const std::u32string& name) {
+    const bool negated = !word.empty() && word.front() == U'!';
+    if (negated) {
+        word.erase(0, 1);
+    }
+    bool exact = negated;
+    bool prefix = false;
+    bool suffix = false;
+    if (!word.empty() && word.front() == U'\'') {
+        exact = true;
+        word.erase(0, 1);
+    } else if (!word.empty() && word.front() == U'^') {
+        exact = prefix = true;
+        word.erase(0, 1);
+    }
+    if (!word.empty() && word.back() == U'$') {
+        exact = suffix = true;
+        word.pop_back();
+    }
+    if (word.empty()) {
+        return FuzzyMatch{};
+    }
+    std::optional<FuzzyMatch> found = exact ? matchExact(word, name, prefix, suffix) : matchWord(word, name);
+    if (negated) {
+        return found ? std::nullopt : std::optional<FuzzyMatch>(FuzzyMatch{});
+    }
+    return found;
+}
+
 }  // namespace
 
 std::vector<FuzzyRun> FuzzyMatch::runs() const {
@@ -181,7 +261,7 @@ std::optional<FuzzyMatch> fuzzyMatch(std::string_view query, std::string_view na
         if (stop == std::u32string::npos) {
             stop = all.size();
         }
-        const auto word = matchWord(all.substr(start, stop - start), text);
+        const auto word = matchTerm(all.substr(start, stop - start), text);
         if (!word) {
             return std::nullopt;
         }
