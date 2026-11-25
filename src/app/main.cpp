@@ -25,9 +25,10 @@ int main(int argc, char* argv[]) {
     iv::requestOutputBits();  // names are set for preferences; still before the application
     QGuiApplication app(argc, argv);
 #ifndef Q_OS_WIN
-    // The installed desktop entry's name, by which Wayland desktops find its icon and name; and
-    // the icon itself, for the rest. Windows takes it from the program file's own icon.
-    QGuiApplication::setDesktopFileName(QStringLiteral("imageviewer"));
+    // The installed desktop entry's name, by which Wayland desktops find its icon and name and
+    // the desktop portal knows the program; only when installed, as the portal warns of a name
+    // with no entry. And the icon itself, for the rest. Windows takes it from the program file.
+    QGuiApplication::setDesktopFileName(iv::AppInfo::installedDesktopEntry());
     QGuiApplication::setWindowIcon(iv::AppInfo::programIcon());
 #endif
     QCoreApplication::setApplicationVersion(QStringLiteral(IV_BUILD_COMMIT ", built " IV_BUILD_TIME));

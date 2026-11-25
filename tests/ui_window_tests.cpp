@@ -1665,6 +1665,33 @@ TEST(AppInfo, ProgramIconComesAtTheSizesWindowManagersAskFor) {
     EXPECT_GT(drawn, 64 * 64 / 20) << "the picture is drawn, not left transparent";
 }
 
+#ifndef Q_OS_WIN
+// Why: Qt registers the desktop file name with the desktop portal, which warns when no desktop
+// entry of that name is installed, as when the program runs from a build folder or an AppImage
+// not installed. So the name is given only when the entry is where desktops look. Input: the
+// tests' own data folders, without the entry, then with it in the applications folder. The
+// truth is the name: none, then imageviewer.
+TEST(AppInfo, TheDesktopEntryIsNamedOnlyWhenInstalled) {
+    const QByteArray dirs = qgetenv("XDG_DATA_DIRS");
+    QTemporaryDir system;
+    qputenv("XDG_DATA_DIRS", system.path().toLocal8Bit());  // not the machine's own entries
+    const QString applications = qEnvironmentVariable("XDG_DATA_HOME") + QStringLiteral("/applications");
+    const QString entry = applications + QStringLiteral("/imageviewer.desktop");
+    QFile::remove(entry);
+    EXPECT_EQ(iv::AppInfo::installedDesktopEntry(), QString());
+
+    ASSERT_TRUE(QDir().mkpath(applications));
+    touchFile(entry);
+    EXPECT_EQ(iv::AppInfo::installedDesktopEntry(), QStringLiteral("imageviewer"));
+    QFile::remove(entry);
+    if (dirs.isNull()) {
+        qunsetenv("XDG_DATA_DIRS");
+    } else {
+        qputenv("XDG_DATA_DIRS", dirs);
+    }
+}
+#endif
+
 TEST(AboutDialog, LicenceTextsAreFoundBesideTheProgramOrInShare) {
     QTemporaryDir root;
     const QString bin = root.filePath(QStringLiteral("usr/bin"));

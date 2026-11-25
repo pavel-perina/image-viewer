@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QPixmap>
+#include <QStandardPaths>
 #include <QSvgRenderer>
 #include <QVariantMap>
 
@@ -69,6 +70,13 @@ QUrl AppInfo::licencesUrl() const {
 
 void AppInfo::setLicencesFolderForTesting(const QString& folder) {
     licencesFolderOverride() = folder;
+}
+
+QString AppInfo::installedDesktopEntry() {
+    const QString name = QStringLiteral("imageviewer");
+    const bool installed =
+        !QStandardPaths::locate(QStandardPaths::ApplicationsLocation, name + QStringLiteral(".desktop")).isEmpty();
+    return installed ? name : QString();
 }
 
 QIcon AppInfo::programIcon() {

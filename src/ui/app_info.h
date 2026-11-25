@@ -39,6 +39,14 @@ public:
     // managers ask for. Set on the application, so its windows show it on X11 and Windows and
     // wherever the desktop does not take it from the installed desktop entry.
     static QIcon programIcon();
+
+    // The name of the program's desktop entry, imageviewer, if it is installed where desktops
+    // look (the applications folder of XDG_DATA_HOME or XDG_DATA_DIRS); otherwise empty.
+    // Given to Qt as the desktop file name, it is the ID Qt registers with the desktop portal,
+    // which turns down an ID with no entry, with a warning, when the program runs from a build
+    // folder or an AppImage. Without it, the window's Wayland ID is still the program file's
+    // name, imageviewer, by which the taskbar finds the icon.
+    static QString installedDesktopEntry();
 };
 
 }  // namespace iv
