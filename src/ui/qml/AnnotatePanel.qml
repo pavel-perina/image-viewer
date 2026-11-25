@@ -97,7 +97,7 @@ ToolPanel {
         objectName: "annotateFont"
         Layout.fillWidth: true
         visible: panel.hasLetters
-        names: panel.overlay.fontFamilies
+        names: panel.shownOnce ? panel.overlay.fontFamilies : []
         currentName: panel.overlay.fontFamily
         namesInTheirFont: true
         onPicked: (name) => {

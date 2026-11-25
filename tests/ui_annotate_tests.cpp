@@ -303,6 +303,21 @@ TEST(Annotate, TextCanHaveADarkEdge) {
     EXPECT_GT(count(edged, false), count(plain, false) * 0.9) << "the letters are as before";
 }
 
+// Why: listing the system's fonts can take a while on Windows, where many are installed, and
+// was done as the viewer was made, at start. Input: the viewer with another tool open, then
+// with Annotate. The truth is the names of the font box: none until Annotate is first shown,
+// then the program's own font among them.
+TEST(Annotate, TheFontsAreListedWhenAnnotateIsFirstShown) {
+    ToolPage f("startCrop", false);
+    auto* fonts = f.page->findChild<QObject*>(QStringLiteral("annotateFont"));
+    ASSERT_NE(fonts, nullptr);
+    EXPECT_TRUE(fonts->property("names").toStringList().isEmpty());
+
+    QMetaObject::invokeMethod(f.page, "cancelCrop");
+    QMetaObject::invokeMethod(f.page, "startAnnotate");
+    EXPECT_TRUE(waitUntil([&] { return fonts->property("names").toStringList().contains(QGuiApplication::font().family()); }));
+}
+
 // Why: the typeface and its weight are part of a text's style, chosen from those installed.
 // Checked without relying on any one typeface being there: the family shown is one of the
 // list, setting another changes the box selected, and bold letters cover more pixels than

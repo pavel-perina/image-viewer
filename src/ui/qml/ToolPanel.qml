@@ -14,6 +14,11 @@ Rectangle {
     // In view; it slides in and out, unless the page says not to animate.
     property bool revealed: false
     property bool animated: true
+    // Has been in view: what is costly to make, such as the list of the system's fonts, is made
+    // then rather than with the page, at start.
+    property bool shownOnce: false
+    onRevealedChanged: if (revealed) shownOnce = true
+    Component.onCompleted: if (revealed) shownOnce = true
     // Whether it ends in buttons at all: a tool that changes nothing has none.
     property bool buttons: true
     property string applyText: "Apply"
