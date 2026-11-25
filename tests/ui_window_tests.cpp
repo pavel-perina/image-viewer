@@ -1049,6 +1049,56 @@ TEST(FileChooser, OpenEntersFoldersAndOpensFiles) {
     EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("b.png")));
 }
 
+// Why: in the chooser, typing in the list filters it at once, without a field taking room
+// until then; the best fit becomes current so that Enter opens it, and Esc gives the whole list
+// and the keys back. Input: a.jpg, b.png and sub; "b" typed, Enter; then "/" and Esc. The truth
+// is the filter's field and text, the rows, and the file chosen.
+TEST(FileChooser, TypingInTheListFiltersItAndEnterOpensTheBestFit) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
+    f.start(QString());
+    QQuickItem* list = f.item("fileList");
+    ASSERT_TRUE(waitUntil([&] { return list->hasActiveFocus(); }));
+    auto* field = f.chooser->findChild<QQuickItem*>(QStringLiteral("filterField"));
+    ASSERT_NE(field, nullptr);
+    EXPECT_FALSE(field->isVisible());
+
+    QTest::keyClick(f.window, Qt::Key_B);
+    EXPECT_TRUE(field->isVisible());
+    EXPECT_TRUE(field->hasActiveFocus());
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("b"));
+    EXPECT_EQ(f.listing()->property("count").toInt(), 2) << "sub holds no b";
+    QTest::keyClick(f.window, Qt::Key_P);
+    EXPECT_EQ(f.listing()->property("count").toInt(), 1);
+    EXPECT_EQ(list->property("currentIndex").toInt(), 0);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("b.png")));
+}
+
+// Why: Esc leaves the filter: the whole list comes back and the keys return to it, so that the
+// arrows move in it again. Input: "/" in the list, then "a" and Esc. The truth is the field,
+// the rows and where the keys are.
+TEST(FileChooser, EscapeInTheFilterGivesTheWholeListBack) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
+    f.start(QString());
+    QQuickItem* list = f.item("fileList");
+    ASSERT_TRUE(waitUntil([&] { return list->hasActiveFocus(); }));
+    auto* field = f.chooser->findChild<QQuickItem*>(QStringLiteral("filterField"));
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    EXPECT_TRUE(field->hasActiveFocus());
+    EXPECT_EQ(field->property("text").toString(), QString()) << "/ only opens it";
+    QTest::keyClick(f.window, Qt::Key_A);
+    EXPECT_EQ(f.listing()->property("count").toInt(), 1);
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_FALSE(field->isVisible());
+    EXPECT_TRUE(list->hasActiveFocus());
+    EXPECT_EQ(f.listing()->property("count").toInt(), 3);
+    EXPECT_EQ(f.chosen->size(), 0);
+    EXPECT_EQ(f.cancelled->size(), 0) << "Esc in the filter does not leave the chooser";
+}
+
 TEST(FileChooser, FolderModeChoosesTheSelectedFolderOrElseTheOneShown) {
     ChooserFixture f(QStringLiteral("folder"));
     f.start(QString());

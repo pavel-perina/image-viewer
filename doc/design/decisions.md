@@ -767,6 +767,16 @@ the question before leaving an edited image. Still planned lists the rest.
   mark what they found, which regular expressions would complicate; a half-typed regular
   expression is also often invalid. A word that is only marks asks for nothing yet, so typing
   one does not empty the list.
+* Lists of files filter as they are typed (`FilterField`), fzf style, but keep their own
+  order rather than putting the best fit first: the order a file list is sorted in (by name,
+  date) means something, rows jumping about with each letter are hard to follow, and photo
+  names (`IMG_1234`, dates) score much alike, so ranking them looks random. The best fit, the
+  first of equals, becomes current, so Enter opens it. The letters matched are marked, and
+  names are drawn as plain text while nothing is typed, as marked text costs more to lay out.
+* The field takes no room until asked for, unlike a search bar: it floats over the list's lower
+  right corner, away from the matches, which are listed from the top. It opens by its button,
+  Ctrl+F or /, and in the file chooser by typing in the list; in the browser single letters
+  are already shortcuts. Esc clears it. A filter is for the folder it was typed in.
 
 ### One tool at a time
 * The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,

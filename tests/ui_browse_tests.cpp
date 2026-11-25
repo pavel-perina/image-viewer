@@ -812,6 +812,45 @@ TEST(FolderListing, ListsFoldersFirstNaturallyAndFiltersAndSorts) {
     EXPECT_EQ(listing.kindOf(dir.filePath(QStringLiteral("nothing"))), QString());
 }
 
+// Why: a fuzzy filter typed over the file chooser narrows its list without reordering it: the
+// order the list is sorted in means something, and photo names score much alike. Input: a
+// folder, "beaches", and three files sorted by size, filtered by "bea", then by a word with
+// fzf's marks, then cleared, then the folder left. The truth is the names listed, the one that
+// fits best, what is marked, and the totals.
+TEST(FolderListing, AFilterNarrowsTheListInItsOwnOrderAndMarksWhatFits) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("beaches")));
+    touchFile(dir.filePath(QStringLiteral("IMG_0012.jpg")), 10);
+    touchFile(dir.filePath(QStringLiteral("big-ear.jpg")), 20);
+    touchFile(dir.filePath(QStringLiteral("beach.tif")), 30);
+    iv::FolderListing listing;
+    listing.setPath(dir.path());
+    listing.setSortKey(iv::FolderListing::SortKey::Size);
+    ASSERT_TRUE(waitUntil([&] { return !listing.loading(); }));
+    ASSERT_EQ(listing.count(), 4);
+
+    listing.setFilter(QStringLiteral("bea"));
+    EXPECT_EQ(listingNames(listing), (QStringList{"beaches", "big-ear.jpg", "beach.tif"}));
+    EXPECT_EQ(listing.totalCount(), 4);
+    EXPECT_EQ(listing.bestIndex(), 0) << "the first of the names that start with it";
+    const auto marked = [&](int row) { return listing.data(listing.index(row), iv::FolderListing::MarkedNameRole).toString(); };
+    EXPECT_EQ(marked(2), QStringLiteral("<b><u>bea</u></b>ch.tif"));
+
+    listing.setFilter(QStringLiteral(".jpg$ !img"));
+    EXPECT_EQ(listingNames(listing), QStringList{"big-ear.jpg"});
+    EXPECT_EQ(marked(0), QStringLiteral("big-ear<b><u>.jpg</u></b>"));
+
+    listing.setFilter(QString());
+    EXPECT_EQ(listing.count(), 4);
+    EXPECT_EQ(listing.bestIndex(), -1);
+    EXPECT_EQ(marked(0), QString()) << "plain names, drawn as plain text";
+
+    listing.setFilter(QStringLiteral("zzz"));
+    EXPECT_EQ(listing.count(), 0);
+    listing.setPath(dir.filePath(QStringLiteral("beaches")));
+    EXPECT_EQ(listing.filter(), QString()) << "a filter is for the folder it was typed in";
+}
+
 // Why: the file chooser lists hidden folders only when asked, while hidden files stay out
 // either way. Input: makeHiddenEntries. The truth is the listed names.
 TEST(FolderListing, ListsHiddenFoldersOnlyWhenAskedAndNeverHiddenFiles) {

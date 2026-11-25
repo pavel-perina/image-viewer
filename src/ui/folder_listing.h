@@ -13,7 +13,7 @@ namespace iv {
 // The folders and files of one folder, folders first, read in the background and read again when
 // the folder changes. For views that list files by name, size, type and date rather than as
 // thumbnails, such as the file chooser. Hidden files are left out, and hidden folders unless
-// showHiddenFolders.
+// showHiddenFolders. A filter typed over the list narrows it.
 class FolderListing : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
@@ -26,6 +26,13 @@ class FolderListing : public QAbstractListModel {
     Q_PROPERTY(bool sortDescending READ sortDescending WRITE setSortDescending NOTIFY sortChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    // A fuzzy filter typed over the list (core/fuzzy_match.h): only the entries it fits are
+    // rows, in the list's own order, their names with what matched marked. Empty lists all.
+    Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
+    // The entries in the folder, the filter aside.
+    Q_PROPERTY(int totalCount READ totalCount NOTIFY countChanged)
+    // The row the filter fits best, the first of equals; -1 without a filter or with no rows.
+    Q_PROPERTY(int bestIndex READ bestIndex NOTIFY countChanged)
 
 public:
     enum class SortKey { Name, Size, Type, Modified };
@@ -40,6 +47,7 @@ public:
         TypeRole,      // "JPEG image", "Folder"
         ModifiedRole,
         ModifiedTextRole,
+        MarkedNameRole,  // the name as styled text with what the filter matched marked; empty without one
     };
 
     explicit FolderListing(QObject* parent = nullptr);
@@ -59,6 +67,10 @@ public:
     void setSortDescending(bool descending);
     bool loading() const;
     int count() const;
+    QString filter() const;
+    void setFilter(const QString& filter);
+    int totalCount() const;
+    int bestIndex() const;
 
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -79,6 +91,7 @@ signals:
     void sortChanged();
     void loadingChanged();
     void countChanged();
+    void filterChanged();
 
 private:
     struct Impl;

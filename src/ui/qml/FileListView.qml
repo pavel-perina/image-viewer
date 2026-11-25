@@ -7,7 +7,8 @@ import ImageViewer
 // The entries of a FolderListing, either as names in columns that run top to bottom and scroll
 // sideways (brief), or as rows with size, type and date under headers that sort (details). One
 // entry is current. Up and Down move by one, Left and Right by a column in brief, Enter or a
-// double click activates the current entry and Backspace asks for the parent folder.
+// double click activates the current entry and Backspace asks for the parent folder. Ctrl+F, /
+// or a letter typed opens the filter over its lower corner; the best fit becomes current.
 FocusScope {
     id: list
 
@@ -18,6 +19,8 @@ FocusScope {
     signal clicked(int index)
     signal activated(int index)
     signal upRequested()
+
+    readonly property alias filter: filterField
 
     readonly property int rowHeight: Math.ceil(fontMetrics.height + 8)
     readonly property real sizeWidth: 90
@@ -37,6 +40,20 @@ FocusScope {
             return
         currentIndex = Math.max(0, Math.min(listing.count - 1, index))
         view.positionViewAtIndex(currentIndex, ListView.Contain)
+    }
+
+    // Up, Down and the page keys, and in brief Left and Right by a column. Whether the key was one.
+    function moveByKey(key) {
+        const page = details ? Math.max(1, Math.floor(detailsView.height / rowHeight) - 1) : columnRows
+        const step = { [Qt.Key_Up]: -1, [Qt.Key_Down]: 1, [Qt.Key_PageUp]: -page, [Qt.Key_PageDown]: page }
+        if (!details) {
+            step[Qt.Key_Left] = -columnRows
+            step[Qt.Key_Right] = columnRows
+        }
+        if (step[key] === undefined)
+            return false
+        moveTo(currentIndex < 0 ? 0 : currentIndex + step[key])
+        return true
     }
 
     function select(name) {
@@ -62,20 +79,27 @@ FocusScope {
             list.currentName = ""
             list.currentIndex = -1
         }
+        function onFilterChanged() {
+            if (list.listing.bestIndex >= 0)
+                list.moveTo(list.listing.bestIndex)
+        }
     }
 
     Keys.onPressed: (event) => {
-        const page = details ? Math.max(1, Math.floor(detailsView.height / rowHeight) - 1) : columnRows
-        const step = { [Qt.Key_Up]: -1, [Qt.Key_Down]: 1, [Qt.Key_PageUp]: -page, [Qt.Key_PageDown]: page }
-        if (!details) {
-            step[Qt.Key_Left] = -columnRows
-            step[Qt.Key_Right] = columnRows
+        if (event.matches(StandardKey.Find) || event.text === "/") {
+            filterField.start("")
+            event.accepted = true
+            return
+        }
+        // Anything typed but a space starts the filter with it.
+        if (!(event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier)) && /^[^\s\x00-\x1f\x7f]$/.test(event.text)) {
+            filterField.start(event.text)
+            event.accepted = true
+            return
         }
         if (event.modifiers & ~Qt.KeypadModifier)
             return
-        if (step[event.key] !== undefined) {
-            moveTo(currentIndex < 0 ? 0 : currentIndex + step[event.key])
-        } else if (event.key === Qt.Key_Home) {
+        if (event.key === Qt.Key_Home) {
             moveTo(0)
         } else if (event.key === Qt.Key_End) {
             moveTo(listing.count - 1)
@@ -84,7 +108,7 @@ FocusScope {
                 activated(currentIndex)
         } else if (event.key === Qt.Key_Backspace) {
             upRequested()
-        } else {
+        } else if (!moveByKey(event.key)) {
             return
         }
         event.accepted = true
@@ -103,7 +127,7 @@ FocusScope {
     Label {
         anchors.centerIn: parent
         visible: list.listing.count === 0
-        text: list.listing.loading ? "Reading the folder..." : "Nothing here"
+        text: list.listing.loading ? "Reading the folder..." : list.listing.filter !== "" ? "Nothing fits" : "Nothing here"
         opacity: 0.6
     }
 
@@ -207,6 +231,7 @@ FocusScope {
         required property string sizeText
         required property string type
         required property string modifiedText
+        required property string markedName
         readonly property bool current: index === list.currentIndex
         readonly property color textColor: current && list.activeFocus ? list.palette.highlightedText : list.palette.text
 
@@ -236,7 +261,9 @@ FocusScope {
                                      : parent.width) - 28
                 height: parent.height
                 verticalAlignment: Text.AlignVCenter
-                text: entry.name
+                // Plain text unless the filter marks it, as styled text costs more to lay out.
+                textFormat: entry.markedName !== "" ? Text.StyledText : Text.PlainText
+                text: entry.markedName !== "" ? entry.markedName : entry.name
                 color: entry.textColor
                 elide: Text.ElideMiddle
             }
@@ -277,6 +304,24 @@ FocusScope {
                 list.clicked(entry.index)
             }
             onDoubleTapped: list.activated(entry.index)
+        }
+    }
+
+    FilterField {
+        id: filterField
+        objectName: "fileListFilter"
+        z: 3
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        anchors.margins: Theme.panelMargin
+        countText: list.listing.count + " of " + list.listing.totalCount
+        onTextChanged: list.listing.filter = text
+        onMoveRequested: (key) => list.moveByKey(key)
+        onActivateRequested: if (list.currentIndex >= 0) list.activated(list.currentIndex)
+        onFinished: list.forceActiveFocus()
+        Connections {
+            target: list.listing
+            function onPathChanged() { filterField.text = "" }
         }
     }
 

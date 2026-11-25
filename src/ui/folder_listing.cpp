@@ -15,6 +15,7 @@
 
 #include "core/image_details.h"
 #include "core/work_queue.h"
+#include "ui/fuzzy_marks.h"
 #include "ui/hidden_folders.h"
 
 namespace iv {
@@ -84,7 +85,11 @@ struct FolderListing::Impl {
     SortKey sortKey = SortKey::Name;
     bool descending = false;
     bool loading = false;
-    std::vector<Entry> entries;
+    std::vector<Entry> all;      // what the folder holds, sorted
+    std::vector<Entry> entries;  // the rows: those the filter keeps
+    QString filter;
+    QStringList marked;  // per row
+    int best = -1;
     QFileSystemWatcher watcher;
     QTimer refreshTimer;
 
@@ -94,7 +99,7 @@ struct FolderListing::Impl {
         collator.setNumericMode(true);
         collator.setCaseSensitivity(Qt::CaseInsensitive);
         const auto byName = [&](const Entry& a, const Entry& b) { return collator.compare(a.name, b.name) < 0; };
-        std::ranges::stable_sort(entries, [&](const Entry& a, const Entry& b) {
+        std::ranges::stable_sort(all, [&](const Entry& a, const Entry& b) {
             if (a.folder != b.folder) {
                 return a.folder;
             }
@@ -121,6 +126,24 @@ struct FolderListing::Impl {
             }
             return byName(x, y);
         });
+        narrow();
+    }
+
+    // The rows from all, as the filter keeps them.
+    void narrow() {
+        QStringList names;
+        names.reserve(static_cast<qsizetype>(all.size()));
+        for (const Entry& entry : all) {
+            names.append(entry.name);
+        }
+        FilteredNames kept = filterNames(filter, names);
+        entries.clear();
+        entries.reserve(kept.rows.size());
+        for (const int row : kept.rows) {
+            entries.push_back(all[static_cast<std::size_t>(row)]);
+        }
+        marked = std::move(kept.marked);
+        best = kept.best;
     }
 };
 
@@ -152,9 +175,11 @@ void FolderListing::setPath(const QString& path) {
     }
     emit pathChanged();
     beginResetModel();
-    m_impl->entries.clear();
+    m_impl->all.clear();
+    m_impl->narrow();
     endResetModel();
     emit countChanged();
+    setFilter({});  // a filter is for the folder it was typed in
     refresh();
 }
 
@@ -218,6 +243,21 @@ void FolderListing::setSortDescending(bool descending) {
 
 bool FolderListing::loading() const { return m_impl->loading; }
 int FolderListing::count() const { return static_cast<int>(m_impl->entries.size()); }
+QString FolderListing::filter() const { return m_impl->filter; }
+int FolderListing::totalCount() const { return static_cast<int>(m_impl->all.size()); }
+int FolderListing::bestIndex() const { return m_impl->best; }
+
+void FolderListing::setFilter(const QString& filter) {
+    if (filter == m_impl->filter) {
+        return;
+    }
+    m_impl->filter = filter;
+    beginResetModel();
+    m_impl->narrow();
+    endResetModel();
+    emit countChanged();
+    emit filterChanged();
+}
 
 int FolderListing::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : count(); }
 
@@ -237,6 +277,7 @@ QVariant FolderListing::data(const QModelIndex& index, int role) const {
     case TypeRole: return entry.type;
     case ModifiedRole: return entry.modified;
     case ModifiedTextRole: return QLocale().toString(entry.modified, QLocale::ShortFormat);
+    case MarkedNameRole: return m_impl->marked.value(index.row());
     default: return {};
     }
 }
@@ -244,7 +285,7 @@ QVariant FolderListing::data(const QModelIndex& index, int role) const {
 QHash<int, QByteArray> FolderListing::roleNames() const {
     return {{NameRole, "name"},       {PathRole, "path"},         {IsFolderRole, "isFolder"},
             {SizeRole, "size"},       {SizeTextRole, "sizeText"}, {TypeRole, "type"},
-            {ModifiedRole, "modified"}, {ModifiedTextRole, "modifiedText"}};
+            {ModifiedRole, "modified"}, {ModifiedTextRole, "modifiedText"}, {MarkedNameRole, "markedName"}};
 }
 
 int FolderListing::indexOf(const QString& name) const {
@@ -289,7 +330,7 @@ void FolderListing::refresh() {
                 return;
             }
             beginResetModel();
-            m_impl->entries = std::move(entries);
+            m_impl->all = std::move(entries);
             m_impl->sort();
             endResetModel();
             m_impl->loading = false;

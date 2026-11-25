@@ -248,6 +248,12 @@ DialogWindow {
         anchors.fill: parent
         spacing: 8
 
+        // From anywhere in the chooser, as from its list.
+        Shortcut {
+            sequences: [StandardKey.Find]
+            onActivated: fileList.filter.start("")
+        }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: 4
@@ -256,6 +262,15 @@ DialogWindow {
                 Layout.fillWidth: true
                 context: browse
                 recordVisits: false
+            }
+            IconButton {
+                objectName: "chooserFilterButton"
+                text: "Filter"
+                tip: "Filter (" + KeyNames.text("Ctrl+F") + " or /)"
+                iconName: "edit-find"
+                checkable: true
+                checked: fileList.filter.open
+                onClicked: fileList.filter.open ? fileList.filter.stop() : fileList.filter.start("")
             }
             IconButton {
                 objectName: "newFolderButton"

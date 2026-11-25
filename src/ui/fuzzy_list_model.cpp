@@ -5,32 +5,9 @@
 #include <vector>
 
 #include "core/fuzzy_match.h"
+#include "ui/fuzzy_marks.h"
 
 namespace iv {
-
-namespace {
-
-QString marked(const QString& text, const std::vector<FuzzyRun>& runs) {
-    const QList<uint> codes = text.toUcs4();
-    const auto piece = [&](std::size_t from, std::size_t to) {
-        QString part;
-        for (std::size_t i = from; i < to && i < static_cast<std::size_t>(codes.size()); ++i) {
-            const auto code = static_cast<char32_t>(codes[static_cast<qsizetype>(i)]);
-            part += QString::fromUcs4(&code, 1);
-        }
-        return part.toHtmlEscaped();
-    };
-    QString out;
-    std::size_t at = 0;
-    for (const FuzzyRun& run : runs) {
-        out += piece(at, run.start);
-        out += QStringLiteral("<b><u>") + piece(run.start, run.start + run.length) + QStringLiteral("</u></b>");
-        at = run.start + run.length;
-    }
-    return out + piece(at, static_cast<std::size_t>(codes.size()));
-}
-
-}  // namespace
 
 FuzzyListModel::FuzzyListModel(QObject* parent) : QAbstractListModel(parent) {}
 
@@ -65,7 +42,7 @@ void FuzzyListModel::update() {
     for (const std::size_t index : fuzzyRank(query, views)) {
         m_rows.append(static_cast<int>(index));
         const auto match = fuzzyMatch(query, views[index]);
-        m_marked.append(marked(m_items[static_cast<qsizetype>(index)], match ? match->runs() : std::vector<FuzzyRun>{}));
+        m_marked.append(markedText(m_items[static_cast<qsizetype>(index)], match ? match->runs() : std::vector<FuzzyRun>{}));
     }
     endResetModel();
     if (m_rows.size() != before) {
