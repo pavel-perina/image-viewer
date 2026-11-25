@@ -9,6 +9,11 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 if(MSVC)
     add_compile_options(/W4 /permissive- /utf-8)
+    # Release keeps its optimisation but writes a .pdb beside each program, for profilers and
+    # crash dumps; the installer ships only the programs. /DEBUG alone would turn off removing
+    # unused code and merging identical functions, so both are asked for again.
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo,Release>:ProgramDatabase>")
+    add_link_options("$<$<CONFIG:Release>:/DEBUG;/OPT:REF;/OPT:ICF>")
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

@@ -64,6 +64,17 @@ $to = Join-Path $licences 'qt'
 New-Item -ItemType Directory -Force $to | Out-Null
 $qtLicences | Copy-Item -Destination $to
 
+$stray = Get-ChildItem $stage -Recurse -Filter '*.pdb'
+if ($stray) { throw "Debug symbols would be shipped: $($stray.FullName -join ', ')" }
+
 $version = Get-CacheValue 'CMAKE_PROJECT_VERSION'
 & $iscc "/DAppVersion=$version" "/DStageDir=$stage" "/O$output" (Join-Path $PSScriptRoot 'imageviewer.iss')
 Assert-Success 'ISCC'
+
+# The debug symbols stay out of the installer but are kept beside it, with the very program they
+# belong to, which a debugger needs as well to read a crash dump or a profile of this build.
+# tar is part of Windows 10 and later.
+$symbols = Join-Path $output "ImageViewer-$version-symbols.tar.zst"
+if (-not (Test-Path (Join-Path $build 'imageviewer.pdb'))) { throw 'imageviewer.pdb is missing. Build the project first.' }
+& tar --zstd -cf $symbols -C $build imageviewer.exe imageviewer.pdb
+Assert-Success 'tar'

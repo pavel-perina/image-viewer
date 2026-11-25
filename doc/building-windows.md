@@ -58,10 +58,18 @@ variables it sets end with the cmd it runs in.
 its files into the repository root, and without the Ninja setting it writes them for the Visual
 Studio generator, which the steps here don't use.
 
+### Debugging information
+
+The Release build already writes a `.pdb` next to each program, which is enough for a profiler
+(VTune, Windows Performance Analyzer) or a crash dump. The installer leaves them out and keeps
+`imageviewer.pdb` in a `-symbols.tar.zst` beside the setup. For Qt's own function names, add
+"Qt Debug Information Files" for this Qt version in Qt's Maintenance Tool.
+
 ### RelWithDebInfo
 
-For a build with debugging information, keep the libraries as Release and make only this project
-RelWithDebInfo, with `&:`. Conan then reuses the Release libraries without building anything:
+For stepping through the code in a debugger, where Release's inlining gets in the way, keep the
+libraries as Release and make only this project RelWithDebInfo, with `&:`. Conan then reuses the
+Release libraries without building anything:
 
     conan install . -of build/conan-relwithdebinfo -s build_type=Release -s "&:build_type=RelWithDebInfo" -c tools.cmake.cmaketoolchain:generator=Ninja --build=missing
     build\conan-relwithdebinfo\conanbuild.bat
@@ -103,6 +111,10 @@ in the top-level `CMakeLists.txt`. Build first, as the script only packages what
 For the licence texts it runs `conan install` with `--build=missing`, so a library version that
 Conan has no prebuilt package of for this compiler is built rather than stopping it; rebuild the
 app after that, so that it uses the same version.
+
+Beside the setup it writes `ImageViewer-<version>-symbols.tar.zst`, the program with its `.pdb`,
+which the installer leaves out, kept for reading crash dumps and profiles of that build: unpack it
+with `tar -xf` and point the debugger or profiler at the folder.
 
 The icon, of the executable, its windows and the installer, is `src/app/windows/imageviewer.ico`,
 made from the AppImage's `installer/linux/imageviewer.svg` by `tools/make_windows_icon.py`

@@ -1494,6 +1494,15 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   that is ticked by default. `Software\ImageViewer` also holds the settings, so uninstalling
   removes only its `Capabilities`. The extensions are listed in the script, as Inno cannot ask
   the program, and a core test compares them with `supportedExtensions()`.
+* The Windows Release build writes a `.pdb` for each program (`/Zi`, linked with `/DEBUG`), so
+  that a profiler or a crash dump of the very build that is shipped shows function names. The
+  code is the same: `/OPT:REF /OPT:ICF`, which `/DEBUG` would otherwise turn off, are asked for
+  again, and the program file grows only by the line naming its `.pdb`. The installer ships the
+  programs alone (its script fails if a `.pdb` is staged) and packs `imageviewer.pdb` with
+  `imageviewer.exe` into `ImageViewer-<version>-symbols.tar.zst` beside the setup: a debugger
+  needs the exact program too, which is awkward to get back out of a setup. zstd through the
+  `tar` that comes with Windows 10, so nothing is installed for it. Qt's own symbols come from
+  the "Qt Debug Information Files" component.
 * Opening several files from Explorer starts one window for each, as each gets its own process.
   Handing them to a window already open would need a single instance, left for later.
 * On Linux the program sets its window icon itself (`AppInfo::programIcon`), drawn from the same
