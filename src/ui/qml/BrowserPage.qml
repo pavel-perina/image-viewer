@@ -52,6 +52,26 @@ SplitView {
         page.context.extendSelectionTo(pageTarget(pages))
     }
 
+    readonly property alias filter: filterField
+
+    // The keys the filter's field passes on while it is typed in: up and down by a row or a page.
+    function moveByKey(key) {
+        const context = page.context
+        switch (key) {
+        case Qt.Key_Up: context.setCurrentIndex(Math.max(0, context.currentIndex - grid.columns)); break
+        case Qt.Key_Down: context.setCurrentIndex(Math.min(context.fileCount - 1, context.currentIndex + grid.columns)); break
+        case Qt.Key_PageUp: movePage(-1); break
+        case Qt.Key_PageDown: movePage(1); break
+        }
+    }
+
+    // From anywhere in the browser, as from the thumbnails.
+    Shortcut {
+        sequences: [StandardKey.Find]
+        enabled: page.active
+        onActivated: filterField.start("")
+    }
+
     orientation: Qt.Horizontal
 
     // The side buttons of a mouse.
@@ -117,11 +137,28 @@ SplitView {
     ColumnLayout {
         spacing: 0
 
-        PathBar {
-            id: pathBar
+        RowLayout {
             Layout.fillWidth: true
-            context: page.context
-            onFinished: grid.forceActiveFocus()
+            spacing: 0
+
+            PathBar {
+                id: pathBar
+                Layout.fillWidth: true
+                context: page.context
+                onFinished: grid.forceActiveFocus()
+            }
+            IconButton {
+                objectName: "browserFilterButton"
+                Layout.rightMargin: Theme.paneInset
+                text: "Filter"
+                tip: "Filter (" + KeyNames.text("Ctrl+F") + " or /)"
+                iconName: "edit-find"
+                // Clicked, it must not take the keys from the field, which then closes empty.
+                focusPolicy: Qt.NoFocus
+                checkable: true
+                checked: filterField.open
+                onClicked: filterField.open ? filterField.stop() : filterField.start("")
+            }
         }
 
         ListFrame {
@@ -173,6 +210,7 @@ SplitView {
                     case Qt.Key_End: go(context.fileCount - 1); break
                     case Qt.Key_Space: if (!shift) context.next(); break
                     case Qt.Key_Backspace: if (!shift) context.goUp(); break
+                    case Qt.Key_Slash: if (!shift) filterField.start(""); break
                     case Qt.Key_Return:
                     case Qt.Key_Enter:
                         if (shift || context.currentPath === "")
@@ -215,6 +253,7 @@ SplitView {
 
                     required property int index
                     required name
+                    required marked
                     required thumbnail
                     required selected
 
@@ -286,6 +325,34 @@ SplitView {
                 }
             }
 
+            Label {
+                anchors.centerIn: parent
+                visible: page.context.filter !== "" && page.context.fileCount === 0
+                text: "Nothing fits"
+                opacity: 0.6
+            }
+
+            FilterField {
+                id: filterField
+                objectName: "browserFilter"
+                z: 3
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                anchors.margins: Theme.panelMargin
+                countText: page.context.fileCount + " of " + page.context.totalFileCount
+                onTextChanged: page.context.filter = text
+                onMoveRequested: (key) => page.moveByKey(key)
+                onActivateRequested: if (page.context.currentPath !== "") page.viewRequested()
+                onFinished: grid.forceActiveFocus()
+                Connections {
+                    target: page.context
+                    // Another folder clears the filter; the field follows.
+                    function onFilterChanged() {
+                        if (page.context.filter === "")
+                            filterField.text = ""
+                    }
+                }
+            }
         }
 
         RowLayout {

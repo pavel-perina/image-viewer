@@ -7,6 +7,7 @@ Item {
     id: cell
 
     property string name
+    property string marked      // the name with what a filter matched marked, or empty
     property string thumbnail   // an image://thumbnails/ address, from the model
     property bool selected
     property bool current       // framed, as the image shown large, chosen or not
@@ -65,6 +66,8 @@ Item {
         anchors.margins: 6
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideMiddle
-        text: cell.name
+        // Plain text unless a filter marks it, as styled text costs more to lay out.
+        textFormat: cell.marked !== "" ? Text.StyledText : Text.PlainText
+        text: cell.marked !== "" ? cell.marked : cell.name
     }
 }

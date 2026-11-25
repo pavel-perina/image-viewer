@@ -268,6 +268,8 @@ DialogWindow {
                 text: "Filter"
                 tip: "Filter (" + KeyNames.text("Ctrl+F") + " or /)"
                 iconName: "edit-find"
+                // Clicked, it must not take the keys from the field, which then closes empty.
+                focusPolicy: Qt.NoFocus
                 checkable: true
                 checked: fileList.filter.open
                 onClicked: fileList.filter.open ? fileList.filter.stop() : fileList.filter.start("")

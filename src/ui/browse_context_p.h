@@ -47,6 +47,8 @@ struct BrowseContext::Impl {
     QList<HistoryEntry> backStack;
     QList<HistoryEntry> forwardStack;
     int subfolderCount = 0;
+    QList<FileEntry> allEntries;  // the last scan, before the filter
+    QString filter;
     FileJobRunner jobs;  // goes on when moving to another directory; last, so it stops first
 
     std::size_t rowCount() const { return files.selected().size(); }
@@ -68,7 +70,8 @@ struct BrowseContext::Impl {
     // Scans the directory. Names in toSelect, if present then, become the selection.
     void scan(BrowseContext* owner, const QStringList& toSelect = {});
 
-    void applyScan(BrowseContext* owner, const QList<FileEntry>& entries, const QStringList& toSelect);
+    // Takes a scan: the filter narrows it to the rows. Returns the row the filter fits best, or -1.
+    int applyScan(BrowseContext* owner, const QList<FileEntry>& entries, const QStringList& toSelect);
 
     // Starts a job unless one is running. done runs on the main thread when it ends, and by
     // default the directory is scanned and files new in it are selected.

@@ -1256,6 +1256,43 @@ TEST(Keys, EnterOpensTheImageAndGoesBack) {
         << "Backspace in the browser goes to the parent folder";
 }
 
+// Why: in the browser, / opens the filter over the thumbnails; letters typed there go to the
+// field even where they are window shortcuts (F fits the preview), the thumbnails narrow, Enter
+// views the best fit and the viewer walks through the files left. Esc in the field clears it
+// and gives the thumbnails back the keys. Input: a.jpg to d.jpg. The truth is the field's
+// text, the files counted and current, and whether the window is viewing.
+TEST(Keys, SlashFiltersTheThumbnailsAndEnterViewsTheBestFit) {
+    MainFixture f(4);
+    ASSERT_NE(f.window, nullptr);
+    auto* grid = f.find(QStringLiteral("thumbnailGrid"));
+    ASSERT_TRUE(waitUntil([&] { return grid->property("activeFocus").toBool(); }));
+    auto* field = f.find(QStringLiteral("browserFilter"))->property("field").value<QQuickItem*>();
+    ASSERT_NE(field, nullptr);
+    EXPECT_FALSE(field->isVisible());
+
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    EXPECT_TRUE(field->hasActiveFocus());
+    QTest::keyClick(f.window, Qt::Key_F);
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("f")) << "not taken by the Fit shortcut";
+    EXPECT_EQ(f.context->fileCount(), 0);
+    QTest::keyClick(f.window, Qt::Key_Backspace);
+    QTest::keyClick(f.window, Qt::Key_C);
+    EXPECT_EQ(f.context->fileCount(), 1);
+    EXPECT_EQ(f.context->currentName(), QStringLiteral("c.jpg"));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_FALSE(field->isVisible());
+    EXPECT_EQ(f.context->fileCount(), 4);
+    EXPECT_EQ(f.context->currentName(), QStringLiteral("c.jpg")) << "the file found stays current";
+    EXPECT_TRUE(grid->property("activeFocus").toBool());
+
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    QTest::keyClick(f.window, Qt::Key_B);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_TRUE(waitUntil([&] { return f.window->property("viewing").toBool(); }));
+    EXPECT_EQ(f.context->currentName(), QStringLiteral("b.jpg"));
+    EXPECT_FALSE(f.context->hasNext()) << "the viewer walks through the files the filter left";
+}
+
 TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {
     MainFixture f(1, {QStringLiteral("sub")});
     ASSERT_NE(f.window, nullptr);

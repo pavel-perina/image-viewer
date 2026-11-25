@@ -1,4 +1,5 @@
 #include "ui_test_support.h"
+#include "ui/file_list_model.h"
 
 TEST(BrowseContext, SortsNaturallyAndNavigates) {
     QTemporaryDir dir;
@@ -632,6 +633,48 @@ TEST(BrowseContext, SummarizesFoldersFilesAndSelection) {
     ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("two")));
     context.refresh();
     EXPECT_TRUE(waitUntil([&] { return context.summary().startsWith(QStringLiteral("2 directories | ")); }));
+}
+
+// Why: the browser's filter narrows the files, and then everything that walks through them
+// (next, Select All, the counts the viewer shows) goes through those alone, in their order; the
+// best fit becomes current. Hiding every file must not count as the folder emptying, which
+// would leave the viewer. Input: four images, filtered by "bea", then by "zzz", then cleared,
+// then another folder. The truth is the names, the current one, the selection and the summary.
+TEST(BrowseContext, AFilterNarrowsWhatIsBrowsedAndMakesTheBestFitCurrent) {
+    QTemporaryDir dir;
+    for (const char* name : {"abear.jpg", "beach.jpg", "bread.jpg", "zoo.jpg"}) {
+        writeJpeg(dir.filePath(QString::fromLatin1(name)));
+    }
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("sub")));
+    BrowseContext context;
+    context.openPath(dir.path());
+    ASSERT_TRUE(waitUntil([&] { return context.fileCount() == 4; }));
+    QSignalSpy emptied(&context, &BrowseContext::emptied);
+
+    context.setFilter(QStringLiteral("bea"));
+    EXPECT_EQ(context.fileCount(), 3) << "abear, beach and bread hold b, e, a in order";
+    EXPECT_EQ(context.totalFileCount(), 4);
+    EXPECT_EQ(context.currentName(), QStringLiteral("beach.jpg")) << "together, at the start, before abear, where they start no word";
+    context.next();
+    EXPECT_EQ(context.currentName(), QStringLiteral("bread.jpg"));
+    EXPECT_FALSE(context.hasNext());
+    context.selectAll();
+    EXPECT_EQ(context.selectedCount(), 3);
+    EXPECT_TRUE(context.summary().contains(QStringLiteral("3 of 4 files"))) << context.summary().toStdString();
+    const auto* files = context.files();
+    EXPECT_EQ(files->data(files->index(1, 0), iv::FileListModel::MarkedRole).toString(), QStringLiteral("<b><u>bea</u></b>ch.jpg"));
+
+    context.setFilter(QStringLiteral("zzz"));
+    EXPECT_EQ(context.fileCount(), 0);
+    EXPECT_EQ(emptied.count(), 0);
+
+    context.setFilter(QString());
+    EXPECT_EQ(context.fileCount(), 4);
+    EXPECT_EQ(files->data(files->index(0, 0), iv::FileListModel::MarkedRole).toString(), QString());
+
+    context.setFilter(QStringLiteral("zoo"));
+    context.openPath(dir.filePath(QStringLiteral("sub")));
+    EXPECT_EQ(context.filter(), QString()) << "a filter is for the folder it was typed in";
 }
 
 // Why: the browser's status line counts the folders that can be seen, so a hidden folder counts
