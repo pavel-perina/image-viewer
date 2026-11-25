@@ -1293,6 +1293,28 @@ TEST(Keys, SlashFiltersTheThumbnailsAndEnterViewsTheBestFit) {
     EXPECT_FALSE(f.context->hasNext()) << "the viewer walks through the files the filter left";
 }
 
+// Why: the filter's field has a cross at its end that does what Esc does, for the mouse: the
+// whole list back, the field gone and the keys with the thumbnails. Input: "c" typed, then a
+// click on the cross. The truth is the field, the files counted and where the keys are.
+TEST(Keys, TheFiltersCrossClosesIt) {
+    MainFixture f(4);
+    ASSERT_NE(f.window, nullptr);
+    auto* grid = f.find(QStringLiteral("thumbnailGrid"));
+    ASSERT_TRUE(waitUntil([&] { return grid->property("activeFocus").toBool(); }));
+    QObject* filter = f.find(QStringLiteral("browserFilter"));
+    auto* field = filter->property("field").value<QQuickItem*>();
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    QTest::keyClick(f.window, Qt::Key_C);
+    ASSERT_EQ(f.context->fileCount(), 1);
+    auto* cross = filter->findChild<QQuickItem*>(QStringLiteral("filterClose"));
+    ASSERT_NE(cross, nullptr);
+    ASSERT_TRUE(cross->isVisible());
+    QTest::mouseClick(f.window, Qt::LeftButton, Qt::NoModifier, cross->mapToScene(QPointF(cross->width() / 2, cross->height() / 2)).toPoint());
+    EXPECT_FALSE(field->isVisible());
+    EXPECT_EQ(f.context->fileCount(), 4);
+    EXPECT_TRUE(grid->property("activeFocus").toBool());
+}
+
 TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {
     MainFixture f(1, {QStringLiteral("sub")});
     ASSERT_NE(f.window, nullptr);

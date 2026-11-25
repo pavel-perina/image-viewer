@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Shapes
 import ImageViewer
 
 // A fuzzy filter for a list of files, typed in a small field that floats over the list's lower
@@ -7,8 +8,8 @@ import ImageViewer
 // asked for: by a button, Ctrl+F or /, or, where letters are not shortcuts, by typing in the
 // list. The list narrows as it is typed (fzf style, with its marks: 'exact, ^start, end$,
 // !not). Up, Down and the page keys move in the list meanwhile, Enter opens the current entry,
-// and Esc clears the filter and gives the keys back. A filter left in place keeps the field
-// shown, so that it is plain why the list is short.
+// and Esc or the cross at its end clears the filter and gives the keys back. A filter left in
+// place keeps the field shown, so that it is plain why the list is short.
 Rectangle {
     id: box
 
@@ -53,7 +54,7 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: Theme.paneInset
         placeholderText: "Filter"
-        rightPadding: count.width + 12
+        rightPadding: count.width + close.width + 12
         selectByMouse: true
 
         Keys.onPressed: (event) => {
@@ -83,10 +84,48 @@ Rectangle {
     Label {
         id: count
         objectName: "filterCount"
-        anchors.right: field.right
-        anchors.rightMargin: 8
+        anchors.right: close.left
+        anchors.rightMargin: 4
         anchors.verticalCenter: field.verticalCenter
         text: field.text !== "" ? box.countText : ""
         color: Theme.textMuted
+    }
+
+    // Clears the filter and closes the field, as Esc does. A cross drawn here until there is an icon.
+    ToolButton {
+        id: close
+        objectName: "filterClose"
+        anchors.right: field.right
+        anchors.rightMargin: Theme.paneInset
+        anchors.verticalCenter: field.verticalCenter
+        // Even, so that the cross centred in it falls on whole pixels.
+        width: Theme.controlHeight - 8
+        height: width
+        padding: 0
+        focusPolicy: Qt.NoFocus  // the field keeps the keys until it closes
+        text: "Close Filter"
+        display: AbstractButton.IconOnly
+        ToolTip.visible: hovered
+        ToolTip.delay: 600
+        ToolTip.text: "Close Filter (Esc)"
+        onClicked: box.stop()
+        contentItem: Item {
+            Shape {
+                anchors.centerIn: parent
+                width: 8
+                height: 8
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: close.hovered ? Theme.text : Theme.textMuted
+                    strokeWidth: 1.5
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    startX: 0; startY: 0
+                    PathLine { x: 8; y: 8 }
+                    PathMove { x: 8; y: 0 }
+                    PathLine { x: 0; y: 8 }
+                }
+            }
+        }
     }
 }
