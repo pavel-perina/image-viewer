@@ -38,6 +38,8 @@ qt_add_library(iv_ui STATIC
     folder_lists.h
     fuzzy_list_model.cpp
     fuzzy_list_model.h
+    fuzzy_marks.cpp
+    fuzzy_marks.h
     key_hold.cpp
     key_hold.h
     key_names.cpp
@@ -118,6 +120,7 @@ qt_add_qml_module(iv_ui
         qml/FolderButton.qml
         qml/FileChooser.qml
         qml/FileListView.qml
+        qml/FilterField.qml
         qml/FolderTree.qml
         qml/FrameDialog.qml
         qml/GradientSlider.qml

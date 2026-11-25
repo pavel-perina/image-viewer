@@ -125,13 +125,24 @@ QVariant FileListModel::data(const QModelIndex& index, int role) const {
         return ThumbnailProvider::urlForPath(m_directory.filePath(entry.name), entry.modified);
     case SelectedRole:
         return m_selected[static_cast<std::size_t>(index.row())] != 0;
+    case MarkedRole:
+        return m_marks.value(entry.name);
     default:
         return {};
     }
 }
 
 QHash<int, QByteArray> FileListModel::roleNames() const {
-    return {{NameRole, "name"}, {PathRole, "path"}, {ThumbnailRole, "thumbnail"}, {SelectedRole, "selected"}};
+    return {{NameRole, "name"}, {PathRole, "path"}, {ThumbnailRole, "thumbnail"}, {SelectedRole, "selected"}, {MarkedRole, "marked"}};
+}
+
+void FileListModel::setMarks(const QHash<QString, QString>& marks) {
+    if (marks != m_marks) {
+        m_marks = marks;
+        if (rowCount() > 0) {
+            emit dataChanged(index(0), index(rowCount() - 1), {MarkedRole});
+        }
+    }
 }
 
 void FileListModel::replaceReordered(const QList<FileEntry>& entries) {

@@ -38,8 +38,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   moving and blurring what a shape covers, for its dark edge and shadow).
 * **Saving:** `image_writer` (every format), `save_image`, `jpeg_transform` (lossless JPEG),
   `jxl_transcode`, `file_io`.
-* **Small helpers:** `fuzzy_match` (finding names by a few typed letters, fzf style;
-  standalone), `font_families` (one entry per typeface, without its styles).
+* **Small helpers:** `fuzzy_match` (finding names by a few typed letters, fzf style, with its
+  marks 'exact ^start end$ !not; standalone), `font_families` (one entry per typeface, without its styles).
 * **Background work:** `work_queue` (priorities, cancelling), `disk_gate`, `thumbnail`,
   `thumbnail_cache` (SQLite).
 
@@ -68,7 +68,8 @@ multiplatform and fast. Qt 6.8+ (QML), C++23, Linux and Windows.
   `MessageBox`, `NumberRow` (a label with a number to set), `DecimalSpinBox`, `ListFrame` (what
   a list stands on: base colour and a frame), `PaneHeader` (a pane's or section's caption, which may collapse
   it), `SearchCombo` (a combo box with
-  fzf-style search, over `fuzzy_list_model`), `ToolPanel` (the base of every tool's panel:
+  fzf-style search, over `fuzzy_list_model`), `FilterField` (a list's fuzzy filter, floating
+  over its corner, over `fuzzy_marks`), `ToolPanel` (the base of every tool's panel:
   heading, rows, Cancel and Apply), `ToolSection` (a folding section of a tool's panel, over
   `PaneHeader`), `SliderRow` (a value: name, number box, slider over `slider_scale`, reset), `Theme` (every colour, and the sizes pages share).
 

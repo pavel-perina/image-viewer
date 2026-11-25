@@ -761,6 +761,22 @@ the question before leaving an edited image. Still planned lists the rest.
   the query separated by spaces each match anywhere. Its numbers are fzf's, so that it ranks
   as people used to fzf expect. It depends on nothing else in the program, nor does
   `SearchCombo` on fonts, so both can serve other long lists, or other programs.
+* Words of the query may carry fzf's marks: `'word` for the letters together, `^word` and
+  `word$` for the start and end of the name, `!word` to leave names out. They cover what a file
+  list wants of regular expressions (a type of file, a prefix, leaving something out) and still
+  mark what they found, which regular expressions would complicate; a half-typed regular
+  expression is also often invalid. A word that is only marks asks for nothing yet, so typing
+  one does not empty the list.
+* Lists of files filter as they are typed (`FilterField`), fzf style, but keep their own
+  order rather than putting the best fit first: the order a file list is sorted in (by name,
+  date) means something, rows jumping about with each letter are hard to follow, and photo
+  names (`IMG_1234`, dates) score much alike, so ranking them looks random. The best fit, the
+  first of equals, becomes current, so Enter opens it. The letters matched are marked, and
+  names are drawn as plain text while nothing is typed, as marked text costs more to lay out.
+* The field takes no room until asked for, unlike a search bar: it floats over the list's lower
+  right corner, away from the matches, which are listed from the top. It opens by its button,
+  Ctrl+F or /, and in the file chooser by typing in the list; in the browser single letters
+  are already shortcuts. Esc clears it. A filter is for the folder it was typed in.
 
 ### One tool at a time
 * The viewer page had a flag for each tool (`cropping`, `probing`, `straightening`,

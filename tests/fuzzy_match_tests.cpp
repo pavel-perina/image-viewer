@@ -88,3 +88,38 @@ TEST(FuzzyMatch, NamesBeyondAsciiAreCountedByCharacter) {
     ASSERT_TRUE(match);
     EXPECT_EQ(match->positions, (std::vector<std::size_t>{6}));
 }
+
+// Why: fzf's extended search, for lists of files: a quote asks for the letters together, ^ and
+// $ for the start and end (the type of file), and ! leaves names out. Input: names shaped like
+// photo files. The truth is which names fit; fzf's documentation gives the rules.
+TEST(FuzzyMatch, MarkedWordsAskForTheLettersAsTheyAre) {
+    const std::vector<std::string_view> files{"IMG_0012.jpg", "img_0013.png", "beach.jpg", "beach-raw.tif", "jpeg.png"};
+    using Names = std::vector<std::string>;
+    EXPECT_EQ(rank("'each", files).size(), 2u);
+    EXPECT_EQ(rank("'ejg", files), Names{}) << "apart is not together";
+    EXPECT_EQ(rank("^img", files).size(), 2u) << "in any case";
+    EXPECT_EQ(rank("^jpeg", files), Names{"jpeg.png"});
+    EXPECT_EQ(rank(".jpg$", files).size(), 2u);
+    EXPECT_EQ(rank("^beach.jpg$", files), Names{"beach.jpg"});
+    EXPECT_EQ(rank("beach !raw", files), Names{"beach.jpg"});
+    EXPECT_EQ(rank("!^img !.png$", files), (Names{"beach.jpg", "beach-raw.tif"}));
+}
+
+// Why: the matched letters are marked, so a marked word marks where it was found, and a word
+// left out marks nothing. Input: "^be" and "raw$ !x" against one name. The truth is the positions.
+TEST(FuzzyMatch, MarkedWordsMarkWhereTheyWereFound) {
+    const auto start = fuzzyMatch("^be", "beach-be.jpg");
+    ASSERT_TRUE(start);
+    EXPECT_EQ(start->positions, (std::vector<std::size_t>{0, 1}));
+    const auto end = fuzzyMatch("raw$ !x", "beach-raw");
+    ASSERT_TRUE(end);
+    EXPECT_EQ(end->positions, (std::vector<std::size_t>{6, 7, 8}));
+}
+
+// Why: while a mark is being typed, before its letters, the list must not empty. Input: queries
+// that are nothing but marks. The truth is that every name still fits.
+TEST(FuzzyMatch, AMarkAloneAsksForNothingYet) {
+    for (const char* query : {"'", "^", "!", "$", "!^", "^$"}) {
+        EXPECT_EQ(rank(query, {"a", "b"}).size(), 2u) << query;
+    }
+}

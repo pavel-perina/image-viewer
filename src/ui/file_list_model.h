@@ -20,7 +20,8 @@ struct FileEntry {
 // The images of one directory for views, in the order given, and which of them are selected.
 class FileListModel final : public QAbstractListModel {
 public:
-    enum Role { NameRole = Qt::UserRole + 1, PathRole, ThumbnailRole, SelectedRole };
+    // MarkedRole: the name as styled text with what a filter matched marked; empty without one.
+    enum Role { NameRole = Qt::UserRole + 1, PathRole, ThumbnailRole, SelectedRole, MarkedRole };
 
     using QAbstractListModel::QAbstractListModel;
 
@@ -36,7 +37,10 @@ public:
 
     const std::vector<char>& selected() const { return m_selected; }
 
-    void thumbnailsChanged();  // they are to be made again, as when the colour settings change
+    void thumbnailsChanged();
+
+    // The names with what a filter matched marked, by name; empty without a filter.
+    void setMarks(const QHash<QString, QString>& marks);  // they are to be made again, as when the colour settings change
 
     // Replaces the selection, telling views only about the rows that differ.
     bool setSelected(const std::vector<char>& selected);
@@ -51,6 +55,7 @@ private:
     QDir m_directory;
     QList<FileEntry> m_entries;
     std::vector<char> m_selected;
+    QHash<QString, QString> m_marks;
 };
 
 

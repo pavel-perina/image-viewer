@@ -2011,7 +2011,11 @@ TEST(Adjust, TablesOfTheFolderArePickedByNameOrByTheWheel) {
     EXPECT_EQ(f.image->colorCubeName(), QStringLiteral("a"));
     EXPECT_EQ(box->property("currentName").toString(), QStringLiteral("a"));
 
-    waitUntil([] { return false; }, 50);
+    // The panel slides in: the wheel must land where the box comes to rest, at the page's right
+    // edge, which under a loaded machine is later than any fixed wait.
+    QQuickItem* panel = f.named("adjustPanel");
+    ASSERT_NE(panel, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return panel->x() + panel->width() == panel->parentItem()->width(); }));
     const QPointF at = box->mapToScene(QPointF(box->width() / 2, box->height() / 2));
     const auto turn = [&](int delta) {
         QWheelEvent wheel(at, f.view.mapToGlobal(at), QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier,

@@ -19,6 +19,7 @@
 #include "core/image_details.h"
 #include "core/thumbnail.h"
 #include "ui/color_settings.h"
+#include "ui/fuzzy_marks.h"
 #include "ui/hidden_folders.h"
 
 namespace iv {
@@ -124,6 +125,11 @@ void BrowseContext::Impl::open(BrowseContext* owner, const QString& path) {
     directory = newDirectory;
     watcher.addPath(directory);
     files.reset(directory, {});
+    allEntries.clear();
+    if (!filter.isEmpty()) {
+        filter.clear();  // it is for the folder it was typed in
+        emit owner->filterChanged();
+    }
     currentIndex = -1;
     anchor = -1;
     subfolderCount = 0;
@@ -174,7 +180,25 @@ void BrowseContext::Impl::scan(BrowseContext* owner, const QStringList& toSelect
     });
 }
 
-void BrowseContext::Impl::applyScan(BrowseContext* owner, const QList<FileEntry>& entries, const QStringList& toSelect) {
+int BrowseContext::Impl::applyScan(BrowseContext* owner, const QList<FileEntry>& scanned, const QStringList& toSelect) {
+    allEntries = scanned;
+    QStringList names;
+    names.reserve(scanned.size());
+    for (const FileEntry& entry : scanned) {
+        names.append(entry.name);
+    }
+    const FilteredNames kept = filterNames(filter, names);
+    QList<FileEntry> entries;
+    entries.reserve(static_cast<qsizetype>(kept.rows.size()));
+    QHash<QString, QString> marks;
+    for (std::size_t i = 0; i < kept.rows.size(); ++i) {
+        const FileEntry& entry = scanned[kept.rows[i]];
+        entries.append(entry);
+        if (!kept.marked[static_cast<qsizetype>(i)].isEmpty()) {
+            marks.insert(entry.name, kept.marked[static_cast<qsizetype>(i)]);
+        }
+    }
+
     const int previousIndex = currentIndex;
     const QString previousName = currentName;
     const bool hadFiles = rowCount() > 0;
@@ -182,6 +206,7 @@ void BrowseContext::Impl::applyScan(BrowseContext* owner, const QList<FileEntry>
     const QString anchorName = anchor >= 0 ? files.name(anchor) : QString();
 
     const bool changed = files.update(entries);
+    files.setMarks(marks);
 
     const int rows = static_cast<int>(rowCount());
     const auto selectable = [&] {
@@ -226,9 +251,10 @@ void BrowseContext::Impl::applyScan(BrowseContext* owner, const QList<FileEntry>
         emit owner->selectionChanged();  // the rows may have moved under it
     }
 
-    if (hadFiles && rows == 0) {
+    if (hadFiles && rows == 0 && allEntries.isEmpty()) {
         emit owner->emptied();
     }
+    return kept.best < 0 ? -1 : files.find(entries[kept.best].name);
 }
 
 void BrowseContext::Impl::startJob(BrowseContext* owner, const QString& name, int total, FileJobRunner::Work work, Done done) {
@@ -298,6 +324,21 @@ QString BrowseContext::currentPath() const {
 QString BrowseContext::currentName() const { return m_impl->currentName; }
 int BrowseContext::currentIndex() const { return m_impl->currentIndex; }
 int BrowseContext::fileCount() const { return m_impl->files.rowCount(); }
+QString BrowseContext::filter() const { return m_impl->filter; }
+int BrowseContext::totalFileCount() const { return static_cast<int>(m_impl->allEntries.size()); }
+
+void BrowseContext::setFilter(const QString& filter) {
+    if (filter == m_impl->filter) {
+        return;
+    }
+    m_impl->filter = filter;
+    const int best = m_impl->applyScan(this, m_impl->allEntries, {});
+    if (best >= 0) {
+        setCurrentIndex(best);
+    }
+    emit filterChanged();
+    emit summaryChanged();
+}
 bool BrowseContext::hasNext() const { return m_impl->currentIndex + 1 < fileCount(); }
 bool BrowseContext::hasPrevious() const { return m_impl->currentIndex > 0; }
 
@@ -358,11 +399,15 @@ QString BrowseContext::summary() const {
         }
     }
     const int folders = m_impl->subfolderCount;
+    const int all = totalFileCount();
+    // Filtered: "12 of 311 files", the size of those shown.
+    const QString count = m_impl->filter.isEmpty() ? QString::number(files.rowCount())
+                                                   : tr("%1 of %2").arg(files.rowCount()).arg(all);
     QString text = tr("%1 %2 | %3 %4 (%5)")
                        .arg(folders)
                        .arg(folders == 1 ? tr("directory") : tr("directories"))
-                       .arg(files.rowCount())
-                       .arg(files.rowCount() == 1 ? tr("file") : tr("files"), sizeText(total));
+                       .arg(count)
+                       .arg((m_impl->filter.isEmpty() ? files.rowCount() : all) == 1 ? tr("file") : tr("files"), sizeText(total));
     if (selected > 0) {
         text += tr(" | %1 selected (%2)").arg(selected).arg(sizeText(selectedBytes));
     }

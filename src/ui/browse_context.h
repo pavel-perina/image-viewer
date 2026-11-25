@@ -26,6 +26,13 @@ class BrowseContext : public QObject {
     Q_PROPERTY(QString currentName READ currentName NOTIFY currentChanged)
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentChanged)
     Q_PROPERTY(int fileCount READ fileCount NOTIFY filesChanged)
+    // A fuzzy filter typed over the files (core/fuzzy_match.h): only those it fits are listed,
+    // in their order, with what matched marked, and moving, selecting and the viewer's next and
+    // previous go through them alone. Setting it makes the best fit current. Opening another
+    // folder clears it.
+    Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
+    // The images of the directory, the filter aside.
+    Q_PROPERTY(int totalFileCount READ totalFileCount NOTIFY filesChanged)
     Q_PROPERTY(bool hasNext READ hasNext NOTIFY currentChanged)
     Q_PROPERTY(bool hasPrevious READ hasPrevious NOTIFY currentChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
@@ -68,6 +75,9 @@ public:
     QString currentName() const;
     int currentIndex() const;
     int fileCount() const;
+    QString filter() const;
+    void setFilter(const QString& filter);
+    int totalFileCount() const;
     bool hasNext() const;
     bool hasPrevious() const;
     int selectedCount() const;
@@ -166,13 +176,14 @@ signals:
     void directoryChanged();
     void currentChanged();
     void filesChanged();
+    void filterChanged();
     void selectionChanged();
     void sortChanged();
     void showHiddenFoldersChanged();
     void jobChanged();
     void historyChanged();
     void summaryChanged();
-    // The last image of the directory went away.
+    // The last image of the directory went away (not hidden by the filter).
     void emptied();
     void operationFinished(const QStringList& problems);
     // A folder from createFolder now exists. Comes just before its operationFinished.

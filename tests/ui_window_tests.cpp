@@ -1049,6 +1049,56 @@ TEST(FileChooser, OpenEntersFoldersAndOpensFiles) {
     EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("b.png")));
 }
 
+// Why: in the chooser, typing in the list filters it at once, without a field taking room
+// until then; the best fit becomes current so that Enter opens it, and Esc gives the whole list
+// and the keys back. Input: a.jpg, b.png and sub; "b" typed, Enter; then "/" and Esc. The truth
+// is the filter's field and text, the rows, and the file chosen.
+TEST(FileChooser, TypingInTheListFiltersItAndEnterOpensTheBestFit) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
+    f.start(QString());
+    QQuickItem* list = f.item("fileList");
+    ASSERT_TRUE(waitUntil([&] { return list->hasActiveFocus(); }));
+    auto* field = f.chooser->findChild<QQuickItem*>(QStringLiteral("filterField"));
+    ASSERT_NE(field, nullptr);
+    EXPECT_FALSE(field->isVisible());
+
+    QTest::keyClick(f.window, Qt::Key_B);
+    EXPECT_TRUE(field->isVisible());
+    EXPECT_TRUE(field->hasActiveFocus());
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("b"));
+    EXPECT_EQ(f.listing()->property("count").toInt(), 2) << "sub holds no b";
+    QTest::keyClick(f.window, Qt::Key_P);
+    EXPECT_EQ(f.listing()->property("count").toInt(), 1);
+    EXPECT_EQ(list->property("currentIndex").toInt(), 0);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_EQ(f.chosen->size(), 1);
+    EXPECT_EQ(f.chosen->at(0).at(0).toString(), f.dir.filePath(QStringLiteral("b.png")));
+}
+
+// Why: Esc leaves the filter: the whole list comes back and the keys return to it, so that the
+// arrows move in it again. Input: "/" in the list, then "a" and Esc. The truth is the field,
+// the rows and where the keys are.
+TEST(FileChooser, EscapeInTheFilterGivesTheWholeListBack) {
+    ChooserFixture f(QStringLiteral("open"));
+    f.chooser->setProperty("types", QVariantList{QVariantMap{{"label", "All files"}, {"extensions", QStringList{}}}});
+    f.start(QString());
+    QQuickItem* list = f.item("fileList");
+    ASSERT_TRUE(waitUntil([&] { return list->hasActiveFocus(); }));
+    auto* field = f.chooser->findChild<QQuickItem*>(QStringLiteral("filterField"));
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    EXPECT_TRUE(field->hasActiveFocus());
+    EXPECT_EQ(field->property("text").toString(), QString()) << "/ only opens it";
+    QTest::keyClick(f.window, Qt::Key_A);
+    EXPECT_EQ(f.listing()->property("count").toInt(), 1);
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_FALSE(field->isVisible());
+    EXPECT_TRUE(list->hasActiveFocus());
+    EXPECT_EQ(f.listing()->property("count").toInt(), 3);
+    EXPECT_EQ(f.chosen->size(), 0);
+    EXPECT_EQ(f.cancelled->size(), 0) << "Esc in the filter does not leave the chooser";
+}
+
 TEST(FileChooser, FolderModeChoosesTheSelectedFolderOrElseTheOneShown) {
     ChooserFixture f(QStringLiteral("folder"));
     f.start(QString());
@@ -1204,6 +1254,65 @@ TEST(Keys, EnterOpensTheImageAndGoesBack) {
     QTest::keyClick(f.window, Qt::Key_Backspace);
     EXPECT_TRUE(waitUntil([&] { return f.context->directory() == QFileInfo(f.dir.path()).absolutePath(); }))
         << "Backspace in the browser goes to the parent folder";
+}
+
+// Why: in the browser, / opens the filter over the thumbnails; letters typed there go to the
+// field even where they are window shortcuts (F fits the preview), the thumbnails narrow, Enter
+// views the best fit and the viewer walks through the files left. Esc in the field clears it
+// and gives the thumbnails back the keys. Input: a.jpg to d.jpg. The truth is the field's
+// text, the files counted and current, and whether the window is viewing.
+TEST(Keys, SlashFiltersTheThumbnailsAndEnterViewsTheBestFit) {
+    MainFixture f(4);
+    ASSERT_NE(f.window, nullptr);
+    auto* grid = f.find(QStringLiteral("thumbnailGrid"));
+    ASSERT_TRUE(waitUntil([&] { return grid->property("activeFocus").toBool(); }));
+    auto* field = f.find(QStringLiteral("browserFilter"))->property("field").value<QQuickItem*>();
+    ASSERT_NE(field, nullptr);
+    EXPECT_FALSE(field->isVisible());
+
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    EXPECT_TRUE(field->hasActiveFocus());
+    QTest::keyClick(f.window, Qt::Key_F);
+    EXPECT_EQ(field->property("text").toString(), QStringLiteral("f")) << "not taken by the Fit shortcut";
+    EXPECT_EQ(f.context->fileCount(), 0);
+    QTest::keyClick(f.window, Qt::Key_Backspace);
+    QTest::keyClick(f.window, Qt::Key_C);
+    EXPECT_EQ(f.context->fileCount(), 1);
+    EXPECT_EQ(f.context->currentName(), QStringLiteral("c.jpg"));
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_FALSE(field->isVisible());
+    EXPECT_EQ(f.context->fileCount(), 4);
+    EXPECT_EQ(f.context->currentName(), QStringLiteral("c.jpg")) << "the file found stays current";
+    EXPECT_TRUE(grid->property("activeFocus").toBool());
+
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    QTest::keyClick(f.window, Qt::Key_B);
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_TRUE(waitUntil([&] { return f.window->property("viewing").toBool(); }));
+    EXPECT_EQ(f.context->currentName(), QStringLiteral("b.jpg"));
+    EXPECT_FALSE(f.context->hasNext()) << "the viewer walks through the files the filter left";
+}
+
+// Why: the filter's field has a cross at its end that does what Esc does, for the mouse: the
+// whole list back, the field gone and the keys with the thumbnails. Input: "c" typed, then a
+// click on the cross. The truth is the field, the files counted and where the keys are.
+TEST(Keys, TheFiltersCrossClosesIt) {
+    MainFixture f(4);
+    ASSERT_NE(f.window, nullptr);
+    auto* grid = f.find(QStringLiteral("thumbnailGrid"));
+    ASSERT_TRUE(waitUntil([&] { return grid->property("activeFocus").toBool(); }));
+    QObject* filter = f.find(QStringLiteral("browserFilter"));
+    auto* field = filter->property("field").value<QQuickItem*>();
+    QTest::keyClick(f.window, Qt::Key_Slash);
+    QTest::keyClick(f.window, Qt::Key_C);
+    ASSERT_EQ(f.context->fileCount(), 1);
+    auto* cross = filter->findChild<QQuickItem*>(QStringLiteral("filterClose"));
+    ASSERT_NE(cross, nullptr);
+    ASSERT_TRUE(cross->isVisible());
+    QTest::mouseClick(f.window, Qt::LeftButton, Qt::NoModifier, cross->mapToScene(QPointF(cross->width() / 2, cross->height() / 2)).toPoint());
+    EXPECT_FALSE(field->isVisible());
+    EXPECT_EQ(f.context->fileCount(), 4);
+    EXPECT_TRUE(grid->property("activeFocus").toBool());
 }
 
 TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {
