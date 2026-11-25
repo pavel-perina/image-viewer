@@ -40,14 +40,17 @@ T.MenuItem {
         font: control.font
         color: control.textColour
 
-        IconImage {
-            x: -(Theme.menuMarkWidth + control.spacing) + (Theme.menuMarkWidth - width) / 2
+        // Made only for a line with an icon: most have none, and the image costs at start.
+        Loader {
+            active: parent.iconInColumn
+            x: -(Theme.menuMarkWidth + control.spacing) + (Theme.menuMarkWidth - control.icon.width) / 2
             anchors.verticalCenter: parent.verticalCenter
-            visible: parent.iconInColumn
-            source: control.icon.source
-            sourceSize.width: control.icon.width
-            sourceSize.height: control.icon.height
-            color: control.icon.color
+            sourceComponent: IconImage {
+                source: control.icon.source
+                sourceSize.width: control.icon.width
+                sourceSize.height: control.icon.height
+                color: control.icon.color
+            }
         }
     }
 

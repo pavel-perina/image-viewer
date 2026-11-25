@@ -118,6 +118,7 @@ ApplicationWindow {
         id: menu
         x: 360; y: 200
         AppMenuItem { text: "Open..." }
+        AppMenuItem { text: "Go Up"; icon.source: "qrc:/icons/go-up.svg" }
         AppMenuItem { text: "Show Info"; checkable: true; checked: true }
         AppMenuItem { text: "Show Thumbnails"; checkable: true }
         AppMenuItem { text: "Show Hidden"; checkable: true; checked: true; enabled: false }
@@ -226,7 +227,7 @@ TEST(Controls, MenuLinesStartTheirWordsAtOnePlace) {
         starts << words->mapToScene(QPointF(0, 0)).x();
         checkable += line->property("checkable").toBool();
     }
-    ASSERT_EQ(starts.size(), 7);
+    ASSERT_EQ(starts.size(), 8);
     for (double start : starts) {
         EXPECT_DOUBLE_EQ(start, starts.front());
     }
@@ -388,7 +389,33 @@ QQuickItem* menuLine(QObject* menu, const QString& text) {
     return nullptr;
 }
 
+// The images drawn inside an item, at any depth.
+int iconImagesIn(QQuickItem* item) {
+    int count = item->inherits("QQuickIconImage") ? 1 : 0;
+    for (QQuickItem* child : item->childItems()) {
+        count += iconImagesIn(child);
+    }
+    return count;
+}
+
 }  // namespace
+
+// Why: making an icon image for every line of every menu took half the program's start, about
+// 0.7 s of 1.5, while only a few lines have an icon. Input: the gallery's menu, with a plain
+// line and one with an icon. The truth is the images in each line: none in the plain one, one
+// shown in the other.
+TEST(Controls, OnlyMenuLinesWithAnIconMakeAnImage) {
+    Gallery g;
+    auto* menu = g.object("menu");
+    QMetaObject::invokeMethod(menu, "open");
+    ASSERT_TRUE(waitUntil([&] { return menu->property("opened").toBool(); }));
+    QQuickItem* plain = menuLine(menu, QStringLiteral("Open..."));
+    QQuickItem* withIcon = menuLine(menu, QStringLiteral("Go Up"));
+    ASSERT_NE(plain, nullptr);
+    ASSERT_NE(withIcon, nullptr);
+    EXPECT_EQ(iconImagesIn(plain), 0);
+    EXPECT_TRUE(waitUntil([&] { return iconImagesIn(withIcon) == 1; }));
+}
 
 // Why: a disabled option that is on must still read as a box, ticked; filled with nothing,
 // as it once was, its tick floated with no edge, while one that is off kept its edge. Input:
