@@ -78,3 +78,7 @@ $symbols = Join-Path $output "ImageViewer-$version-symbols.tar.zst"
 if (-not (Test-Path (Join-Path $build 'imageviewer.pdb'))) { throw 'imageviewer.pdb is missing. Build the project first.' }
 & tar --zstd -cf $symbols -C $build imageviewer.exe imageviewer.pdb
 Assert-Success 'tar'
+
+# What the installer ships, as a CycloneDX software bill of materials.
+& (Join-Path $PSScriptRoot 'write-sbom.ps1') -Graph $graphFile -Stage $stage -Version $version `
+    -QtVersion (Split-Path -Leaf $qtVersionDir) -Root $root -Out (Join-Path $output "ImageViewer-$version-sbom.cdx.json")

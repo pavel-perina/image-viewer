@@ -1503,6 +1503,16 @@ The About dialog shows `git describe --tags --dirty --always` and the time of th
   needs the exact program too, which is awkward to get back out of a setup. zstd through the
   `tar` that comes with Windows 10, so nothing is installed for it. Qt's own symbols come from
   the "Qt Debug Information Files" component.
+* The Windows installer comes with a software bill of materials, CycloneDX 1.6 JSON, written by
+  `installer/write-sbom.ps1` from the same Conan graph the licence texts are collected from, so
+  it always matches the build. It lists the libraries built for the program, not Conan's build
+  tools nor what only the tests use, with SPDX licences, `pkg:conan` purls and their direct
+  dependencies. Conan does not know of Qt, the font, the icons and the Visual C++ runtime, so the
+  script adds them, Qt with each of its DLLs that is shipped and a CPE for vulnerability scanners.
+  A recipe lists the licences of its whole package, so a few are corrected to what is linked:
+  xz's GPL covers its programs, liblzma is 0BSD. Written in PowerShell from the graph rather than
+  with Conan's own `cyclonedx_1_6()`, which runs only inside Conan, as Conan may be installed
+  with `uv tool`, where no other Python can import it.
 * Opening several files from Explorer starts one window for each, as each gets its own process.
   Handing them to a window already open would need a single instance, left for later.
 * On Linux the program sets its window icon itself (`AppInfo::programIcon`), drawn from the same

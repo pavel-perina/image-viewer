@@ -114,7 +114,9 @@ app after that, so that it uses the same version.
 
 Beside the setup it writes `ImageViewer-<version>-symbols.tar.zst`, the program with its `.pdb`,
 which the installer leaves out, kept for reading crash dumps and profiles of that build: unpack it
-with `tar -xf` and point the debugger or profiler at the folder.
+with `tar -xf` and point the debugger or profiler at the folder. And
+`ImageViewer-<version>-sbom.cdx.json`, the software bill of materials in CycloneDX 1.6: every
+library shipped, with version and licence (`installer/write-sbom.ps1`).
 
 The icon, of the executable, its windows and the installer, is `src/app/windows/imageviewer.ico`,
 made from the AppImage's `installer/linux/imageviewer.svg` by `tools/make_windows_icon.py`
