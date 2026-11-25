@@ -174,6 +174,31 @@ ApplicationWindow {
         window.startedOnFile = window.viewing
         window.browserShown = !window.viewing
         Qt.callLater(window.focusPage)
+        window.awaitingFirstFrame = true
+    }
+
+    // Set once the window has drawn what the start gave it, for work that can wait for that (the
+    // folder tree's reading). The window first draws while it is being made, before the start
+    // above, so only the frame after it counts. This thread prepares a frame before
+    // afterAnimating, and what is put off then runs while it is drawn. A window started
+    // minimised draws nothing, hence the timer.
+    property bool windowDrawn: false
+    property bool awaitingFirstFrame: false
+    Connections {
+        target: window
+        enabled: window.awaitingFirstFrame
+        function onAfterAnimating() {
+            window.awaitingFirstFrame = false
+            Qt.callLater(() => window.windowDrawn = true)
+        }
+    }
+    Timer {
+        running: window.awaitingFirstFrame
+        interval: 1000
+        onTriggered: {
+            window.awaitingFirstFrame = false
+            window.windowDrawn = true
+        }
     }
 
     // The keys go to the page shown: to the thumbnails in the browser, as nothing else would take
@@ -769,6 +794,7 @@ ApplicationWindow {
             id: browserPage
             context: context
             active: !window.viewing
+            windowDrawn: window.windowDrawn
             onViewRequested: window.viewing = true
             onFileMenuRequested: fileActions.fileMenu.popup()
             onFolderMenuRequested: (path) => fileActions.showFolderMenu(path)

@@ -431,6 +431,13 @@ change nothing useful. The first press of a double click does this too, for that
 * Going straight to a folder, as from the command line, makes `QFileSystemModel` know only the
   chain leading to it, so the tree could not reach anything beside it. `readParentsOf` reads the
   parents in full, in the background, and the folder is then centred as they fill in above it.
+* Revealing a folder in the tree is not in the background: `QFileSystemModel` asks the shell
+  about each folder on the way, on this thread, a noticeable part of the start on Windows. So the
+  browser's tree reveals only while it is shown, and only once the window has drawn what the start
+  gave it (`windowDrawn` in `Main.qml`, the first `afterAnimating` after the start, or a second
+  without one for a window started minimised). Started on a picture, it reads nothing until the
+  browser is shown. Measured with VTune: the rest of the start is Qt's (every installed font read
+  for the fallbacks, a Direct3D 9 query for QTBUG-50371, the Direct3D 11 device) and stays.
 * The buttons to move around stand apart from the path, with arrows unlike its carets, because
   they looked like part of it. One star holds favourites and recent folders, kept by `FolderLists`.
 * The folders and the preview each have a caption (`PaneHeader`), so they read as panes alike.

@@ -26,6 +26,12 @@ TreeView {
         showHidden: Preferences.showHiddenFolders
     }
 
+    // Revealing a folder reads every folder above it through the file system, which takes a
+    // while, so only while the tree is in use: not behind the viewer, nor before the window has
+    // shown its content. On becoming active it catches up with the context's folder.
+    property bool active: true
+    onActiveChanged: if (active && context.directory) reveal(context.directory)
+
     // Opens the folder too, so its subfolders show. Only when arriving at a folder, so
     // that one the user has collapsed stays that way.
     property string revealedPath
@@ -253,13 +259,14 @@ TreeView {
     Connections {
         target: tree.context
         function onDirectoryChanged() {
-            tree.reveal(tree.context.directory)
+            if (tree.active)
+                tree.reveal(tree.context.directory)
         }
     }
 
     // Made later than the folder was opened, as in a file chooser.
     Component.onCompleted: {
-        if (context.directory)
+        if (active && context.directory)
             reveal(context.directory)
     }
 }

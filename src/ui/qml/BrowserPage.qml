@@ -11,6 +11,9 @@ SplitView {
 
     required property BrowseContext context
     required property bool active
+    // Whether the window has shown its content once. The folder tree waits for it, so that
+    // reading the folders above the open one does not hold back the first picture of the window.
+    property bool windowDrawn: true
     readonly property alias preview: previewPanel.view
     readonly property alias pathBar: pathBar
 
@@ -115,6 +118,8 @@ SplitView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     context: page.context
+                    // Shown, rather than page.active: hidden behind the viewer, the page is not.
+                    active: page.visible && page.windowDrawn
                     onFolderMenuRequested: (path) => page.folderMenuRequested(path)
                     onRenameRequested: (path) => page.folderRenameRequested(path)
                     onTrashRequested: (path) => page.folderTrashRequested(path)

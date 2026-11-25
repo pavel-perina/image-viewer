@@ -1414,6 +1414,36 @@ TEST(Keys, EscEndsAToolBeforeItCloses) {
     EXPECT_TRUE(f->window->property("viewing").toBool());
 }
 
+// Why: revealing a folder in the tree reads every folder above it on this thread, which slowed
+// the start. Started on a picture the tree is hidden behind the viewer, so it waits until the
+// browser is shown. Input: started on b.jpg, the picture shown and the window drawn, then
+// Return to the browser. Truth: the tree's revealedPath, empty while viewing and the folder after.
+TEST(Start, OnAPictureTheFolderTreeWaitsForTheBrowser) {
+    auto f = startedOnFile();
+    ASSERT_NE(f->window, nullptr);
+    auto* image = f->window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready; }));
+    ASSERT_TRUE(waitUntil([&] { return f->window->property("windowDrawn").toBool(); }));
+    QObject* tree = f->find(QStringLiteral("folderTree"));
+    ASSERT_NE(tree, nullptr);
+    EXPECT_EQ(tree->property("revealedPath").toString(), QString()) << "nothing read behind the viewer";
+    QTest::keyClick(f->window, Qt::Key_Return);
+    ASSERT_FALSE(f->window->property("viewing").toBool());
+    EXPECT_EQ(tree->property("revealedPath").toString(), f->context->directory());
+}
+
+// Why: started on a folder, the tree still reveals it, only after the window has drawn its first
+// content. Input: the program started on a folder. Truth: windowDrawn turns true and the tree's
+// revealedPath is the folder.
+TEST(Start, OnAFolderTheTreeRevealsItOnceTheWindowIsDrawn) {
+    MainFixture f(1);
+    ASSERT_NE(f.window, nullptr);
+    EXPECT_TRUE(waitUntil([&] { return f.window->property("windowDrawn").toBool(); }));
+    QObject* tree = f.find(QStringLiteral("folderTree"));
+    ASSERT_NE(tree, nullptr);
+    EXPECT_TRUE(waitUntil([&] { return tree->property("revealedPath").toString() == f.context->directory(); }));
+}
+
 TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {
     MainFixture f(1, {QStringLiteral("sub")});
     ASSERT_NE(f.window, nullptr);
