@@ -307,6 +307,27 @@ TEST(Clipboard, ALateImageDoesNotOverwriteANewerCopy) {
     EXPECT_FALSE(clipboard.canPaste());
 }
 
+// Why: whether Paste is offered is kept rather than asked of the system clipboard at every
+// read, which is a round trip to the program that owns it, and was taken while the window was
+// being made. Input: an image already on the clipboard when the object is made, then text and
+// an image put there by others. The truth is canPaste, and changed told each time: false
+// until the first look after start, then following the clipboard.
+TEST(Clipboard, WhatCanBePastedIsKeptFromTheClipboardsLastChange) {
+    QGuiApplication::clipboard()->setImage(QImage(4, 4, QImage::Format_RGB32));
+    iv::FileClipboard clipboard;
+    int told = 0;
+    QObject::connect(&clipboard, &iv::FileClipboard::changed, [&] { ++told; });
+    EXPECT_FALSE(clipboard.canPaste()) << "not looked at while the window is being made";
+    ASSERT_TRUE(waitUntil([&] { return clipboard.canPaste(); }));
+    EXPECT_EQ(told, 1);
+
+    QGuiApplication::clipboard()->setText(QStringLiteral("words"));
+    EXPECT_FALSE(clipboard.canPaste());
+    QGuiApplication::clipboard()->setImage(QImage(4, 4, QImage::Format_RGB32));
+    EXPECT_TRUE(clipboard.canPaste());
+    EXPECT_EQ(told, 3);
+}
+
 TEST(Clipboard, FullPathsAreText) {
     FileOpsFixture f(1);
     iv::FileClipboard clipboard;

@@ -16,7 +16,9 @@ class FileClipboard : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    // Files or an image are there for pasting.
+    // Files or an image are there for pasting. Kept from when the clipboard last changed, as
+    // asking it is a round trip to the application that owns it (on X11, and it may hang), and
+    // the bindings ask often. The first look is taken once the program has started.
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY changed)
 
 public:
@@ -49,6 +51,9 @@ signals:
     void changed();
 
 private:
+    void look();  // asks the clipboard whether something can be pasted
+
+    bool m_canPaste = false;
     WorkQueue& m_queue = WorkQueue::global();
     WorkQueue::GroupId m_group = m_queue.createGroup();
 };

@@ -8,6 +8,7 @@
 #include <QList>
 #include <QMimeData>
 #include <QPixmap>
+#include <QTimer>
 #include <QUrl>
 
 #include <cstring>
@@ -58,7 +59,8 @@ QMimeData* filesMimeData(const QStringList& paths, bool cut = false) {
 }  // namespace
 
 FileClipboard::FileClipboard(QObject* parent) : QObject(parent) {
-    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FileClipboard::changed);
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, &FileClipboard::look);
+    QTimer::singleShot(0, this, &FileClipboard::look);  // not while the window is being made
 }
 
 FileClipboard::~FileClipboard() {
@@ -145,9 +147,12 @@ bool FileClipboard::isCut() const {
     return false;
 }
 
-bool FileClipboard::canPaste() const {
+bool FileClipboard::canPaste() const { return m_canPaste; }
+
+void FileClipboard::look() {
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
-    return mime && (mime->hasImage() || !files().isEmpty());
+    m_canPaste = mime && (mime->hasImage() || !files().isEmpty());
+    emit changed();  // also for what files() and isCut() say, which may differ with the same answer
 }
 
 QString FileClipboard::text() const { return QGuiApplication::clipboard()->text(); }
