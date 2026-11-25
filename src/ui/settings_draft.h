@@ -29,6 +29,7 @@ class SettingsDraft : public QObject {
     Q_PROPERTY(int thumbnailCacheMiB READ thumbnailCacheMiB WRITE setThumbnailCacheMiB NOTIFY changed)
     // Not reset with the rest of Viewing: it is where the user keeps files, not a look.
     Q_PROPERTY(QString colorTablesFolder READ colorTablesFolder NOTIFY changed)
+    Q_PROPERTY(QString escapeAction READ escapeAction WRITE setEscapeAction NOTIFY changed)
     Q_PROPERTY(bool dirty READ dirty NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString problem READ problem NOTIFY changed)
@@ -50,6 +51,8 @@ public:
     int thumbnailCacheMiB() const;
     void setThumbnailCacheMiB(int value);
     QString colorTablesFolder() const;
+    QString escapeAction() const;
+    void setEscapeAction(const QString& value);
     bool dirty() const;
     bool busy() const;
     QString problem() const;
@@ -62,13 +65,14 @@ public:
     Q_INVOKABLE void chooseColorTablesFolder(const QUrl& folder);
     Q_INVOKABLE void resetViewing();
     Q_INVOKABLE void resetThumbnails();
+    Q_INVOKABLE void resetBehaviour();
 signals:
     void changed();
     void applied(bool closeAfter);
     void activationRequested();
 private:
     SettingsDraft(Preferences&, ThemePalette&, ColorSettings*, QObject*);
-    enum Field { Transparency, ColorManaged, Profile, OutputBits, ThumbnailSize, CacheMiB, TablesFolder };
+    enum Field { Transparency, ColorManaged, Profile, OutputBits, ThumbnailSize, CacheMiB, TablesFolder, EscapeAction };
     void refresh();
     void set(Field field, QVariant value);
     void readProfile(const QString& path, bool applying, bool closeAfter);

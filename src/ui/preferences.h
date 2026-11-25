@@ -27,6 +27,11 @@ class Preferences : public QObject {
     Q_PROPERTY(bool keepAutoContrast READ keepAutoContrast WRITE setKeepAutoContrast NOTIFY keepAutoContrastChanged)
     Q_PROPERTY(bool showHiddenFolders READ showHiddenFolders WRITE setShowHiddenFolders NOTIFY showHiddenFoldersChanged)
     Q_PROPERTY(QString transparency READ transparency WRITE setTransparency NOTIFY transparencyChanged)
+    // What Esc does in the viewer once no tool, comparison or full screen is left to end: "auto"
+    // closes the window if the program was started on a file and the browser has not been shown
+    // since, and goes back to the browser otherwise; "browser" always goes back; "close" always
+    // closes. Closing still asks about unsaved edits.
+    Q_PROPERTY(QString escapeAction READ escapeAction WRITE setEscapeAction NOTIFY escapeActionChanged)
     Q_PROPERTY(bool colorManaged READ colorManaged WRITE setColorManaged NOTIFY colorManagedChanged)
     Q_PROPERTY(QString displayProfile READ displayProfile WRITE setDisplayProfile NOTIFY displayProfileChanged)
     // Where Adjust lists colour tables (.cube) from, with its subfolders; empty for none.
@@ -61,6 +66,10 @@ public:
     static bool validCacheMiB(int value);
     static bool validOutputBits(int value);
     static bool validTransparency(const QString& value);
+    static bool validEscapeAction(const QString& value);
+    // Whether Esc closes the window under escapeAction, given how the program was started and
+    // whether the browser has been shown since.
+    Q_INVOKABLE bool escapeCloses(bool startedOnFile, bool browserShown) const;
 
     double hue() const;
     void setHue(double value);
@@ -74,6 +83,8 @@ public:
     void setShowHiddenFolders(bool value);
     QString transparency() const;
     void setTransparency(QString value);
+    QString escapeAction() const;
+    void setEscapeAction(QString value);
     bool colorManaged() const;
     void setColorManaged(bool value);
     QString displayProfile() const;
@@ -112,6 +123,7 @@ signals:
     void keepAutoContrastChanged();
     void showHiddenFoldersChanged();
     void transparencyChanged();
+    void escapeActionChanged();
     void colorManagedChanged();
     void displayProfileChanged();
     void colorTablesFolderChanged();

@@ -10,6 +10,10 @@ ApplicationWindow {
 
     required property string initialPath
     property bool viewing: false
+    // For what Esc does (Preferences.escapeAction): started on a picture, as from a file manager,
+    // and whether the browser has been shown since.
+    property bool startedOnFile: false
+    property bool browserShown: false
     readonly property ImageView activeView: viewing ? viewerPage.view : browserPage.preview
     // Text fields do not claim keys such as Return and Up, so these shortcuts would take them.
     readonly property bool typing: browserPage.pathBar.editing
@@ -167,6 +171,8 @@ ApplicationWindow {
         context.sortDescending = Preferences.sortDescending
         context.openPath(initialPath)
         window.viewing = context.currentPath !== ""
+        window.startedOnFile = window.viewing
+        window.browserShown = !window.viewing
         Qt.callLater(window.focusPage)
     }
 
@@ -178,7 +184,11 @@ ApplicationWindow {
         else
             browserPage.focusFiles()
     }
-    onViewingChanged: Qt.callLater(window.focusPage)
+    onViewingChanged: {
+        if (!viewing)
+            browserShown = true
+        Qt.callLater(window.focusPage)
+    }
     onToolActiveChanged: if (!window.toolActive) Qt.callLater(window.focusPage)
 
     function toggleFullScreen() {
@@ -195,6 +205,8 @@ ApplicationWindow {
             return
         if (window.visibility === Window.FullScreen)
             window.visibility = Window.Windowed
+        else if (Preferences.escapeCloses(window.startedOnFile, window.browserShown))
+            window.close()  // which asks about unsaved edits
         else
             window.leaveImage(() => window.viewing = false)
     }

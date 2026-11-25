@@ -145,6 +145,7 @@ qt_add_qml_module(iv_ui
         qml/SettingsPage.qml
         qml/SettingsAppearancePage.qml
         qml/SettingsViewingPage.qml
+        qml/SettingsBehaviourPage.qml
         qml/SettingsThumbnailsPage.qml
         qml/ThumbnailCacheDialogs.qml
         qml/StraightenPanel.qml

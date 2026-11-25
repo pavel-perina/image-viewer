@@ -1,4 +1,5 @@
 #include "ui_test_support.h"
+#include "ui/preferences.h"
 #include "ui/app_info.h"
 #include "ui/display_output.h"
 #include "ui/retired_settings.h"
@@ -1324,6 +1325,93 @@ TEST(Keys, CtrlQQuitsOnEverySystem) {
     ASSERT_TRUE(f.window->isVisible());
     QTest::keyClick(f.window, Qt::Key_Q, Qt::ControlModifier);
     EXPECT_TRUE(waitUntil([&] { return !f.window->isVisible(); }));
+}
+
+namespace {
+
+// The global preference for one test, put back after it.
+struct EscapeChoice {
+    QString before = iv::Preferences::instance()->escapeAction();
+    explicit EscapeChoice(const char* choice) { iv::Preferences::instance()->setEscapeAction(QString::fromLatin1(choice)); }
+    ~EscapeChoice() { iv::Preferences::instance()->setEscapeAction(before); }
+};
+
+// Four images, the program started on b.jpg as a file manager starts it.
+std::unique_ptr<MainFixture> startedOnFile() {
+    return std::make_unique<MainFixture>([](const QTemporaryDir& dir) {
+        for (const char* name : {"a.jpg", "b.jpg", "c.jpg", "d.jpg"}) {
+            writeJpeg(dir.filePath(QString::fromLatin1(name)));
+        }
+    }, QStringLiteral("b.jpg"));
+}
+
+}  // namespace
+
+// Why: opened on a picture, as from a file manager, the program shows it at once, and by
+// default Esc closes the window, back to where the picture was chosen; once the browser has
+// been shown, Esc from the viewer returns to it instead. Input: started on b.jpg; Esc; then,
+// started again, Return to the browser, Return to the viewer and Esc. Truth: viewing at the
+// start, the window closed, and back in the browser.
+TEST(Keys, StartedOnAPictureEscClosesUntilTheBrowserIsShown) {
+    EscapeChoice choice("auto");
+    {
+        auto f = startedOnFile();
+        ASSERT_NE(f->window, nullptr);
+        EXPECT_TRUE(f->window->property("viewing").toBool()) << "the picture, not the browser";
+        EXPECT_EQ(f->context->currentName(), QStringLiteral("b.jpg"));
+        QTest::keyClick(f->window, Qt::Key_Escape);
+        EXPECT_TRUE(waitUntil([&] { return !f->window->isVisible(); }));
+    }
+    auto f = startedOnFile();
+    ASSERT_NE(f->window, nullptr);
+    ASSERT_TRUE(waitUntil([&] { return f->context->fileCount() == 4; }));
+    QTest::keyClick(f->window, Qt::Key_Return);
+    ASSERT_FALSE(f->window->property("viewing").toBool());
+    QTest::keyClick(f->window, Qt::Key_Return);
+    ASSERT_TRUE(f->window->property("viewing").toBool());
+    QTest::keyClick(f->window, Qt::Key_Escape);
+    EXPECT_FALSE(f->window->property("viewing").toBool());
+    EXPECT_TRUE(f->window->isVisible());
+}
+
+// Why: the other two choices: "browser" keeps Esc going back even when started on a picture,
+// and "close" closes even when started on a folder. Esc in the browser never closes. Input:
+// each choice with the start it overrides. Truth: viewing and whether the window is shown.
+TEST(Keys, TheEscapeChoiceOverridesHowItWasStarted) {
+    {
+        EscapeChoice choice("browser");
+        auto f = startedOnFile();
+        ASSERT_NE(f->window, nullptr);
+        QTest::keyClick(f->window, Qt::Key_Escape);
+        EXPECT_FALSE(f->window->property("viewing").toBool());
+        EXPECT_TRUE(f->window->isVisible());
+    }
+    EscapeChoice choice("close");
+    MainFixture f(2);
+    ASSERT_NE(f.window, nullptr);
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(f.window->isVisible()) << "Esc in the browser does nothing";
+    QTest::keyClick(f.window, Qt::Key_Return);
+    ASSERT_TRUE(f.window->property("viewing").toBool());
+    QTest::keyClick(f.window, Qt::Key_Escape);
+    EXPECT_TRUE(waitUntil([&] { return !f.window->isVisible(); }));
+}
+
+// Why: Esc ends a tool before anything else, so a window started on a picture is not closed
+// from under a crop. Input: started on b.jpg, Crop started, Esc. Truth: the crop ended, the
+// window still shown and viewing.
+TEST(Keys, EscEndsAToolBeforeItCloses) {
+    EscapeChoice choice("auto");
+    auto f = startedOnFile();
+    ASSERT_NE(f->window, nullptr);
+    auto* image = f->window->property("activeView").value<ImageView*>();
+    ASSERT_TRUE(waitUntil([&] { return image->status() == ImageView::Status::Ready; }));
+    QTest::keyClick(f->window, Qt::Key_X);
+    ASSERT_TRUE(waitUntil([&] { return f->window->property("cropping").toBool(); }));
+    QTest::keyClick(f->window, Qt::Key_Escape);
+    EXPECT_FALSE(f->window->property("cropping").toBool());
+    EXPECT_TRUE(f->window->isVisible());
+    EXPECT_TRUE(f->window->property("viewing").toBool());
 }
 
 TEST(Keys, WindowShortcutsStillWorkWhileThePanesHaveTheKeys) {

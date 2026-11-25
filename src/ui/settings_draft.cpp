@@ -12,14 +12,15 @@
 namespace iv {
 struct SettingsDraft::Impl {
     struct Entry { const char* name; QVariant defaults; QVariant saved; QVariant value; };
-    std::array<Entry, 7> entries{{
+    std::array<Entry, 8> entries{{
         {"transparency", QStringLiteral("dark"), {}, {}},
         {"colorManaged", true, {}, {}},
         {"displayProfile", QString(), {}, {}},
         {"outputBits", 8, {}, {}},
         {"thumbnailSize", QSize(164, 164), {}, {}},
         {"thumbnailCacheMiB", 512, {}, {}},
-        {"colorTablesFolder", QString(), {}, {}}
+        {"colorTablesFolder", QString(), {}, {}},
+        {"escapeAction", QStringLiteral("auto"), {}, {}}
     }};
     Preferences& preferences;
     AppearanceDraft appearance;
@@ -53,6 +54,7 @@ SettingsDraft::SettingsDraft(Preferences& preferences, ThemePalette& theme, Colo
     connect(&preferences, &Preferences::thumbnailSizeChanged, this, &SettingsDraft::refresh);
     connect(&preferences, &Preferences::thumbnailCacheMiBChanged, this, &SettingsDraft::refresh);
     connect(&preferences, &Preferences::colorTablesFolderChanged, this, &SettingsDraft::refresh);
+    connect(&preferences, &Preferences::escapeActionChanged, this, &SettingsDraft::refresh);
     refresh();
 }
 SettingsDraft::~SettingsDraft() {
@@ -69,6 +71,8 @@ int SettingsDraft::outputBits() const { return m_impl->entries[OutputBits].value
 QSize SettingsDraft::thumbnailSize() const { return m_impl->entries[ThumbnailSize].value.toSize(); }
 int SettingsDraft::thumbnailCacheMiB() const { return m_impl->entries[CacheMiB].value.toInt(); }
 QString SettingsDraft::colorTablesFolder() const { return m_impl->entries[TablesFolder].value.toString(); }
+QString SettingsDraft::escapeAction() const { return m_impl->entries[EscapeAction].value.toString(); }
+void SettingsDraft::setEscapeAction(const QString& value) { if (Preferences::validEscapeAction(value)) set(EscapeAction, value); }
 void SettingsDraft::chooseColorTablesFolder(const QUrl& folder) { set(TablesFolder, folder.isEmpty() ? QString() : folder.toLocalFile()); }
 bool SettingsDraft::busy() const { return m_impl->busy; }
 QString SettingsDraft::problem() const { return m_impl->problem; }
@@ -134,6 +138,7 @@ void SettingsDraft::resetViewing() {
 void SettingsDraft::resetThumbnails() {
     for (Field field : {ThumbnailSize, CacheMiB}) set(field, m_impl->entries[field].defaults);
 }
+void SettingsDraft::resetBehaviour() { set(EscapeAction, m_impl->entries[EscapeAction].defaults); }
 
 void SettingsDraft::chooseProfile(const QUrl& file) {
     if (m_impl->active && !busy()) readProfile(file.toLocalFile(), false, false);

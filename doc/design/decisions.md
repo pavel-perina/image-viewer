@@ -21,6 +21,21 @@ Choices made while implementing `architecture.md` and `main-window.md`.
 * Future thumbnail dimensions can coexist in the existing cache, whose key includes
   requested edge size. Changing size therefore needs no global invalidation.
 
+## Settings: Behaviour, and what Esc does (2026-11-25)
+
+* Habits that are neither looks nor viewing go on a Behaviour page, under the same draft
+  (Apply, Cancel, Reset of its own section). It is not called Personalization, which on
+  Windows means themes and colours, as Appearance does here.
+* Esc in the viewer first ends a tool or comparison, then full screen, as before. What it does
+  then is a setting: by default it closes the window when the program was started on a
+  picture (from a file manager) and the browser has not been shown since, as quick viewers
+  do, and otherwise goes back to the browser; or always back; or always closes. Once the
+  browser has been shown, the program is being browsed, so Esc returns there. Closing asks
+  about unsaved edits as it always has; no other confirmation, which would defeat Esc. Esc
+  in the browser does nothing, so a stray press never closes the program.
+* Starting on a file already opened the viewer at once (the current image is known before
+  the folder's scan ends); a test now holds that.
+
 ## Settings: Thumbnails and Viewing (2026-11-17)
 
 * Keep sorting and hidden-folder controls directly in the browsing interface. Do not

@@ -18,7 +18,8 @@ DialogWindow {
         layout.forceActiveFocus()
         if (sections.currentIndex === 0) settings.appearance.resetDefaults()
         else if (sections.currentIndex === 1) settings.resetViewing()
-        else settings.resetThumbnails()
+        else if (sections.currentIndex === 2) settings.resetThumbnails()
+        else settings.resetBehaviour()
     }
     SettingsDraft {
         id: settings
@@ -50,7 +51,7 @@ DialogWindow {
                     objectName: "settingsSections"
                     anchors.fill: parent
                     anchors.margins: Theme.paneInset
-                    model: ["Appearance", "Viewing", "Thumbnails"]
+                    model: ["Appearance", "Viewing", "Thumbnails", "Behaviour"]
                     currentIndex: 0
                     focus: true
                     clip: true
@@ -60,7 +61,7 @@ DialogWindow {
                         width: ListView.view.width
                         height: Theme.controlHeight
                         text: modelData
-                        icon.source: ["qrc:/icons/preferences-desktop-theme.svg", "qrc:/icons/view-image.svg", "qrc:/icons/view-browser.svg"][index]
+                        icon.source: ["qrc:/icons/preferences-desktop-theme.svg", "qrc:/icons/view-image.svg", "qrc:/icons/view-browser.svg", "qrc:/icons/adjust-colours.svg"][index]
                         icon.color: Theme.text
                         onClicked: { sections.currentIndex = index; sections.forceActiveFocus() }
                         background: SelectionBackground { selected: sections.currentIndex === index; focused: sections.activeFocus }
@@ -75,6 +76,7 @@ DialogWindow {
                 SettingsAppearancePage { id: appearancePage; draft: settings.appearance }
                 SettingsViewingPage { draft: settings }
                 SettingsThumbnailsPage { id: thumbnailsPage; draft: settings }
+                SettingsBehaviourPage { draft: settings }
             }
         }
         Label {
@@ -90,8 +92,8 @@ DialogWindow {
             Layout.fillWidth: true
             spacing: Theme.panelSpacing
             Button {
-                objectName: ["resetAppearanceButton", "resetViewingButton", "resetThumbnailsButton"][sections.currentIndex]
-                text: ["Reset appearance", "Reset viewing", "Reset thumbnails"][sections.currentIndex]
+                objectName: ["resetAppearanceButton", "resetViewingButton", "resetThumbnailsButton", "resetBehaviourButton"][sections.currentIndex]
+                text: ["Reset appearance", "Reset viewing", "Reset thumbnails", "Reset behaviour"][sections.currentIndex]
                 enabled: !settings.busy
                 onClicked: dialog.resetSection()
             }

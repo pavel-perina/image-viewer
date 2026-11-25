@@ -24,6 +24,7 @@ struct Preferences::Impl {
     bool keepAutoContrast = false;
     bool showHiddenFolders = false;
     QString transparency = QStringLiteral("dark");
+    QString escapeAction = QStringLiteral("auto");
     bool colorManaged = true;
     QString displayProfile = QString();
     QString colorTablesFolder = QString();
@@ -72,6 +73,10 @@ Preferences::Preferences(std::unique_ptr<QSettings> settings, QObject* parent)
     {
         const QString value = m_impl->settings->value(QStringLiteral("View/transparency"), QStringLiteral("dark")).toString();
         if (validTransparency(value)) m_impl->transparency = value;
+    }
+    {
+        const QString value = m_impl->settings->value(QStringLiteral("Behaviour/escape"), QStringLiteral("auto")).toString();
+        if (validEscapeAction(value)) m_impl->escapeAction = value;
     }
     {
         const bool value = m_impl->settings->value(QStringLiteral("Color/enabled"), true).toBool();
@@ -142,6 +147,15 @@ bool Preferences::validThumbnailSize(QSize value) {
 bool Preferences::validCacheMiB(int value) { return value >= 1 && value <= 65536; }
 bool Preferences::validOutputBits(int value) { return value == 8 || value == 10; }
 bool Preferences::validTransparency(const QString& value) { return value == "dark" || value == "light" || value == "plain"; }
+bool Preferences::validEscapeAction(const QString& value) { return value == "auto" || value == "browser" || value == "close"; }
+
+bool Preferences::escapeCloses(bool startedOnFile, bool browserShown) const {
+    if (m_impl->escapeAction == QLatin1String("close")) return true;
+    if (m_impl->escapeAction == QLatin1String("browser")) return false;
+    // Opened from a file manager to look at a picture: Esc goes back to where that was. Once the
+    // browser has been shown, the program is being browsed, and Esc returns to it.
+    return startedOnFile && !browserShown;
+}
 
 Preferences* Preferences::instance() {
     static Preferences* const preferences = [] {
@@ -224,6 +238,15 @@ void Preferences::setTransparency(QString value) {
     m_impl->transparency = value;
     m_impl->settings->setValue(QStringLiteral("View/transparency"), value);
     emit transparencyChanged();
+}
+
+QString Preferences::escapeAction() const { return m_impl->escapeAction; }
+
+void Preferences::setEscapeAction(QString value) {
+    if (!validEscapeAction(value) || m_impl->escapeAction == value) return;
+    m_impl->escapeAction = value;
+    m_impl->settings->setValue(QStringLiteral("Behaviour/escape"), value);
+    emit escapeActionChanged();
 }
 
 bool Preferences::colorManaged() const { return m_impl->colorManaged; }

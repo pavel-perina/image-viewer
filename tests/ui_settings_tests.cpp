@@ -161,6 +161,37 @@ TEST_F(SettingsDraftFixture, ColorTablesFolderWaitsForApplyAndOutlastsReset) {
     EXPECT_EQ(preferences.colorTablesFolder(), QString()) << "an empty choice clears it";
 }
 
+// Why: what Esc does is a habit, set on the Behaviour page: it waits for Apply, is kept, and
+// Reset of that page alone brings back the default. Input: "close" chosen, Viewing reset,
+// applied, then Behaviour reset and applied. Truth: the preference and the settings file.
+TEST_F(SettingsDraftFixture, EscapeActionWaitsForApplyAndResetsWithBehaviour) {
+    EXPECT_EQ(preferences.escapeAction(), QStringLiteral("auto"));
+    ASSERT_TRUE(draft.begin());
+    draft.setEscapeAction(QStringLiteral("nonsense"));
+    EXPECT_EQ(draft.escapeAction(), QStringLiteral("auto")) << "only the known choices";
+    draft.setEscapeAction(QStringLiteral("close"));
+    EXPECT_EQ(preferences.escapeAction(), QStringLiteral("auto")) << "not before Apply";
+    draft.resetViewing();
+    EXPECT_EQ(draft.escapeAction(), QStringLiteral("close")) << "another page's Reset leaves it";
+    draft.apply();
+    EXPECT_EQ(iv::Preferences(dir.filePath("settings.ini")).escapeAction(), QStringLiteral("close"));
+    draft.resetBehaviour();
+    draft.apply();
+    EXPECT_EQ(preferences.escapeAction(), QStringLiteral("auto"));
+}
+
+// Why: the rule Esc follows. "auto" closes only a window started on a picture whose browser
+// has not been shown; the other two choices ignore how it started. Input: every choice with
+// every start. Truth: the rule as the Behaviour page describes it.
+TEST_F(SettingsDraftFixture, EscapeClosesAsTheChoiceSays) {
+    struct Case { const char* choice; bool onFile; bool browserShown; bool closes; };
+    for (const Case& c : {Case{"auto", true, false, true}, Case{"auto", true, true, false}, Case{"auto", false, true, false},
+                          Case{"browser", true, false, false}, Case{"close", false, true, true}}) {
+        preferences.setEscapeAction(QString::fromLatin1(c.choice));
+        EXPECT_EQ(preferences.escapeCloses(c.onFile, c.browserShown), c.closes) << c.choice << c.onFile << c.browserShown;
+    }
+}
+
 // The shared draft is the cancellation boundary, even when edits belong to different
 // pages. Reload the isolated INI after Apply; Reset must affect only its own section.
 TEST_F(SettingsDraftFixture, PagesShareOneCheckpointAndResetOnlyTheirOwnSection) {
@@ -738,7 +769,7 @@ TEST(Settings, MainWindowOpensAppearanceFromTools) {
     EXPECT_EQ(dialog->modality(), Qt::WindowModal);
     auto* sections = dialog->findChild<QObject*>("settingsSections");
     ASSERT_TRUE(sections);
-    EXPECT_EQ(sections->property("count").toInt(), 3);
+    EXPECT_EQ(sections->property("count").toInt(), 4) << "Appearance, Viewing, Thumbnails and Behaviour";
     for (int index = 0; index < sections->property("count").toInt(); ++index) {
         QQuickItem* row = nullptr;
         ASSERT_TRUE(QMetaObject::invokeMethod(sections, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(int, index)));
